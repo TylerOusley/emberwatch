@@ -113,9 +113,9 @@ Account passwords are salted and hashed with scrypt; the database stores hashed 
 
 ## Deploy as a separate Railway service
 
-The source package has **not** created a GitHub repository, deployed to Railway, or changed the existing website. The following steps describe the intended setup:
+The project is available in [TylerOusley/emberwatch](https://github.com/TylerOusley/emberwatch). Railway deployment and the website link are the remaining hosting steps:
 
-1. Create a new GitHub repository, for example `emberwatch`, and place this project at its root. Keep `package-lock.json`, `Dockerfile`, `public`, `server`, and `shared` in that repository. Do not upload your local `data` directory.
+1. Use the `TylerOusley/emberwatch` repository with this project at its root. Keep `package-lock.json`, `Dockerfile`, `public`, `server`, and `shared` in the repository. Do not upload your local `data` directory.
 2. In Railway, create a new service from that repository. Use the root `Dockerfile` to build it. The container runs `node server/index.js`; there is no separate frontend build command.
 3. Attach a persistent volume to this new service at **`/data`**, then set **`DATA_DIR=/data`**. The application creates its database when it starts. Railway volumes are mounted at runtime, so this must not be moved into a build or pre-deploy command. [Railway volumes](https://docs.railway.com/volumes)
 4. Keep one replica, leave `ALLOW_DEV_TOOLS` unset or set it to `false`, and use **`/health`** as the deployment healthcheck. Let the service use Railway's `PORT`. [Railway healthchecks](https://docs.railway.com/deployments/healthchecks)

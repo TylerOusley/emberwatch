@@ -1,0 +1,10 @@
+{
+  "name": "emberwatch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An original cooperative 3D dwarf village survival game.",
+  "engines": { "node": ">=24" },
+  "scripts": { "start": "node server/index.js", "dev": "node --watch server/index.js", "test": "node --test test/*.test.js" },
+  "dependencies": { "three": "0.180.0", "ws": "8.18.3" }
+}

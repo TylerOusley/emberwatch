@@ -1,0 +1,17 @@
+node_modules
+data
+data-*
+.git
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+coverage
+test
+docs
+README.md
+artifacts
+*.zip

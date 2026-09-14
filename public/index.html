@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#182329"><title>Emberwatch — Hold the gate</title>
+  <meta name="description" content="Build by daylight. Stand together at night. An original cooperative dwarf survival game.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+</head>
+<body>
+  <canvas id="world" tabindex="0" aria-label="Three-dimensional village. Use WASD to move and hold the right mouse button to look around."></canvas>
+  <div id="vignette"></div>
+  <div id="loading"><div class="crest large">E</div><p>Lighting the hearths…</p></div>
+  <div id="fatal" hidden><h1>The village couldn’t load.</h1><p id="fatal-message"></p><button onclick="location.reload()">Try again</button></div>
+  <main id="lobby" class="lobby">
+    <header class="lobby-top"><a class="wordmark" href="/" aria-label="Emberwatch home"><span class="crest">E</span><span>EMBERWATCH</span></a><span class="build-label"><i></i> FIRST LIGHT <span> / </span> PLAYABLE BUILD 01</span></header>
+    <section class="welcome">
+      <p class="eyebrow"><span></span> A COOPERATIVE SURVIVAL ADVENTURE</p>
+      <h1>A small village.<br>A long night.</h1>
+      <p class="intro">Gather by daylight. Stand together at dusk.<br>Keep the hearth burning one more night.</p>
+      <div class="auth-card">
+        <div class="card-heading"><h2>Take your place at the gate</h2><span>1–8 DWARFS</span></div>
+        <form id="join-form">
+          <div class="auth-tabs"><button type="button" class="active" data-auth="register">New adventurer</button><button type="button" data-auth="login">Returning adventurer</button></div>
+          <div class="form-row"><label>Your name<input id="name" name="username" autocomplete="username" placeholder="What shall we call you?" minlength="3" maxlength="20" required></label><label>Password<input id="password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" minlength="8" maxlength="128" required></label></div>
+          <p class="field-label">CHOOSE YOUR CALLING</p>
+          <div id="role-options" class="roles" role="radiogroup" aria-label="Starting role"></div>
+          <div class="village-heading"><label for="village-select" class="field-label">YOUR VILLAGE</label><button type="button" id="refresh-villages" class="text-button">Refresh ↻</button></div>
+          <select id="village-select" aria-label="Choose a public village"><option>Finding villages…</option></select>
+          <div class="village-info"><span id="village-detail">Eight residents. One shared defense.</span><button type="button" id="new-village" class="text-button">+ New village</button></div>
+          <p id="form-error" class="form-error" role="alert"></p>
+          <button id="join-button" type="submit" class="primary-button">ENTER THE VILLAGE <span>→</span></button>
+        </form>
+      </div>
+    </section>
+    <aside class="scene-caption"><span class="eyebrow">THE NORTHERN REACHES</span><h2>Where the last light holds.</h2><p>Beyond these walls, the old road leads to the graveyard.</p></aside>
+    <footer class="lobby-bottom"><span>BUILT TOGETHER. DEFENDED TOGETHER.</span><button id="tour-button" class="text-button">Explore the view <span>↗</span></button><span>HEADPHONES & A MOUSE RECOMMENDED</span></footer>
+  </main>
+  <div id="hud" hidden>
+    <header class="hud-top">
+      <div class="hud-brand"><span class="crest">E</span><div><strong>EMBERWATCH</strong><span id="village-name">The Northern Watch</span></div></div>
+      <div class="day-panel"><span id="phase-icon">☀</span><div><strong id="day-label">DAY 1</strong><span id="phase-label">Time to prepare</span></div><span class="divider"></span><strong id="clock">08:00</strong></div>
+      <div class="top-actions"><span class="connection" id="connection"><i></i> CONNECTED</span><button id="help-button" title="Controls (H)" aria-label="Controls and help">?</button><button id="menu-button" title="Village menu (Escape)" aria-label="Village menu">☰</button></div>
+    </header>
+    <aside class="objectives panel"><p class="eyebrow">THE FIRST WATCH</p><h2 id="objective-title">Make ready for nightfall</h2><p id="objective-text">Gather supplies outside the walls.<br>Stand with the watch when darkness falls.</p><div class="objective-line"><span class="diamond"></span><span id="threat-label">The graveyard stirs at dusk</span></div></aside>
+    <div class="fortifications panel"><div><span>GATE</span><strong id="gate-text">1,200 / 1,200</strong></div><div class="meter"><i id="gate-bar"></i></div><div class="keep-line"><span>HEARTHKEEP</span><strong id="keep-text">2,000 / 2,000</strong></div><div class="meter small"><i id="keep-bar"></i></div></div>
+    <aside class="map-panel"><div class="map-heading"><span id="residents-label">1 ONLINE · 0 OFFLINE</span><span>N ↑</span></div><canvas id="minimap" width="220" height="220" aria-label="Village map: gold is you, blue are allies, red are enemies"></canvas><div class="map-footer"><i></i><span id="location-label">VILLAGE SQUARE</span></div></aside>
+    <div id="interaction" hidden><kbd>E</kbd><div><strong id="interaction-title"></strong><span id="interaction-subtitle"></span></div></div>
+    <div id="nameplates"></div>
+    <div id="crosshair"><i></i></div>
+    <div id="toast-area" aria-live="polite"></div>
+    <section class="player-panel"><div class="player-top"><span class="portrait" id="role-portrait"></span><div><strong id="player-name">Adventurer</strong><span id="player-role">VILLAGER</span></div><span class="wallet"><span>◈</span> <strong id="wallet">50</strong></span></div><div class="hp-label"><span>HEALTH</span><strong id="hp-text">100 / 100</strong></div><div class="meter health"><i id="hp-bar"></i></div><div class="supplies" id="supplies"></div></section>
+    <section class="hotbar-wrap"><p id="tool-caption">WOODEN SWORD <span>·</span> Hold your ground</p><div id="hotbar" class="hotbar"></div><p class="control-hint"><kbd>W A S D</kbd> Move <span>·</span> <kbd>SHIFT</kbd> Sprint <span>·</span> Hold right mouse to look <span>·</span> Left click to use</p></section>
+    <button id="inventory-button" class="pack-button" title="Supplies and village stores (I)"><span>▤</span><span>SUPPLIES <kbd>I</kbd></span></button>
+    <div id="downed" hidden><div class="downed-card"><p class="eyebrow">THE WATCH IS NOT OVER</p><h2>You have fallen.</h2><p id="downed-message">A priest can bring you back. You can choose to respawn when dawn arrives.</p><button id="respawn-button" class="primary-button" disabled>WAITING FOR DAWN</button><p class="fine-print">Respawning removes your carried inventory and 25% of your wallet. Bank savings remain safe.</p></div></div>
+    <div id="fallen" hidden><div class="downed-card"><p class="eyebrow">THE LAST EMBER FADES</p><h2>The keep has fallen.</h2><p>Your bank savings endure. Return to the village list to begin another watch.</p><button id="new-run-button" class="primary-button">BACK TO VILLAGES →</button></div></div>
+  </div>
+  <dialog id="panel-dialog"><button class="close-dialog" aria-label="Close panel">×</button><div id="panel-content"></div></dialog>
+  <script type="module" src="/src/main.js"></script>
+</body></html>
