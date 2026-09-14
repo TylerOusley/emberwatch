@@ -5,6 +5,7 @@ import { resolve, extname, sep } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Store } from './store.js';
 import { Simulation } from './simulation.js';
+import { VillageChat } from './chat.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary' };
@@ -25,6 +26,7 @@ async function readJson(req) {
 export function createApp(options = {}) {
   const store = new Store(options.dataDir ?? process.env.DATA_DIR ?? resolve(ROOT, 'data'));
   const simulation = new Simulation(store, { ...options, devTools: options.devTools ?? process.env.ALLOW_DEV_TOOLS === 'true' });
+  const chat = new VillageChat(options.chatClock);
   const sockets = new Map();
   const authAttempts = new Map();
   let activeAuth = 0;
@@ -78,6 +80,14 @@ export function createApp(options = {}) {
   const send = (socket, data) => {
     if (socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 1024 * 1024) socket.send(JSON.stringify(data));
   };
+  const sendVillage = (identity, data, includeSender = true) => {
+    if (!data) return;
+    const village = simulation.villages.get(identity.villageId);
+    if (!village) return;
+    for (const player of Object.values(village.players)) {
+      if (player.online && (includeSender || player.id !== identity.playerId)) send(sockets.get(player.id), data);
+    }
+  };
   wss.on('connection', socket => {
     let identity = null, messages = 0, windowStart = performance.now();
     socket.alive = true;
@@ -98,13 +108,19 @@ export function createApp(options = {}) {
           const previous = sockets.get(account.id);
           if (previous) throw new Error('This dwarf is already connected. Close the other game tab first.');
           const player = simulation.join(message.villageId, account, message.role ?? 'villager');
-          identity = { playerId: player.id, villageId: message.villageId };
+          identity = { playerId: player.id, villageId: message.villageId, name: account.name };
           sockets.set(player.id, socket); clearTimeout(joinTimeout);
           send(socket, { type: 'welcome', id: player.id, villageId: message.villageId });
           send(socket, { type: 'state', state: simulation.snapshot(simulation.villages.get(message.villageId), player.id) });
+          send(socket, { type: 'chatHistory', messages: chat.history(identity.villageId) });
         } else {
           if (!identity) throw new Error('Join a village first.');
           if (message.type === 'input') simulation.input(identity.villageId, identity.playerId, message);
+          else if (message.type === 'chat') {
+            const entry = chat.post(identity, message.text);
+            sendVillage(identity, chat.clearTyping(identity), false);
+            sendVillage(identity, entry);
+          } else if (message.type === 'typing') sendVillage(identity, chat.setTyping(identity, message.typing), false);
           else if (message.type === 'action') {
             const response = simulation.action(identity.villageId, identity.playerId, message);
             if (response) send(socket, { type: 'notice', message: response });
@@ -115,6 +131,7 @@ export function createApp(options = {}) {
     socket.on('close', () => {
       clearTimeout(joinTimeout);
       if (identity && sockets.get(identity.playerId) === socket) {
+        sendVillage(identity, chat.clearTyping(identity), false);
         sockets.delete(identity.playerId); simulation.disconnect(identity.villageId, identity.playerId);
       }
     });
@@ -141,6 +158,7 @@ export function createApp(options = {}) {
   const heartbeat = setInterval(() => {
     for (const socket of wss.clients) { if (!socket.alive) socket.terminate(); else { socket.alive = false; socket.ping(); } }
     for (const [key, times] of authAttempts) if (Date.now() - times.at(-1) > 60000) authAttempts.delete(key);
+    chat.prune();
   }, 15000);
   async function close() {
     clearInterval(timer); clearInterval(heartbeat);

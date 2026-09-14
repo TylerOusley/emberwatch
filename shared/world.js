@@ -24,7 +24,10 @@ export const RESOURCES=[];
 function node(type,x,z){RESOURCES.push({id:type+'-'+RESOURCES.length,type,x,z,seed:Math.floor(random()*10000)});}
 for(const [x,z] of [[-29,10],[-30,-15],[-28,-25],[30,7],[31,-3],[9,-31],[-8,-31],[-10,-18],[-29,-32],[29,-43],[-31,1]])node('timber',x,z);
 for(let i=0;i<36;i++){const side=i%2?1:-1;node('timber',side*(17+random()*37),30+random()*58);}
-for(let i=0;i<12;i++)node('stone',25+random()*6,-25+random()*5);
+// Keep the quarry clear of the sanctuary, cottages and wall, with room to
+// approach every outcrop. Consume the same two position samples before node()
+// so existing resource IDs, appearance seeds and saved depletion states survive.
+for(let i=0;i<12;i++)node('stone',30.2+(i%2)*2.5+(random()-.5)*.24,-29+Math.floor(i/2)*2.5+(random()-.5)*.24);
 for(let i=0;i<30;i++)node('wheat',-29+(i%6)*.8,-13+Math.floor(i/6)*.8);
 for(let i=0;i<48;i++)node('wheat',18+(i%8)*.85,45+Math.floor(i/8)*.85);
 export const TOOLS = [

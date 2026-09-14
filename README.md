@@ -2,17 +2,27 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This is a standalone project with newly written client, server, and game systems; it does not import or depend on the code from Tyler's existing games.
 
-**First Light — playable build 02.** This early prototype establishes the village's appearance, third-person movement, shared gathering, NPC combat, and persistent multiplayer sessions. The full accepted game design is preserved in [docs/DESIGN.md](docs/DESIGN.md). The complete economy, player construction, and all planned content are still future work.
+**First Light — playable build 03.** This early prototype establishes the village's appearance, third-person movement, shared gathering, NPC combat, and persistent multiplayer sessions. The full accepted game design is preserved in [docs/DESIGN.md](docs/DESIGN.md). The complete economy, player construction, and all planned content are still future work.
 
 ## Current scope at a glance
 
-| Available in build 02 | Still planned |
+| Available in build 03 | Still planned |
 | --- | --- |
 | Multiplayer, three roles, gathering, gate defense, priest healing/revival, repairs, banking, bread, and persistent hunger HUD. | Player plots, construction, role changes, owned shops and barracks, towers, church beds/carrying, horses/carts, and loans. |
 | Sell wheat, timber, and stone at the treasury for stock-based prices. | The complete market, transaction/land taxes, full job bonuses, merchant exports, votes and steward decisions. |
 | Wooden tools and one bread item. | Stone/iron equipment, additional resources and food tiers. |
 
 Build 02 also improves entrance orientation, village paths, tool-specific animation, and remote movement interpolation. **The full game plan is not complete.** The in-game village menu has a **Build status** button listing this boundary.
+
+## Build 03: chat and quarry access
+
+- Press **Enter** to focus village chat, type a message, then press **Enter** to send. **T** or the corner chat button toggles the panel; **Escape** closes it. Gameplay movement and tool shortcuts pause while the chat field has focus.
+- Messages appear in the village chat panel and briefly over the sender. A **…** bubble shows that someone is typing; draft text is not broadcast.
+- Messages are limited to 240 characters and one accepted message per second per player. Only online residents of the same village receive them. The server supplies the sender identity.
+- The latest 30 messages are available on join/reconnect while that server process is running. Chat is held in memory, not added to the saved-game database.
+- Matching gathering tools now give nearby resources priority over building menus. Switch to a sword or walk out of gathering range to open an adjacent service. The quarry rocks are spread away from buildings; existing resource IDs and depletion/regrowth states are preserved.
+
+The remaining reported building orientation could not be identified from the map audit. A screenshot or building name/location is needed before changing another orientation.
 
 ## Run on your computer
 
@@ -83,7 +93,9 @@ These are provisional balance values. Bundles use the price of **each unit at it
 | Hold right mouse and move the mouse | Turn the camera. |
 | Left mouse | Use the selected tool or ability. |
 | Number keys | Select the corresponding hotbar slot. |
-| E | Interact with a nearby service. |
+| E | Gather a reachable matching resource, or interact with a nearby service. |
+| Enter | Focus chat; send the typed message. |
+| T | Toggle village chat. |
 | I | View personal supplies and village stores. |
 | H | Open controls and help. |
 | Escape | Open the village menu. |

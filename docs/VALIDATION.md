@@ -1,5 +1,13 @@
 # First Light build validation
 
+## Build 03: village chat and quarry access
+
+Date: 2026-09-14. Adds a toggleable chat panel, transient overhead speech and typing bubbles, gathering-first interaction selection, and quarry spacing. The remaining reported building could not be identified in the geometry audit; its orientation is pending a screenshot/location rather than an arbitrary rotation.
+
+The automated suite now has **34 passing tests**: the 20 build-02 tests plus five server-chat tests, five client-chat-state tests, two interaction-priority tests, and two quarry-compatibility tests. Server chat checks use real WebSocket clients to verify authenticated identity, village isolation, sender echo, history limits, normalization/rate limits, reconnect behavior, and typing cleanup. Client state checks cover message deduplication, length/cap bounds, literal text, quiet history, and speech/typing expiry. The reported church/stone overlap is covered by a resource-priority test, and quarry checks verify clear harvesting positions and preserved resource identities.
+
+All 14 client/shared/server JavaScript files passed syntax checks. Chat host/stylesheet wiring and unique HTML IDs were inspected. Code review confirmed that text focus clears movement, suppresses gameplay shortcuts, and uses textContent for messages/bubbles. Browser layout and live in-game chat still need user playtesting because the available cloud browser cannot render the game's WebGL scene.
+
 ## Build 02: player-feedback update
 
 Date: 2026-09-14. Adds a persistent hunger HUD, stock-priced resource selling, building entrance/path corrections, tool-specific animation, and remote movement interpolation. Existing save structures are unchanged.

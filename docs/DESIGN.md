@@ -10,6 +10,12 @@ The first milestone demonstrates a new 3D village, third-person movement, animat
 
 The complete design below is the target, **not a list of features already implemented**. Player plots, production buildings, crafted upgraded equipment, the complete treasury economy, voting/steward decisions, church beds/carrying, loans, merchant trade, horses/carts, and owned defenses require later milestones. Prototype building scenery is not a substitute for those systems.
 
+## Build 03 update
+
+Village text chat is available in a toggleable corner panel, with sent-message bubbles and typing indicators above dwarfs. It is scoped to the joined village and available while downed. The server derives the sender identity from the session, bounds message length/rate and retains a short in-memory history. Draft contents are never transmitted. Text entry suspends movement and gameplay hotkeys.
+
+Quarry stones now have spacing from buildings and usable harvesting approaches. Matching tools prioritize nearby resources over opening a building menu. Saved resource IDs remain stable. No further building was rotated without identifying the one reported by Tyler.
+
 ## Build 02 update
 
 The core milestone now includes a persistent hunger meter and selling wheat, timber, and stone to the treasury. Sales use whole-gold, stock-dependent unit prices, recalculate every unit in a bundle, protect a 500-gold purchasing reserve, and reject a quote if another sale reduces its payout before execution. These price bands and the reserve are provisional balance settings in `shared/market.js`; this is only the first part of the planned economy. Taxes, player shops, merchant exports and steward/voting logic remain unimplemented.
