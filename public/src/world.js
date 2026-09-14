@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, seeded } from '/shared/world.js';
+import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, PLOTS, WORLD_BOUNDS, plotFront, seeded } from '/shared/world.js';
+import { createPlotsWorld } from './plots-world.js';
 
 // Original procedural artwork. Everything is drawn from simple, authored geometry;
 // no downloaded models or textures are required to explore the village.
@@ -55,7 +56,7 @@ export function createWorld(scene) {
   const groundG=new THREE.PlaneGeometry(540,460,90,78);groundG.rotateX(-Math.PI/2);
   const gp=groundG.attributes.position, gc=[];
   for(let i=0;i<gp.count;i++){
-    const x=gp.getX(i),z=gp.getZ(i),outside=Math.max(0,Math.abs(x)-67, -z-61,z-125);
+    const x=gp.getX(i),z=gp.getZ(i),outside=Math.max(0,Math.abs(x)-118,-z-151,z-135);
     gp.setY(i,-.14+Math.sin(x*.05)*Math.cos(z*.043)*Math.min(outside*.09,4));
     const n=rng(),c=color(n>.72?'#82975c':n>.34?'#728b50':'#657d49');c.multiplyScalar(.94+rng()*.12);gc.push(c.r,c.g,c.b);
   }
@@ -81,8 +82,8 @@ export function createWorld(scene) {
     lanes.push({curve,width});return curve;
   }
   const mainRoad=road([...ROAD].reverse(),7.2);
-  // Lanes lead to the actual service frontage. The narrow watch lane follows
-  // the guards' south exit and fits between the barracks and Oak & Iron.
+  // The Watch faces the central street. Existing route waypoints beyond its
+  // forecourt remain stable so guards in saved villages continue their patrol.
   road(GUARD_ROAD.slice(0,3),2.2);
   road([{x:0,z:8},{x:-10.7,z:8}],2.8);
   road([{x:0,z:7},{x:9.2,z:7}],2.8);
@@ -90,18 +91,38 @@ export function createWorld(scene) {
   road([{x:0,z:-23},{x:-11.5,z:-23}],3.2);
   road([{x:0,z:-35},{x:16.5,z:-35}],2.5);
   road([{x:0,z:-34},{x:-13,z:-34},{x:-17,z:-39},{x:-20.6,z:-39}],2.2);
+  // Neighborhood streets connect every deed to the square and the single gate.
+  for(const side of [-1,1]){
+    for(const x of [39,61])road([{x:side*x,z:14},{x:side*x,z:-129.4}],3.4);
+    road([{x:0,z:14},{x:side*39,z:14},{x:side*61,z:14}],3);
+    road([{x:0,z:-60},{x:side*39,z:-60},{x:side*61,z:-60}],3);
+    road([{x:0,z:-129.4},{x:side*39,z:-129.4},{x:side*61,z:-129.4}],2.2);
+  }
+  road([{x:0,z:-30},{x:12,z:-30},{x:12,z:-60},{x:0,z:-60}],2.6);
+  road([{x:0,z:-60},{x:0,z:-129.4}],3.6);
+  road([{x:0,z:-66},{x:12.4,z:-66}],2.8);
+  road([{x:0,z:-67},{x:-11.4,z:-67}],2.8);
+  for(const plot of PLOTS){
+    const front=plotFront(plot),side=plot.x<0?-1:1;
+    if(!plot.outside)road([{x:side*(Math.abs(plot.x)>60?61:39),z:plot.z},front],1.8);
+    else {
+      const nearest=ROAD.reduce((best,p)=>Math.hypot(p.x-front.x,p.z-front.z)<Math.hypot(best.x-front.x,best.z-front.z)?p:best);
+      road([front,{x:nearest.x,z:front.z},{x:nearest.x,z:nearest.z}],1.55);
+    }
+  }
   root.userData.lanes=lanes;
   // Paved square around the communal well, completely outside the central lane.
   const paving=mesh(new THREE.CircleGeometry(5.7,16),roadMat,root,8,.018,-4);paving.rotation.x=-Math.PI/2;
+  const marketPaving=mesh(new THREE.CircleGeometry(8,20),roadMat,root,0,.019,-66);marketPaving.rotation.x=-Math.PI/2;marketPaving.castShadow=false;
 
   // Mountain shoulders shelter the keep; silhouettes stay outside playable bounds.
   const mountainG=new THREE.ConeGeometry(1,1,6);
   for(let i=0;i<31;i++){
-    const x=-175+i*12,z=-91-rng()*25,h=23+rng()*43;
+    const x=-175+i*12,z=-178-rng()*30,h=23+rng()*43;
     batch(mountainG,i%3?M.mountain:M.mountainLight,x,h/2-3,z,18+rng()*12,h,18+rng()*15,0,rng()*Math.PI,0);
     if(i%4===0)batch(mountainG,M.stoneLight,x,h*.83-3,z,6.4,h*.34,6.4,0,.2,0);
   }
-  for(const side of [-1,1])for(let i=0;i<10;i++)batch(mountainG,M.mountain,side*(93+rng()*35),13+rng()*7,-46+i*19,16+rng()*20,29+rng()*24,20+rng()*18,0,rng()*3,0);
+  for(const side of [-1,1])for(let i=0;i<10;i++)batch(mountainG,M.mountain,side*(148+rng()*35),13+rng()*7,-135+i*26,16+rng()*20,29+rng()*24,20+rng()*18,0,rng()*3,0);
 
   function masonry(x,z,w,h,d){
     box(M.mortar,x,h/2,z,w,h,d);
@@ -145,8 +166,8 @@ export function createWorld(scene) {
     return group;
   }
   turret(-8,18);turret(8,18);
-  turret(-36,18,1.9,1.9,6.2,false);turret(36,18,1.9,1.9,6.2,false);
-  turret(-36,-50,1.9,1.9,6.2,false);turret(36,-50,1.9,1.9,6.2,false);
+  turret(-87,18,1.9,1.9,6.2,false);turret(87,18,1.9,1.9,6.2,false);
+  turret(-87,-132,1.9,1.9,6.2,false);turret(87,-132,1.9,1.9,6.2,false);
   box(M.stoneDark,0,6.05,18,11.7,2,3.8);box(M.stoneLight,0,7.18,18,11.7,.33,4.05);
   for(let i=-5;i<=5;i+=2)box(M.stoneLight,i,7.83,18.9,.9,1,1);
   // Stone voussoirs frame an open passage beneath the raised portcullis.
@@ -197,12 +218,12 @@ export function createWorld(scene) {
     batch(sphereG,M.copper,x+w*.27,y+h*.45,z+.3,.1,.1,.08);
     box(M.stoneLight,x,.16,z+.6,w+.65,.32,1);box(M.stone,x,.38,z+.22,w+.36,.42,.55);
   }
-  function sign(text,x,y,z,w=3.1){
+  function sign(text,x,y,z,w=3.1,yaw=0){
     const texture=canvasTexture((ctx,cw,ch)=>{
       ctx.fillStyle='#332c24';ctx.fillRect(0,0,cw,ch);ctx.strokeStyle='#ac8d56';ctx.lineWidth=9;ctx.strokeRect(9,9,cw-18,ch-18);
       ctx.fillStyle='#e8d7ac';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='600 43px Georgia';ctx.fillText(text,cw/2,ch/2,cw-42);
     },512,112);
-    const sm=new THREE.MeshStandardMaterial({map:texture,roughness:1});mesh(new THREE.BoxGeometry(w,.67,.16),M.woodDark,root,x,y,z);mesh(new THREE.PlaneGeometry(w-.07,.6),sm,root,x,y,z+.086);
+    const sm=new THREE.MeshStandardMaterial({map:texture,roughness:1});const backing=mesh(new THREE.BoxGeometry(w,.67,.16),M.woodDark,root,x,y,z);backing.rotation.y=yaw;const face=mesh(new THREE.PlaneGeometry(w-.07,.6),sm,root,x+Math.sin(yaw)*.086,y,z+Math.cos(yaw)*.086);face.rotation.y=yaw;
   }
   function chimney(x,z,y){
     masonry(x,z,1.15,1.8,1.05); // Base instance is hidden inside building; upper stack follows.
@@ -276,15 +297,44 @@ export function createWorld(scene) {
     sign('THE HEARTHKEEP',x,5.7,z+d/2+.25,5.4);
     cylinder(M.woodDark,x,17.1,z,.1,4);banner(x+1.25,17.8,z,2.5,1.7);
   }
+  function stable(b){
+    const{x,z,w,d}=b;
+    box(M.stoneDark,x,.2,z,w+.2,.4,d+.2);roof(x,z,w+1.05,d+1.1,4.15,2.6);
+    box(M.woodDark,x,2,z-d/2,w,4,.25);
+    for(const dx of [-w/2,w/2]){box(M.wood,x+dx,2,z,.25,4,d);box(M.woodDark,x+dx,2,z+d/2,.3,4,.3);}
+    for(let i=0;i<3;i++){
+      const sx=x-w/2+(i+.5)*w/3;
+      box(M.wood,sx,1,z+d/2,w/3-.2,1.6,.12);
+      box(M.woodLight,sx,1.84,z+d/2,w/3-.1,.18,.22);
+      box(M.wheat,sx,.45,z+d/2-1.1,1.35,.6,1.25);
+      box(M.woodDark,sx+w/6,1.8,z+d/2,.16,3.6,.16);
+    }
+    sign('HEARTHSIDE STABLES',x,3.43,z+d/2+.16,Math.min(w-1,5.5));
+    for(const dx of [-w/2+.35,w/2-.35])banner(x+dx,3.15,z+d/2+.2,.55,1.5,M.blue);
+  }
+  function merchant(b){
+    const{x,z,w,d}=b;
+    box(M.woodDark,x,1.05,z,w*.8,.45,d*.76);
+    for(const side of [-1,1])for(const end of [-1,1]){
+      const wheel=mesh(new THREE.CylinderGeometry(.86,.86,.2,10),M.woodDark,root,x+side*w*.42,.9,z+end*d*.25);wheel.rotation.z=Math.PI/2;
+      box(M.iron,x+side*w*.44,.9,z+end*d*.25,.24,.16,1.8);
+    }
+    for(const side of [-1,1])box(M.wood,x+side*w*.38,2,z,.18,1.5,d*.75);
+    box(M.wood,x,2,z-d*.38,w*.8,1.5,.17);
+    for(const dx of [-w*.38,w*.38])for(const dz of [-d*.38,d*.38])box(M.woodDark,x+dx,3.05,z+dz,.13,3.9,.13);
+    for(let i=0;i<9;i++)box(i%2?M.fabricLight:M.purple,x-w*.46+(i+.5)*w*.92/9,4.9,z,w*.92/9+.02,.13,d*.98);
+    sign('THE WAYFARER',x,3.75,z+d*.4,4.1);
+    for(let i=0;i<5;i++)box(i%2?M.copper:M.woodLight,x-2+i,1.9,z,.7,1.15,.8);
+  }
   // Building artwork is authored with a south-facing front, then transformed as
   // one unit, including signs, banners, steps and instanced trim. Swapping local
   // width/depth for quarter turns preserves the shared server collision bounds.
-  const facing={keep:0,barracks:0,tools:Math.PI/2,food:-Math.PI/2,bank:Math.PI/2,church:-Math.PI/2,house1:-Math.PI/2,house2:Math.PI/2};
+  const facing={keep:0,barracks:Math.PI/2,stable:-Math.PI/2,merchant:Math.PI/2,tools:Math.PI/2,food:-Math.PI/2,bank:Math.PI/2,church:-Math.PI/2,house1:-Math.PI/2,house2:Math.PI/2};
   for(const b of BUILDINGS){
-    const yaw=facing[b.id]??0,quarter=Math.abs(Math.sin(yaw))>.5;
+    const yaw=b.yaw??facing[b.id]??0,quarter=Math.abs(Math.sin(yaw))>.5;
     const local={...b,x:0,z:0,w:quarter?b.d:b.w,d:quarter?b.w:b.d};
     const firstChild=root.children.length,firstInstances=new Map([...batches].map(([key,value])=>[key,value.transforms.length]));
-    if(b.kind==='keep')keep(local);else if(b.kind==='church')church(local);else if(b.kind==='barracks')barracks(local);else cottage(local);
+    if(b.kind==='keep')keep(local);else if(b.kind==='church')church(local);else if(b.kind==='barracks')barracks(local);else if(b.kind==='stable')stable(local);else if(b.kind==='merchant')merchant(local);else cottage(local);
     const group=new THREE.Group();group.name=`building-${b.id}`;group.position.set(b.x,0,b.z);group.rotation.y=yaw;group.updateMatrix();
     for(const child of root.children.slice(firstChild))group.add(child);
     const front=new THREE.Vector3(0,0,local.d/2).applyMatrix4(group.matrix);
@@ -321,6 +371,9 @@ export function createWorld(scene) {
     const halo=mesh(new THREE.SphereGeometry(.25,6,4),new THREE.MeshBasicMaterial({color:'#ffce7e',transparent:true,opacity:.07,depthWrite:false}),root,x+.57,h-.48,z,2.5,2.5,2.5);flickers.push({o:halo,phase:rng()*6});
   }
   for(const [x,z] of [[-4.6,13],[4.5,13],[-4.5,25],[4.5,25],[-4.8,-10],[4.6,-28],[-11,-4],[12,-5],[10,56],[20,93]])lamp(x,z);
+  for(const side of [-1,1])for(const z of [-29,-71,-113])lamp(side*36.7,z);
+  for(const side of [-1,1]){cylinder(M.woodDark,side*30,1.35,-59,.1,2.7);sign(side<0?'WEST HEARTHS':'EAST HEARTHS',side*30,2.75,-59,4.3);}
+  cylinder(M.woodDark,4.5,1.4,-89,.1,2.8);sign('NORTH COMMON',4.5,2.8,-89,4.2);
 
   // Merge the few primitive pieces in each resource by material. A harvest hides
   // one complete object, while the field remains inexpensive to draw.
@@ -363,17 +416,21 @@ export function createWorld(scene) {
     }
     const o=mergeParts(parts);o.position.set(x,.025,z);root.add(o);wind.push({o,phase:r()*6.28,amount:.045});return o;
   }
-  for(const n of RESOURCES){
+  function createResource(n){
     let object;
-    if(n.type==='timber')object=tree(n.x,n.z,n.seed);
-    else if(n.type==='wheat')object=wheat(n.x,n.z,n.seed);
+    const seed=n.seed??Array.from(n.id).reduce((value,char)=>Math.imul(value,31)+char.charCodeAt(0)|0,1);
+    if(n.type==='timber')object=tree(n.x,n.z,seed);
+    else if(n.type==='wheat')object=wheat(n.x,n.z,seed);
     else{
-      const r=seeded(n.seed),parts=[];
-      for(let j=0;j<3;j++)parts.push(part(sphereG,j%2?M.stoneLight:M.stone,(r()-.5)*.65,.3+r()*.28,(r()-.5)*.55,.4+r()*.4,.4+r()*.4,.35+r()*.45,r()*3));
+      const r=seeded(seed),parts=[];
+      for(let j=0;j<3;j++)parts.push(part(sphereG,n.type==='coal'?M.woodDark:j%2?M.stoneLight:M.stone,(r()-.5)*.65,.3+r()*.28,(r()-.5)*.55,.4+r()*.4,.4+r()*.4,.35+r()*.45,r()*3));
+      if(n.type==='iron')for(let j=0;j<5;j++)parts.push(part(sphereG,j%2?M.copper:M.iron,(r()-.5)*.9,.45+r()*.45,(r()-.5)*.8,.14,.13,.15));
       object=mergeParts(parts);object.position.set(n.x,0,n.z);root.add(object);
     }
-    object.userData.resourceId=n.id;resources.set(n.id,object);
+    object.userData.resourceId=n.id;resources.set(n.id,object);return object;
   }
+  for(const n of RESOURCES)createResource(n);
+  const publicResourceIds=new Set(RESOURCES.map(n=>n.id));
   // Small tilled patches beneath individual harvestable wheat stalks.
   box(M.dirt,-27,-.045,-11.2,5.8,.09,4.8);box(M.dirt,21,.002,47.55,7.55,.04,6.1);
   for(let i=0;i<6;i++)box(M.woodDark,-29+i*.8,.018,-11.35,.1,.03,4.5);
@@ -384,15 +441,15 @@ export function createWorld(scene) {
   }
   fence(-30,-14,6.5);fence(-30,-14,5.5,true);fence(17,44,8.5);fence(25.5,44,7,true);
   // Distant forest provides depth without changing navigation inside the village.
-  for(let i=0;i<53;i++){const side=i%2?1:-1;tree(side*(62+rng()*32),-36+rng()*161,20000+i,true);}
+  for(let i=0;i<53;i++){const side=i%2?1:-1;tree(side*(119+rng()*27),-131+rng()*252,20000+i,true);}
   const grassG=new THREE.BufferGeometry();grassG.setAttribute('position',new THREE.Float32BufferAttribute([-.065,0,0,.065,0,0,.025,.48,0,0,0,-.07,0,0,.07,.03,.34,0],3));grassG.setIndex([0,1,2,3,4,5]);grassG.computeVertexNormals();
   const grassMat=mat('#789a53',{side:THREE.DoubleSide});
   const laneSamples=lanes.map(({curve,width})=>({points:curve.getSpacedPoints(Math.ceil(curve.getLength())),margin:width/2+.45}));
   for(let i=0;i<1450;i++){
-    const x=-60+rng()*120,z=-47+rng()*160;
+    const x=WORLD_BOUNDS.minX+rng()*(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX),z=WORLD_BOUNDS.minZ+rng()*(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ);
     const nearRoad=laneSamples.some(lane=>lane.points.some(p=>Math.hypot(p.x-x,p.z-z)<lane.margin));
     const occupied=BUILDINGS.some(b=>Math.abs(x-b.x)<b.w/2+1.3&&Math.abs(z-b.z)<b.d/2+1.3);
-    if(nearRoad||occupied||Math.abs(z-18)<2||Math.abs(x)>34&&z<18||x>16&&x<27&&z>43&&z<52||x> -31&&x< -23&&z> -15&&z< -8)continue;
+    if(nearRoad||occupied||Math.hypot(x,z+66)<8.2||PLOTS.some(p=>Math.abs(x-p.x)<p.w/2+.6&&Math.abs(z-p.z)<p.d/2+.6)||Math.abs(z-18)<2||Math.abs(x)>85&&Math.abs(x)<89&&z<18||x>16&&x<27&&z>43&&z<52||x> -31&&x< -23&&z> -15&&z< -8)continue;
     batch(grassG,grassMat,x,.015,z,.6+rng()*.8,.45+rng()*.9,.6+rng()*.8,0,rng()*6.28,0);
     if(i%23===0){batch(sphereG,i%2?M.fabricLight:M.purple,x,.3,z,.075,.06,.075);}
   }
@@ -404,7 +461,7 @@ export function createWorld(scene) {
     fence(graveX+side*5.2,graveZ-3.5,9,true);
   }
   beam(M.iron,[graveX-4.1,4,graveZ-4.5],[graveX+4.1,4,graveZ-4.5],.13);
-  sign('THE HOLLOW',graveX,4.7,graveZ-4.5,4.15);
+  sign('THE HOLLOW',graveX,4.7,graveZ-4.5,4.15,Math.PI);
   for(let i=0;i<19;i++){
     const side=i%2?1:-1,x=graveX+side*(3.6+rng()*7),z=graveZ-1+rng()*10;
     box(M.dirt,x,.025,z+1,1.25,.08,2.25);
@@ -423,8 +480,10 @@ export function createWorld(scene) {
   for(const {geo,material,transforms} of batches.values()){
     const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=material!==grassMat;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);
   }
+  const plotsWorld=createPlotsWorld(root);
   let previousNight=-1;
   function update(time,nightAmount=0,state={}){
+    plotsWorld.update(state,time);
     const t=time,night=THREE.MathUtils.clamp(nightAmount,0,1);
     for(const item of wind){if(item.o.visible)item.o.rotation.z=Math.sin(t*1.4+item.phase)*item.amount;}
     for(const item of flickers){item.o.material.opacity=.035+night*.1+Math.sin(t*6+item.phase)*.01;}
@@ -432,7 +491,19 @@ export function createWorld(scene) {
     const raw=state.resources;
     if(raw){
       const entries=Array.isArray(raw)?raw:Object.entries(raw).map(([id,value])=>typeof value==='object'?{id,...value}:{id,available:value});
-      for(const n of entries){const o=resources.get(n.id);if(o){const available=n.available??n.active??n.alive??(n.remaining!==undefined?n.remaining>0:n.hp!==undefined?n.hp>0:true);o.visible=Boolean(available);}}
+      const plotEntries=Array.isArray(state.plotResources)?state.plotResources:[];
+      const dynamicIds=new Set();
+      for(const n of [...entries,...plotEntries]){
+        if(!publicResourceIds.has(n.id))dynamicIds.add(n.id);
+        let object=resources.get(n.id);
+        if(!object&&Number.isFinite(n.x)&&Number.isFinite(n.z)&&n.type)object=createResource(n);
+        if(object){const available=n.available??n.active??n.alive??(n.remaining!==undefined?n.remaining>0:n.hp!==undefined?n.hp>0:true);object.visible=Boolean(available);}
+      }
+      for(const [id,object] of resources){
+        if(publicResourceIds.has(id)||dynamicIds.has(id))continue;
+        root.remove(object);object.traverse(child=>{if(child.isMesh)child.geometry.dispose();});resources.delete(id);
+        for(let i=wind.length-1;i>=0;i--)if(wind[i].o===object)wind.splice(i,1);
+      }
     }
     const gateHP=state.gateHp??state.gateHP??state.gate?.hp??state.gateHealth??1200;
     gate.visible=gateHP>0;
@@ -441,5 +512,5 @@ export function createWorld(scene) {
     const target=nearby?1:0;
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;
   }
-  return {root,resources,gate,update,road:mainRoad,lanterns};
+  return {root,resources,gate,update,road:mainRoad,lanterns,plots:plotsWorld};
 }

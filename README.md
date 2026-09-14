@@ -1,28 +1,25 @@
 # Emberwatch
 
-An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This is a standalone project with newly written client, server, and game systems; it does not import or depend on the code from Tyler's existing games.
+An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playable build 03.** This early prototype establishes the village's appearance, third-person movement, shared gathering, NPC combat, and persistent multiplayer sessions. The full accepted game design is preserved in [docs/DESIGN.md](docs/DESIGN.md). The complete economy, player construction, and all planned content are still future work.
+**First Light — integrated playtest build 04.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
-## Current scope at a glance
+The requested systems now have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-| Available in build 03 | Still planned |
+## Build 04
+
+| Area | Playable behavior |
 | --- | --- |
-| Multiplayer, three roles, gathering, gate defense, priest healing/revival, repairs, banking, bread, and persistent hunger HUD. | Player plots, construction, role changes, owned shops and barracks, towers, church beds/carrying, horses/carts, and loans. |
-| Sell wheat, timber, and stone at the treasury for stock-based prices. | The complete market, transaction/land taxes, full job bonuses, merchant exports, votes and steward decisions. |
-| Wooden tools and one bread item. | Stone/iron equipment, additional resources and food tiers. |
+| Full map | Forty internal plots, eight exposed plots, connected neighborhood lanes, woodland, wheat fields, stone and ore gathering, permanent services, and the single gate/graveyard approach. The Watch faces the street and its guards leave from that entrance. |
+| Ownership | Up to five plots per resident, one building per plot, construction and conversion, stored supplies, visitor harvesting permissions, and an accumulated 80/20 harvest split. |
+| Player businesses | Tool shops, sword shops, and tinker shops craft from actual shop storage and pay their owner. Mines, tree farms, wheat farms, and houses provide owned land uses and storage. |
+| Progression | Wood/stone/iron equipment, iron and coal nodes, bows and arrows, tool durability, eight configurable hotbar slots, weighted carrying, and three food tiers. |
+| Village economy | Stock-priced resource buying/selling, finite treasury reserves, transaction and land taxes, participation-based dawn wages, performance pay, merchant exports, and votes reviewed by the steward. |
+| Care and defense | Owned barracks and recruitment, troop wheat supplies, archer towers and cannon ammunition, upgrades and repairs, carrying downed dwarfs, and paid church-bed healing/revival. |
+| Transport and banking | Stable restocking, owned riding horses, cargo carts, protected account savings, restricted purchase loans, and repayments from earnings. |
+| Existing foundation | Eight-resident multiplayer, three roles, persistent villages, empty-village pause, chat and overhead bubbles, hunger HUD, escalating zombie nights, and manual dawn respawn. |
 
-Build 02 also improves entrance orientation, village paths, tool-specific animation, and remote movement interpolation. **The full game plan is not complete.** The in-game village menu has a **Build status** button listing this boundary.
-
-## Build 03: chat and quarry access
-
-- Press **Enter** to focus village chat, type a message, then press **Enter** to send. **T** or the corner chat button toggles the panel; **Escape** closes it. Gameplay movement and tool shortcuts pause while the chat field has focus.
-- Messages appear in the village chat panel and briefly over the sender. A **…** bubble shows that someone is typing; draft text is not broadcast.
-- Messages are limited to 240 characters and one accepted message per second per player. Only online residents of the same village receive them. The server supplies the sender identity.
-- The latest 30 messages are available on join/reconnect while that server process is running. Chat is held in memory, not added to the saved-game database.
-- Matching gathering tools now give nearby resources priority over building menus. Switch to a sword or walk out of gathering range to open an adjacent service. The quarry rocks are spread away from buildings; existing resource IDs and depletion/regrowth states are preserved.
-
-The remaining reported building orientation could not be identified from the map audit. A screenshot or building name/location is needed before changing another orientation.
+Build 02 added hunger visibility, resource selling and movement/orientation improvements. Build 03 added village chat and improved quarry access. Build 04 retains those features and upgrades existing saved villages without a database reset.
 
 ## Run on your computer
 
@@ -37,83 +34,82 @@ Open **http://localhost:3000** in a desktop browser with WebGL support. Keep the
 
 Create an account, create or join a village, and select Guard, Priest, or Villager. These accounts belong to this game, independently of the existing website's accounts.
 
-## What the prototype includes
+## Starting a village
 
-- A 3D fortified village, one southern gate, a keep, woodland, wheat, quarry resources, and a graveyard approach.
-- Animated dwarf and zombie characters, third-person movement, and keyboard/mouse controls.
-- Server-controlled movement, resource gathering, combat, structure damage, repairs, and day/night timing.
-- Public village browsing with online and offline resident counts. Eight saved residents fill a village even when some are offline; a returning member uses their reserved place.
-- Guard, Priest, and Villager roles; priest healing and revival.
-- Two initial NPC guards for testing road movement and cooperative defense. Player-owned barracks and recruitment are future work.
-- Wooden gathering tools and hammer durability, replacement-tool purchases, bread purchases, personal resources, shared village stock, and repairs paid at dawn with a ten-gold allowance per cycle.
-- Stock-priced selling of wheat, timber, and stone at the treasury, with exact bundle quotes, finite treasury funds, and a 500-gold purchasing reserve.
-- Hunger displayed below health at all times during play, including a low-hunger warning.
-- Persistent accounts, personal bank balances, and village state in SQLite.
-- An eight-minute day and four-minute night. Empty villages pause. Zombie difficulty increases in five-night bands, and keep destruction ends a run.
-- Downed players wait until dawn before manually choosing respawn. A revival can preserve their belongings.
+A village starts with 2,500 treasury gold, 60 timber, 40 stone, 40 wheat, and two public watch guards with 12 wheat in their barracks. A new account receives 50 wallet gold once and wooden starter equipment. Join a village, gather and trade supplies, buy a plot, and establish the businesses and defenses the residents need.
 
-The visible shop and church buildings help establish the intended village layout. Their presence does **not** mean every planned shop, bed, recipe, and building feature is implemented.
+Each account has one active village. Its resident place, plots and stored property remain reserved while offline. Villages hold eight saved residents, including offline members; a single player can start alone. When nobody is online, the simulation pauses. Eight-minute days alternate with four-minute nights, and zombie difficulty grows every five nights. The keep’s destruction ends the run.
 
-For this prototype, a new account receives 50 wallet gold once and a full set of wooden tools so every activity can be tried immediately. Each account has one active village; its place remains reserved until that run ends. The selected job is saved with that character. In-run job changes and releasing an active membership are future features.
+Job changes preserve land and universal buildings. Changing away from Guard removes owned barracks and sword shops; changing away from Priest removes owned churches. The game requires confirmation and requires stores and treatment beds to be clear before removing buildings. Earned wages accrue under the role actually held at the time, so switching roles does not duplicate a cycle’s pay.
 
-| Prototype balance setting | Current value |
+## Current balance settings
+
+These are tunable implementation values, not a claim that the economy is already balanced.
+
+| System | Current setting |
 | --- | --- |
-| Carry capacity | 60 items, without different item weights yet. |
-| Wooden gathering tool / hammer | 100 successful uses; replacement costs 10 gold after it breaks. |
-| Wooden sword | No durability loss in this milestone. |
-| Bread | 5 gold and 2 village wheat; restores 35 hunger when eaten. |
-| Gate repair | Up to 35 health for 1 village timber. |
-| Keep repair | Up to 35 health for 1 village timber and 1 village stone. |
-| Priest healing | 30 health after a 2-second channel. |
-| Priest revival | 45 health after a 5-second channel. |
-| Initial NPC guard supplies | 12 wheat in the public prototype barracks. |
+| Land | Five plots maximum per resident, including exterior plots; successive deeds cost 100 / 200 / 350 / 550 / 800 gold. |
+| Land tax | Default daily total is `2 × owned plots²` gold, prorated for active participation and rounded up. A council policy can change the base. Unpaid tax becomes in-run arrears; offline-only cycles do not accrue it. |
+| Carrying | 100 weight, including usable equipped tools. Timber weighs 2, stone/iron 3, wheat/food 1, coal 2, arrows 0.1, and a packed cart 12. |
+| Tools | Wood / stone / iron yield 1 / 2 / 3 resources per successful swing with 100 / 150 / 200 durability. Swing speed and resource access are the same across tiers. Wooden replacements cost 10 gold and require no materials. |
+| Crafting | Stone/iron tools require a stocked player tool shop. All crafted sword tiers require materials; sword damage is 10 / 15 / 20 at the same attack speed. Tinker shops make bows, arrows, and carts. |
+| Repairs | Hammers restore up to 35 / 55 / 80 health. Gate repair consumes one village timber; keep and plot repair consume one timber and one stone. Valid repair swings earn one gold, capped at ten per cycle and paid at dawn. |
+| Food | Food / good food / best food restore 25 / 60 / 100 hunger when eaten and consume 2 / 4 / 6 village wheat when bought. Prices follow the wheat value plus a preparation fee. |
+| Wages | Guard and Priest each start at 25 gold per active 12-minute cycle, accrued by role and participation, funded by the treasury, and paid at dawn. Performance pay adds up to 25; repair pay is separate. |
+| Job performance | Guards receive kill or meaningful-assist credit, including owned defenders while the owner is online. Priests receive one gold per 50 meaningful HP healed and five per eligible revival, within the cycle cap. |
+| Field care | Priest healing channels for two seconds and restores 30 HP. Revival channels for five seconds and restores 45 HP. |
+| Church beds | Two beds, upgradeable to four. Healing costs eight gold for ten seconds; revival costs twenty gold for twenty seconds and returns the dwarf at 45 HP. |
+| Barracks | At most two per Guard, three living troops each. Recruitment costs 35 gold plus five timber and two iron in barracks storage. Each troop consumes one wheat per night; unfed troops deal 25% less damage. |
+| Towers | Archer shots consume one stored arrow; cannon shots consume one stored stone and one coal. Defenses need ammunition, repairs, and paid upgrades. |
+| Horses | Stable capacity three. When empty, the steward can buy horses from the visiting merchant for 50 gold each; residents pay 100 gold. One owned horse per resident in the run. |
+| Carts | One deployed cart per resident; 300 cargo weight in owner-controlled storage. Attach it to your horse for hauling. |
+| Loans | At most 200 outstanding debt per account, a 500-gold lending pool per run, and a 1,000-gold treasury floor for new loans. Credit can fund approved purchases; it cannot be banked or withdrawn. Twenty percent of cumulative earnings repays debt, up to the remaining balance. |
 
-These starter supplies and simplified recipes are test defaults. The later ownership, tiered tools, food tiers, and complete market rules are described separately in the design document.
+Horses and deployed carts remain in the current village when their owner disconnects. Riding ends safely on disconnect or downing. A cart caught behind an obstacle detaches with its contents intact. Their current persistence is within the run; personal savings, outstanding debt and unused purchase credit follow the account into later runs.
 
-## Resource selling in build 02
+## Trading and village decisions
 
-Visit the treasury and press **E**. Each resource offers **Sell 1**, **Sell 10**, and **Sell all** with the total payment shown. The sale adds the resources to village stores and moves gold from the public treasury to your wallet. Personal bank savings are separate. Donating remains optional and pays no gold.
+At the treasury, resource prices rise with scarcity and fall with surplus. Each bundle is priced unit by unit. The server checks the quoted maximum purchase price or minimum sale payment before transferring anything; insufficient stock, money, or capacity rejects the whole trade. Purchases from players preserve 500 treasury gold for essentials. The starting trade tax is 5%; buying and selling use a two-gold unit spread before tax.
 
-| Village stock before each unit | Wheat | Timber | Stone |
-| --- | --- | --- | --- |
-| 0–24 | 4 gold | 5 gold | 5 gold |
-| 25–99 | 3 gold | 4 gold | 4 gold |
-| 100–299 | 2 gold | 3 gold | 3 gold |
-| 300–999 | 1 gold | 2 gold | 2 gold |
-| 1,000+ | 1 gold | 1 gold | 1 gold |
+The traveling merchant visits on day 3 and every second morning after that, staying for the day. Residents can buy limited specialist supplies of iron, coal, and arrows. The steward never imports wheat, timber, or stone; it may export a measured surplus after reserving food and repair supplies. An empty stable may be restocked when affordable. Night-survival grants go directly to the treasury rather than the player reward feed.
 
-These are provisional balance values. Bundles use the price of **each unit at its resulting stock level**, so a bundle crossing a price band is not overpaid. At stock 24, selling two wheat pays 4 + 3 = 7 gold. If another player lowers the price before your sale arrives, the server rejects it and asks you to review the updated quote. Sales never partially complete, and purchases stop before spending the treasury's last 500 gold. Other village expenses may still use that reserve.
+Residents can propose wages, taxes, and export policy at the treasury or keep. A majority of the residents active when the vote opens sends the proposal to the steward. Its rules examine demand, wages plus service income, reserves, repairs and affordability; it explains an approval or veto. Approved changes are reviewed again at the next dawn before taking effect. A vote without a majority keeps the current policy. The steward is deterministic game logic and needs no external AI service.
+
+Bank savings are personal and separate from village funds. Loans create restricted purchase credit, not wallet gold. Credit is valid for land, construction, purchases from another player’s equipment shop, and horses. It cannot finance buying from your own shop, ordinary transfers, or depositing money into savings. Debt and unused credit persist across runs; no one’s private savings fund public loans. Voluntary repayment uses wallet gold at the treasury.
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
-| W / A / S / D | Move. |
-| Shift | Sprint. |
-| Hold right mouse and move the mouse | Turn the camera. |
-| Left mouse | Use the selected tool or ability. |
-| Number keys | Select the corresponding hotbar slot. |
-| E | Gather a reachable matching resource, or interact with a nearby service. |
+| W / A / S / D | Walk, or ride while mounted. |
+| Shift | Sprint while hunger allows. |
+| Hold right mouse and move | Turn the third-person camera. |
+| Left mouse | Use the selected weapon, tool, food, or blessing. |
+| 1–8 / mouse wheel | Select a configured hotbar slot. |
+| E | Gather a matching nearby resource or interact with a service, plot, horse, cart, or downed companion. |
+| I | Open your pack, equipment and hotbar setup. |
+| M | Open the village atlas and mark a destination. |
 | Enter | Focus chat; send the typed message. |
 | T | Toggle village chat. |
-| I | View personal supplies and village stores. |
 | H | Open controls and help. |
-| Escape | Open the village menu. |
+| F | Toggle fullscreen. |
+| Escape | Close the active panel or open the village menu. |
 
-Use an axe on trees, a pickaxe on quarry stones, and a scythe on wheat. Equip the hammer near a damaged gate or keep to repair it. The priest blessing is for another injured or downed dwarf within reach.
+Use an axe on trees, a pickaxe on stone/iron/coal, and a scythe on individual wheat stalks. Higher tier tools increase the resource count, not gathering speed. A matching resource takes priority over a nearby building menu. Equip a weapon or step away from the resource when you want the service instead.
 
-## Try multiplayer
+Chat is village-only, limited to 240 characters and one message per second. Messages appear briefly above dwarfs; a typing indicator does not reveal unfinished draft text. Chat input suspends game controls. The latest thirty messages are held in server memory for reconnecting residents, without writing chat to saved games.
 
-1. Start the server and join a village in one browser.
-2. Open another browser or a private window, register a different account, and join the same village. Both characters should appear in the same world. Two normal tabs may share the same stored login.
-3. Gather timber, stone, and wheat using their corresponding tools. Check that nearby resources change for both players and that successful actions reduce tool durability.
-4. Bring resources to the Village Treasury and sell or donate them to village stock, then repair a damaged gate or keep with the hammer. Verify that stock is consumed and repair earnings stop increasing after ten successful rewarded repairs in the cycle.
-5. Defend together at night. Check that zombies approach along the road, engage defenders, and damage an undefended gate. Try priest support with the second player.
-6. If a dwarf is downed, wait for dawn and choose whether to revive them or click respawn. Respawn should require a player action.
-7. Deposit wallet gold in the bank, leave, and sign in again. Close both game sessions and confirm that returning to the village resumes its paused simulation.
-8. Stop the server cleanly, restart it with the same data directory, and verify that the accounts, bank balances, and saved village are still present.
+## Playtest the complete loop
 
-These are manual checks to perform on your own machine and, later, on the hosted service. They are not a claim that a public Railway deployment has already been tested.
+1. Join the same village with two separate accounts in different browsers. Confirm synchronized gathering and chat, then use the atlas to find plots and permanent services.
+2. Trade supplies, buy land, and build a stocked tool shop. Have the other account buy a stone or iron tool and verify its yield, durability, storage cost and payment.
+3. Build a production plot, allow visitors, and gather enough resources to observe the accumulated owner share. Load stores or a cart when your pack fills.
+4. Recruit and feed barracks troops; stock a tower with ammunition. Defend the single gate, repair damage, and inspect combined wages and bonuses at dawn.
+5. Carry a downed dwarf to a church bed or revive them in the field. Dawn enables manual respawn without interrupting a rescue; choosing respawn loses carried inventory and 25% of wallet gold.
+6. Try a policy proposal and inspect the steward’s reason. On a merchant morning, check surplus exports and stable stock, then ride and haul a cart.
+7. Deposit wallet gold, use approved purchase credit, and verify that debt, unused credit and protected savings survive a server restart. Check that all-offline villages remain paused.
+
+These are checks to perform on actual desktop browsers and the hosted service. They do not mean every visual, performance and end-to-end multiplayer path has already passed a live playtest.
 
 ## Local night testing
 
@@ -143,15 +139,15 @@ Remove the variable or set it to `false` before public hosting. Development cont
 | `ALLOW_DEV_TOOLS` | Disabled | Enables local testing shortcuts when explicitly set to `true`. |
 | `NODE_ENV` | Unset locally | The Docker image sets this to `production`. |
 
-The game runs its authoritative simulation in one Node process. Use **one service replica** for this prototype. Multiple replicas would run different in-memory worlds and require a different coordination and persistence design.
+The game runs its authoritative simulation in one Node process. Use **one service replica** for this service. Multiple replicas would run different in-memory worlds and require a different coordination and persistence design.
 
-Preserve the entire data directory. For a manual backup, stop the application cleanly before copying it; do not copy only the main database file while the server is writing to it. Keep test databases separate from real player saves. The included ignore files exclude local saves and environment files from normal Git commits and Docker builds.
+Existing databases migrate in place: account savings are preserved, loan fields are added, and saved villages receive the expansion state without restarting the run. Do not delete the Railway volume or database to install this update. Preserve the entire data directory. For a manual backup, stop the application cleanly before copying it; do not copy only the main database file while the server is writing to it. Keep test databases separate from real player saves. The included ignore files exclude local saves and environment files from normal Git commits and Docker builds.
 
 Account passwords are salted and hashed with scrypt; the database stores hashed session tokens. This is an initial account system, with no email recovery or shared website login. Account administration, operational monitoring, restore drills, and broader abuse/load testing remain work for a public release.
 
 ## Deploy as a separate Railway service
 
-The project is available in [TylerOusley/emberwatch](https://github.com/TylerOusley/emberwatch). Tyler has deployed it on Railway at https://www.bobbybgames.com. For a new deployment, use these settings:
+The project is available in [TylerOusley/emberwatch](https://github.com/TylerOusley/emberwatch). Tyler has deployed it on Railway at [bobbybgames.com](https://www.bobbybgames.com). For a new deployment, use these settings:
 
 1. Use the `TylerOusley/emberwatch` repository with this project at its root. Keep `package-lock.json`, `Dockerfile`, `public`, `server`, and `shared` in the repository. Do not upload your local `data` directory.
 2. In Railway, create a new service from that repository. Use the root `Dockerfile` to build it. Clear any old Python start-command override, or set **`node server/index.js`**. The container runs `node server/index.js`; there is no separate frontend build command.
@@ -170,8 +166,11 @@ Expect a brief interruption when deploying an update to this single-service, vol
 | --- | --- |
 | `public/` | Browser interface, 3D world, characters, input, and rendering. |
 | `server/` | HTTP/WebSocket server, authoritative simulation, accounts, and saving. |
-| `shared/world.js` | Shared map geometry and gameplay constants. |
-| `test/` | Automated checks for supported prototype behavior. |
+| `shared/world.js` | Static map, forty internal/eight exterior plots, resource locations, access routes and collision geometry. |
+| `shared/content.js`, `shared/defense.js`, `shared/economy.js`, `shared/transport.js` | Equipment, recipes, construction costs, care/defense, policies, food and transport balance. |
+| `server/ownership.js`, `server/economy.js`, `server/care-defense.js`, `server/transport.js` | Authoritative expansion actions and simulation hooks. |
+| `public/src/settlement-ui.js`, `public/src/plots-world.js`, `public/src/transport-world.js` | Services, plot management and atlas UI, owned-building art, horses and carts. |
+| `test/` | Automated checks for gameplay, persistence, permissions, and economy behavior. |
 | `docs/DESIGN.md` | Accepted design, provisional balance values, and remaining milestones. |
 | `Dockerfile` | Standalone Node 24 runtime for Railway or local Docker. |
 

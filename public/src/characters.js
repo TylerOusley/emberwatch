@@ -38,6 +38,11 @@ const ACTION_POSES = {
     [-.86,.28,.23,-.03,1.0,.10,.37,.07,.27,.03,-.47,-.20],
     [-.42,.37,.35,.03,.65,.15,.48,.045,.34,.025,-.22,-.10],
   ],
+  bow: [
+    [-1.55,-.18,-.1,-.20,.35,0,.05,-.02,-.25,0,-1.1,-1.0],
+    [-1.55,.04,-.1,-.05,.32,0,.05,.025,.1,0,-.72,-.35],
+    [-1.20,.04,-.08,-.12,.26,0,.04,0,.08,0,-.65,-.45],
+  ],
   zombie: [
     [.16,-.08,-.08,-.16,0,0,0,-.045,-.10,-.02,.13,-.08],
     [-.48,.10,.04,.12,0,0,0,.14,.12,.035,-.62,.10],
@@ -159,6 +164,16 @@ function makeTool(id, tier=1) {
       mesh(g,'box',grain,.215,.62,0,.03,.29,.28);
       mesh(g,'box',grip,0,.62,0,.09,.3,.285);
     }
+  } else if (id === 'bow') {
+    for (let i=0;i<8;i++) {
+      const a=-Math.PI/2+i*Math.PI/8,b=a+Math.PI/8;
+      const x1=.28*Math.cos(a),y1=.65*Math.sin(a),x2=.28*Math.cos(b),y2=.65*Math.sin(b);
+      mesh(g,'cylinder',wood,(x1+x2)/2,(y1+y2)/2,0,.032,Math.hypot(x2-x1,y2-y1),.032,0,0,-Math.atan2(x2-x1,y2-y1));
+    }
+    mesh(g,'cylinder',material(0xe1d5b5),0,0,0,.009,1.3,.009);
+    mesh(g,'cylinder',grip,.28,0,0,.045,.23,.045);
+    mesh(g,'cylinder',grain,.10,0,.20,.012,.70,.012,Math.PI/2);
+    mesh(g,'cone',head,.10,0,.56,.035,.12,.035,Math.PI/2);
   } else if (id === 'food') {
     mesh(g,'round',material(0xc6863f),0,.08,.03,.17,.1,.32);
     for(let i=0;i<3;i++) mesh(g,'box',material(0xf1c580),0,.17,-.10+i*.11,.19,.018,.02,0,.3,0);
@@ -178,7 +193,7 @@ export function createCharacter(kind='villager', seed=1) {
   const visual = pivot(group);
   const owned = new Set();
   let rig, role=kind, toolId='', toolTier=1, heldTool, attackClock=9, previousAttack=false, disposed=false;
-  let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0;
+  let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0;
   const actionOffsets = new Float64Array(12);
   const variation = Math.abs(Math.trunc(Number(seed)||1)) % 4;
   const skin = material([0xdba779,0xc38d65,0xe9bc8e,0xa87354][variation]);
@@ -365,10 +380,13 @@ export function createCharacter(kind='villager', seed=1) {
 
   function update(dt,time, options={}) {
     if(disposed) return;
-    const {moving=false,speed=5.4,attack=false,downed=false,tool,channeling=false}=options;
+    const {moving=false,speed=5.4,attack=false,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1}=options;
     dt=clamp(Number(dt)||0,0,.1);
     idleTime+=dt;
-    if(tool!==undefined) setTool(tool);
+    if(tool!==undefined) setTool(typeof tool==='object'?tool:{id:tool,tier});
+    if(heldTool) heldTool.visible=!mounted&&!carrying;
+    mountAmount+=((mounted&&!downed?1:0)-mountAmount)*(1-Math.exp(-dt*12));
+    carryAmount+=((carrying&&!downed?1:0)-carryAmount)*(1-Math.exp(-dt*12));
     const duration=rig.zombie?1.30:.54;
     const newAttack=typeof attack==='number' ? attack>0 && attack!==previousAttack : attack && !previousAttack;
     const repeatAttack=attack===true && attackClock>=duration+.06;
@@ -378,7 +396,7 @@ export function createCharacter(kind='villager', seed=1) {
     previousAttack=attack;
     attackClock+=dt;
     const requestedSpeed=Number.isFinite(Number(speed))?Math.max(0,Number(speed)):5.4;
-    const locomotion=moving && !downed;
+    const locomotion=moving && !downed && !mounted;
     moveAmount+=((locomotion?1:0)-moveAmount)*(1-Math.exp(-dt*9));
     const nominalSpeed=rig.zombie?1.75:5.4;
     const speedTarget=locomotion?Math.min(requestedSpeed,nominalSpeed*1.65):0;
@@ -422,14 +440,14 @@ export function createCharacter(kind='villager', seed=1) {
       rig.body.position.y+=(1.04+(stepRise*.040*stride+breath*.008)*alive-rig.body.position.y)*settle;
       poseJoint(rig.body,.045*stride+a[7],s*.035*stride+a[8],-s*.020*stride+a[9],settle);
       poseJoint(rig.head,-.025+breath*.01-a[7]*.45-spellAmount*.08,-s*.025*stride-a[8]*.28,downAmount*.20,settle);
-      poseJoint(rig.leftLeg,s*.53*stride,0,0,settle);
-      poseJoint(rig.rightLeg,-s*.53*stride,0,0,settle);
-      poseJoint(rig.leftShin,liftLeft*.42*stride,0,0,settle);
-      poseJoint(rig.rightShin,liftRight*.42*stride,0,0,settle);
-      poseJoint(rig.leftArm,(-s*.32*armStride-.06+a[10]-spellAmount*.70)*alive,spellAmount*.14,.09+spellAmount*.08,settle);
-      poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
-      poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32)*alive,0,0,settle);
-      poseJoint(rig.rightFore,(-.14+a[3]-spellAmount*.18)*alive,0,0,settle);
+      poseJoint(rig.leftLeg,s*.53*stride-1.10*mountAmount,0,-.40*mountAmount,settle);
+      poseJoint(rig.rightLeg,-s*.53*stride-1.10*mountAmount,0,.40*mountAmount,settle);
+      poseJoint(rig.leftShin,liftLeft*.42*stride+.80*mountAmount,0,0,settle);
+      poseJoint(rig.rightShin,liftRight*.42*stride+.80*mountAmount,0,0,settle);
+      poseJoint(rig.leftArm,(-s*.32*armStride-.06+a[10]-spellAmount*.70-.9*carryAmount-.65*mountAmount)*alive,spellAmount*.14,.09+spellAmount*.08,settle);
+      poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65-.9*carryAmount-.65*mountAmount)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
+      poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
+      poseJoint(rig.rightFore,(-.14+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
       poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5],a[6],settle);
     }
   }

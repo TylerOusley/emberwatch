@@ -80,6 +80,20 @@ export function createApp(options = {}) {
   const send = (socket, data) => {
     if (socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 1024 * 1024) socket.send(JSON.stringify(data));
   };
+  const sendState = (socket, village, viewerId) => {
+    const snapshot = simulation.snapshot(village, viewerId);
+    if (!socket.statePatches) { send(socket, { type: 'state', state: snapshot }); return; }
+    // Plot catalogues and resource states seldom change. Send only changed
+    // top-level fields to clients that explicitly support merging snapshots.
+    if (socket.readyState !== WebSocket.OPEN || socket.bufferedAmount >= 1024 * 1024) return;
+    const previous = socket.snapshotFields, next = new Map(), changed = {};
+    for (const [key, value] of Object.entries(snapshot)) {
+      const serialized = JSON.stringify(value); next.set(key, serialized);
+      if (!previous || previous.get(key) !== serialized) changed[key] = value;
+    }
+    send(socket, { type: 'state', patch: Boolean(previous), state: previous ? changed : snapshot });
+    socket.snapshotFields = next;
+  };
   const sendVillage = (identity, data, includeSender = true) => {
     if (!data) return;
     const village = simulation.villages.get(identity.villageId);
@@ -108,10 +122,11 @@ export function createApp(options = {}) {
           const previous = sockets.get(account.id);
           if (previous) throw new Error('This dwarf is already connected. Close the other game tab first.');
           const player = simulation.join(message.villageId, account, message.role ?? 'villager');
+          socket.statePatches = message.statePatches === true;
           identity = { playerId: player.id, villageId: message.villageId, name: account.name };
           sockets.set(player.id, socket); clearTimeout(joinTimeout);
           send(socket, { type: 'welcome', id: player.id, villageId: message.villageId });
-          send(socket, { type: 'state', state: simulation.snapshot(simulation.villages.get(message.villageId), player.id) });
+          sendState(socket, simulation.villages.get(message.villageId), player.id);
           send(socket, { type: 'chatHistory', messages: chat.history(identity.villageId) });
         } else {
           if (!identity) throw new Error('Join a village first.');
@@ -147,7 +162,7 @@ export function createApp(options = {}) {
     for (const village of simulation.villages.values()) {
       for (const player of Object.values(village.players)) {
         const socket = sockets.get(player.id);
-        if (player.online && socket) send(socket, { type: 'state', state: simulation.snapshot(village, player.id) });
+        if (player.online && socket) sendState(socket, village, player.id);
       }
     }
     for (const notice of simulation.notices.splice(0)) {

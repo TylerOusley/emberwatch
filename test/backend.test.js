@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
-import { RESOURCES } from '../shared/world.js';
+import { RESOURCES, GUARD_ROAD, canStand } from '../shared/world.js';
 
 async function fixture(t, options = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'emberwatch-test-'));
@@ -110,7 +110,7 @@ test('repair validation, finite material consumption, and separate ten-gold dawn
   const oldBonus = p.repairBonus; village.stock.timber = 0;
   assert.throws(() => action(app, village, p, { kind: 'repair', targetId: 'gate' }), /materials/);
   assert.equal(p.repairBonus, oldBonus); assert.equal(village.gate.hp, 421);
-  p.participated = 720; p.jobBonus = 25; const wallet = p.wallet;
+  p.participated = 720; p.wageAccrued = 25; p.jobBonus = 25; const wallet = p.wallet;
   app.simulation.dawn(village);
   assert.equal(p.wallet, wallet + 60); assert.equal(p.repairBonus, 0); assert.equal(p.jobBonus, 0);
 });
@@ -191,18 +191,22 @@ test('zombies follow the road, damage gate before keep, and defeat only occurs o
   assert.equal(v.status, 'fallen');
 });
 
-test('barracks guards leave the south door, pass through the gate, and hold outside', async t => {
+test('barracks guards leave the east door, pass through the gate, and hold outside', async t => {
   const { app } = await fixture(t);
   const { user } = await account(app, 'RoadwatchDwarf');
   const { id } = app.simulation.create('Roadwatch', user);
   app.simulation.join(id, user);
   const village = app.simulation.villages.get(id);
   const passedGate = new Set();
+  for (const guard of village.guards) {
+    assert.ok(Math.abs(guard.x - GUARD_ROAD[0].x) < .1, 'guards start at the east-facing door');
+    assert.ok(Math.abs(guard.z - GUARD_ROAD[0].z) <= 1, 'guards have room beside the doorway');
+  }
   for (let i = 0; i < 700; i++) {
     app.simulation.tick(.05);
     for (const guard of village.guards) {
       if (guard.z > 18 && Math.abs(guard.x) < 5) passedGate.add(guard.id);
-      assert.ok(guard.z >= 2, 'guards never walk back into the barracks footprint');
+      assert.ok(canStand(guard.x, guard.z), 'guards never walk into a building or wall');
     }
   }
   assert.equal(passedGate.size, 2, 'both guards follow the road through the only gate');
