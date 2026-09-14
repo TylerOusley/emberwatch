@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-// Original, articulated low-poly actors. Static detail is merged per joint/material;
-// shared source meshes and palette materials are reused between all inhabitants.
+// Original, articulated stylized actors. Smooth organic surfaces and shaped
+// clothing share cached geometry; rigid detail is still merged per joint/material.
 const geometryCache = new Map();
 const materialCache = new Map();
 const TAU = Math.PI * 2;
@@ -65,20 +65,46 @@ function poseJoint(joint, x, y, z, amount) {
 }
 function material(color, metalness = 0, roughness = .8, emissive = 0) {
   const key = `${color}/${metalness}/${roughness}/${emissive}`;
-  if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({ color, metalness, roughness, flatShading: true, emissive, emissiveIntensity: emissive ? .65 : 0 }));
+  if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({ color, metalness, roughness, emissive, emissiveIntensity: emissive ? .65 : 0 }));
   return materialCache.get(key);
 }
 function geometry(type) {
   if (geometryCache.has(type)) return geometryCache.get(type);
   let g;
-  if (type === 'round') g = new THREE.IcosahedronGeometry(1, 1);
+  if (type === 'round') g = new THREE.SphereGeometry(1, 12, 8);
   else if (type === 'chunk') g = new THREE.IcosahedronGeometry(1, 0);
-  else if (type === 'cylinder') g = new THREE.CylinderGeometry(1, 1, 1, 8);
-  else if (type === 'taper') g = new THREE.CylinderGeometry(.8, 1, 1, 8);
-  else if (type === 'cone') g = new THREE.ConeGeometry(1, 1, 7);
-  else if (type === 'ring') g = new THREE.TorusGeometry(1, .13, 4, 10);
-  else if (type === 'cap') g = new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI * .54);
-  else if (type === 'cloth') g = new THREE.CylinderGeometry(.74, 1, 1, 8);
+  else if (type === 'cylinder') g = new THREE.CylinderGeometry(1, 1, 1, 12);
+  else if (type === 'taper') g = new THREE.CylinderGeometry(.8, 1, 1, 12);
+  else if (type === 'cone') g = new THREE.ConeGeometry(1, 1, 10);
+  else if (type === 'ring') g = new THREE.TorusGeometry(1, .13, 6, 16);
+  else if (type === 'cap') g = new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, Math.PI * .54);
+  else if (type === 'softbox') {
+    // Rounded corners without adding another model loader or runtime dependency.
+    g = new THREE.BoxGeometry(1,1,1,3,3,3);
+    const p=g.attributes.position, n=g.attributes.normal;
+    const v=new THREE.Vector3(), core=new THREE.Vector3(), normal=new THREE.Vector3();
+    for(let i=0;i<p.count;i++) {
+      v.fromBufferAttribute(p,i); core.copy(v).clampScalar(-.34,.34);
+      normal.copy(v).sub(core).normalize(); v.copy(core).addScaledVector(normal,.16);
+      p.setXYZ(i,v.x,v.y,v.z); n.setXYZ(i,normal.x,normal.y,normal.z);
+    }
+  } else if (type === 'cloth' || type === 'braid') {
+    const profile = type==='cloth'
+      ? [[0,-.5],[.98,-.5],[1,-.45],[.94,-.27],[.88,0],[.79,.30],[.74,.47],[0,.5]]
+      : [[0,-.5],[.30,-.43],[.65,-.27],[.84,-.04],[1,.23],[.84,.42],[0,.5]];
+    g = new THREE.LatheGeometry(profile.map(([x,y])=>new THREE.Vector2(x,y)),12);
+    if(type==='cloth') {
+      const p=g.attributes.position;
+      for(let i=0;i<p.count;i++) {
+        const y=p.getY(i), angle=Math.atan2(p.getZ(i),p.getX(i));
+        const fold=1+.025*Math.cos(angle*6)*(1-(y+.5)*.6);
+        p.setX(i,p.getX(i)*fold); p.setZ(i,p.getZ(i)*fold);
+      }
+      g.computeVertexNormals();
+    }
+  } else if (type === 'apron') {
+    g = new THREE.CylinderGeometry(.83,1,1,12,3,true,-.78,1.56);
+  }
   else if (type === 'shield') {
     const s = new THREE.Shape();
     s.moveTo(-.35, .38); s.lineTo(.35,.38); s.lineTo(.34,-.04); s.lineTo(0,-.46); s.lineTo(-.34,-.04); s.closePath();
@@ -224,20 +250,20 @@ export function createCharacter(kind='villager', seed=1) {
       const torn=material(0x303936), bone=material(0xc8c3a1), eye=material(0xe7b568,.1,.4,0xa1571d);
       mesh(body,'round',rot,0,.29,0,.34,.45,.22,0,0,.09);
       mesh(body,'cloth',cloth,0,.0,-.025,.34,.5,.24,0,0,.09);
-      mesh(body,'box',torn,0,.22,-.2,.48,.42,.055,0,0,.08);
+      mesh(body,'softbox',torn,0,.22,-.2,.48,.42,.055,0,0,.08);
       for(let i=0;i<3;i++) mesh(body,'box',rotDark,-.045,.33-i*.085,.198,.29-i*.025,.018,.018,0,0,-.15);
       for(let i=0;i<4;i++) mesh(body,'cone',cloth,-.23+i*.15,-.32,0,.1,.22+(i%2)*.13,.15,0,0,Math.PI);
       mesh(head,'round',rot,0,0,0,.31,.37,.28,.04,0,-.09);
-      mesh(head,'chunk',rotDark,.19,-.1,.19,.15,.14,.1);
+      mesh(head,'round',rotDark,.19,-.1,.19,.15,.14,.1);
       mesh(head,'round',rot,-.02,-.27,.11,.22,.17,.19,0,0,.12);
       for(const side of [-1,1]) {
         mesh(head,'round',torn,side*.126,.038,.251,.089,.078,.022);
-        mesh(head,'chunk',eye,side*.126,.035,.271,.043,.031,.017);
-        mesh(head,'box',rotDark,side*.126,.11,.24,.18,.047,.062,0,0,side*-.17);
-        mesh(head,'chunk',rot,side*.3,-.02,0,.072,.105,.1,0,0,side*.3);
+        mesh(head,'round',eye,side*.126,.035,.271,.043,.031,.017);
+        mesh(head,'round',rotDark,side*.126,.11,.24,.11,.038,.047,0,0,side*-.17);
+        mesh(head,'round',rot,side*.3,-.02,0,.072,.105,.1,0,0,side*.3);
       }
       mesh(head,'chunk',rotDark,0,-.063,.265,.058,.086,.047);
-      mesh(head,'box',torn,-.012,-.19,.266,.23,.061,.023,0,0,.1);
+      mesh(head,'softbox',torn,-.012,-.19,.266,.23,.061,.023,0,0,.1);
       for(let i=0;i<4;i++) mesh(head,'box',bone,-.077+i*.046,-.178,.282,.024,.032,.014,0,0,.1);
       for(let i=0;i<3;i++) mesh(head,'cone',torn,-.12+i*.1,.29,-.10,.04,.17,.035,0,0,.35-i*.2);
       for(const [arm,fore,side] of [[leftArm,leftFore,1],[rightArm,rightFore,-1]]) {
@@ -245,82 +271,90 @@ export function createCharacter(kind='villager', seed=1) {
         mesh(arm,'taper',rot,0,-.28,0,.10,.35,.11,0,0,side*.05);
         mesh(fore,'taper',rot,0,-.18,0,.077,.39,.08);
         mesh(fore,'round',rot,0,-.42,.02,.105,.12,.07);
-        for(let i=0;i<3;i++) mesh(fore,'box',rot,(i-1)*.056,-.5,.08,.033,.13,.033,-.44,0,0);
+        for(let i=0;i<3;i++) mesh(fore,'round',rot,(i-1)*.056,-.5,.08,.022,.084,.022,-.44,0,0);
         mesh(fore,'box',rotDark,side*.038,-.18,.07,.054,.11,.015,0,0,.2);
       }
       for(const [leg,shin,side] of [[leftLeg,leftShin,1],[rightLeg,rightShin,-1]]) {
         mesh(leg,'taper',cloth,0,-.21,0,.135,.43,.14,0,0,side*.025);
         mesh(shin,'taper',rot,0,-.19,0,.08,.43,.083);
         mesh(shin,'round',rotDark,0,-.37,.1,.125,.11,.23);
-        mesh(shin,'box',cloth,0,-.045,0,.2,.14,.18,0,0,side*.13);
+        mesh(shin,'softbox',cloth,0,-.045,0,.2,.14,.18,0,0,side*.13);
       }
     } else {
       const clothes=material(role==='guard'?0x345e80:role==='priest'?0xd4c7a1:0x3e8882);
       const secondary=material(role==='guard'?0x213e58:role==='priest'?0x687c69:0x275953);
       const leather=material(0x73503a), cream=material(0xe4d6b6);
       mesh(body,'cloth',clothes,0,.04,0,.54,.74,.35);
-      mesh(body,'round',clothes,0,.29,-.015,.55,.38,.35);
+      mesh(body,'round',role==='guard'?iron:clothes,0,.29,-.015,.55,.38,.35);
       mesh(body,'cylinder',leather,0,-.13,0,.55,.12,.36);
-      mesh(body,'box',brass,0,-.13,.36,.16,.12,.055);
+      mesh(body,'softbox',brass,0,-.13,.36,.16,.12,.055);
       mesh(body,'box',dark,0,-.13,.393,.072,.06,.008);
-      mesh(body,'box',leather,.4,-.15,.23,.18,.22,.13,0,0,-.15);
+      mesh(body,'softbox',leather,.4,-.15,.23,.18,.22,.13,0,0,-.15);
+      mesh(body,'softbox',leather,-.31,-.14,-.29,.23,.24,.15,0,0,.12);
       mesh(body,'box',brass,.4,-.11,.31,.045,.055,.02);
-      mesh(body,'box',secondary,0,-.37,.27,.36,.26,.06);
+      mesh(body,'apron',secondary,0,-.37,0,.43,.26,.34);
       if(role==='guard') {
         mesh(body,'round',iron,0,.22,.18,.43,.35,.22);
+        mesh(body,'ring',iron,0,.49,0,.36,.27,.23,Math.PI/2);
         mesh(body,'box',brass,0,.27,.393,.065,.4,.025);
         mesh(body,'box',brass,0,.28,.399,.23,.06,.025);
         mesh(body,'cloth',secondary,0,-.30,-.18,.49,.46,.18);
+        for(const side of [-1,1]) mesh(body,'softbox',iron,side*.32,-.25,.37,.24,.25,.12,0,side*.28,side*.14);
         for(const side of [-1,1]) mesh(body,'round',brass,side*.35,.42,.25,.045,.045,.03);
       } else if(role==='priest') {
-        mesh(body,'box',secondary,-.23,.08,.31,.14,.75,.052,0,0,-.04);
-        mesh(body,'box',secondary,.23,.08,.31,.14,.75,.052,0,0,.04);
+        mesh(body,'softbox',secondary,-.23,.08,.31,.14,.75,.052,0,0,-.04);
+        mesh(body,'softbox',secondary,.23,.08,.31,.14,.75,.052,0,0,.04);
         mesh(body,'box',brass,0,.21,.367,.035,.14,.025);
         mesh(body,'box',brass,0,.23,.375,.11,.035,.025);
         mesh(body,'cloth',clothes,0,-.47,-.025,.53,.59,.36);
-        mesh(body,'cylinder',brass,0,-.73,-.025,.53,.035,.36);
+        mesh(body,'cylinder',brass,0,-.75,-.025,.56,.035,.39);
       } else {
-        mesh(body,'box',leather,0,.025,.33,.53,.47,.06);
-        mesh(body,'box',leather,-.23,.33,.29,.085,.33,.045,0,0,-.17);
-        mesh(body,'box',leather,.23,.33,.29,.085,.33,.045,0,0,.17);
+        mesh(body,'apron',leather,0,.025,.015,.47,.49,.365);
+        mesh(body,'softbox',leather,-.23,.33,.29,.085,.33,.045,0,0,-.17);
+        mesh(body,'softbox',leather,.23,.33,.29,.085,.33,.045,0,0,.17);
+        mesh(body,'softbox',leather,0,.24,-.337,.075,.47,.045,0,0,-.55);
+        mesh(body,'softbox',leather,0,.24,-.339,.075,.47,.045,0,0,.55);
         mesh(body,'box',brass,-.23,.31,.33,.045,.05,.02);
         mesh(body,'box',brass,.23,.31,.33,.045,.05,.02);
-        mesh(body,'box',secondary,.08,-.05,.373,.22,.17,.025);
+        mesh(body,'softbox',secondary,.08,-.05,.373,.22,.17,.025);
       }
-      // Broad face, brows, nose, moustache, and three independently shaped beard braids.
+      // Soft cheeks, inset eyes, swept moustache, and full tapered beard locks.
       mesh(head,'round',skin,0,.01,0,.39,.37,.32);
-      mesh(head,'round',skin,0,-.1,.19,.3,.25,.23);
+      mesh(head,'round',skin,0,-.1,.15,.3,.25,.23);
       for(const side of [-1,1]) {
         mesh(head,'round',skin,side*.37,-.02,0,.115,.14,.10,0,0,side*-.3);
-        mesh(head,'box',cream,side*.14,.08,.297,.12,.07,.029);
-        mesh(head,'box',dark,side*.13,.075,.32,.043,.055,.015);
-        mesh(head,'box',beard,side*.14,.145,.298,.18,.052,.053,0,0,side*-.12);
-        mesh(head,'round',beard,side*.11,-.125,.353,.16,.065,.074,0,0,side*.12);
+        mesh(head,'round',skin,side*.21,-.08,.24,.12,.11,.095);
+        mesh(head,'round',cream,side*.14,.075,.311,.061,.037,.023);
+        mesh(head,'round',dark,side*.13,.075,.331,.024,.030,.011);
+        mesh(head,'round',cream,side*.13-.008,.087,.340,.008,.010,.006);
+        mesh(head,'round',beard,side*.14,.145,.298,.115,.038,.047,0,0,side*-.17);
+        mesh(head,'round',beard,side*.12,-.125,.343,.16,.076,.085,0,0,side*.24);
+        mesh(head,'braid',beard,side*.28,-.17,.145,.095,.30,.10,0,0,side*-.18);
       }
-      mesh(head,'round',skin,0,-.015,.344,.095,.13,.12);
-      mesh(head,'round',beard,0,-.25,.19,.29,.22,.19);
+      mesh(head,'round',skin,0,-.015,.344,.107,.12,.125);
+      mesh(head,'round',beard,0,-.255,.17,.31,.24,.20);
       for(let i=0;i<3;i++) {
         const x=(i-1)*.15, length=i===1?.43:.31;
-        mesh(head,'cone',beard,x,-.32,.27,.105,length,.10,0,0,Math.PI+(i-1)*.13);
+        mesh(head,'braid',beard,x,-.32,.27,.115,length,.105,0,0,-(i-1)*.13);
         mesh(head,'cylinder',brass,x,-.36-length*.18,.278,.061,.05,.059);
-        mesh(head,'chunk',beard,x,-.41-length*.24,.273,.059,.1,.062);
+        mesh(head,'round',beard,x,-.41-length*.24,.273,.062,.082,.063);
       }
       if(role==='priest') {
         mesh(head,'round',clothes,0,.08,-.18,.5,.46,.28);
         mesh(head,'ring',clothes,0,.06,.025,.45,.45,.27);
         mesh(head,'ring',brass,0,.06,.068,.365,.369,.18);
       } else if(role==='guard') {
-        mesh(head,'cap',iron,0,.08,-.005,.44,.37,.37);
-        mesh(head,'ring',brass,0,.1,-.005,.425,.35,.35,Math.PI/2);
-        mesh(head,'box',brass,0,.2,.342,.07,.28,.055);
-        for(const side of [-1,1]) mesh(head,'box',iron,side*.34,-.055,.11,.09,.3,.19,0,0,side*-.12);
-        mesh(head,'box',secondary,0,.425,-.045,.105,.25,.35);
-        mesh(head,'box',brass,0,.31,-.045,.13,.045,.39);
+        mesh(head,'cap',iron,0,.19,-.005,.44,.37,.37);
+        mesh(head,'ring',brass,0,.21,-.005,.425,.35,.35,Math.PI/2);
+        mesh(head,'softbox',brass,0,.31,.342,.07,.28,.055);
+        for(const side of [-1,1]) mesh(head,'softbox',iron,side*.34,-.055,.11,.09,.3,.19,0,0,side*-.12);
+        mesh(head,'round',secondary,0,.50,-.045,.060,.19,.21);
+        mesh(head,'softbox',brass,0,.42,-.045,.13,.045,.39);
       } else {
-        mesh(head,'cap',leather,0,.09,-.01,.40,.31,.34);
-        mesh(head,'cylinder',secondary,0,.10,-.01,.41,.08,.35);
-        mesh(head,'box',leather,0,.09,.31,.57,.04,.18,-.11,0,0);
-        mesh(head,'box',brass,.2,.115,.293,.08,.09,.032,0,.25,0);
+        mesh(head,'cap',leather,0,.19,-.01,.40,.31,.34);
+        mesh(head,'cylinder',secondary,0,.20,-.01,.41,.08,.35);
+        mesh(head,'round',leather,0,.19,.28,.31,.035,.20,-.11,0,0);
+        mesh(head,'box',brass,.2,.215,.293,.08,.09,.032,0,.25,0);
       }
       for(const [arm,fore,side] of [[leftArm,leftFore,1],[rightArm,rightFore,-1]]) {
         mesh(arm,'round',clothes,0,-.075,0,.235,.25,.235);
@@ -346,7 +380,7 @@ export function createCharacter(kind='villager', seed=1) {
         mesh(leg,'taper',secondary,0,-.16,0,.21,.32,.22);
         mesh(shin,'taper',boot,0,-.12,0,.22,.31,.23);
         mesh(shin,'round',boot,0,-.28,.10,.235,.15,.34);
-        mesh(shin,'box',dark,0,-.34,.12,.40,.075,.51);
+        mesh(shin,'softbox',dark,0,-.34,.12,.40,.075,.51);
         mesh(shin,'cylinder',leather,0,-.005,0,.23,.08,.23);
         mesh(shin,'box',brass,0,-.04,.235,.06,.065,.025);
       }
