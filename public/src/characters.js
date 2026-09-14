@@ -6,6 +6,58 @@ const geometryCache = new Map();
 const materialCache = new Map();
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
+const smooth = t => t * t * (3 - 2 * t);
+
+// Additive shoulder, elbow, wrist, torso, and support-arm poses. Each action
+// eases from the current gait through anticipation, contact, and recovery.
+// Wrist rotation lets the working end of a tool travel forward at contact.
+const REST_ACTION = new Array(12).fill(0);
+const ACTION_POSES = {
+  axe: [
+    [-1.85,-.15,-.20,-.45,-.15,0,-.12,-.035,-.22,-.035,-.38,-.24],
+    [-.78,.14,-.06,-.05,1.30,0,.12,.10,.23,.025,-.56,-.16],
+    [-.42,.18,.05,.04,.85,0,.16,.07,.16,.015,-.28,-.08],
+  ],
+  pickaxe: [
+    [-2.0,-.05,-.12,-.42,-.10,0,-.08,-.055,-.10,0,-.68,-.36],
+    [-.82,.04,-.03,-.04,1.38,0,.05,.16,.10,0,-.72,-.20],
+    [-.42,.06,.01,.04,.86,0,.08,.10,.08,0,-.35,-.12],
+  ],
+  hammer: [
+    [-.78,-.06,-.08,-.72,-.23,0,-.05,-.02,-.09,0,-.20,-.12],
+    [-.60,.04,-.03,-.12,1.18,0,.03,.065,.09,0,-.27,-.08],
+    [-.36,.05,.02,-.04,.58,0,.06,.035,.06,0,-.14,-.05],
+  ],
+  scythe: [
+    [-.40,-.50,-.32,-.26,.88,-.25,.62,.035,-.48,-.035,-.38,-.24],
+    [-.55,.45,.22,-.08,1.15,.26,.62,.085,.42,.04,-.58,-.14],
+    [-.34,.64,.36,-.02,.87,.36,.48,.06,.55,.035,-.35,-.08],
+  ],
+  sword: [
+    [-1.18,-.26,-.38,-.40,-.18,0,-.35,-.025,-.20,-.025,-.28,-.22],
+    [-.86,.28,.23,-.03,1.0,.10,.37,.07,.27,.03,-.47,-.20],
+    [-.42,.37,.35,.03,.65,.15,.48,.045,.34,.025,-.22,-.10],
+  ],
+  zombie: [
+    [.16,-.08,-.08,-.16,0,0,0,-.045,-.10,-.02,.13,-.08],
+    [-.48,.10,.04,.12,0,0,0,.14,.12,.035,-.62,.10],
+    [-.18,.08,.03,.04,0,0,0,.065,.08,.02,-.26,.04],
+  ],
+};
+function actionPose(profile, phase, target) {
+  const stops = [0,.30,.52,.72,1];
+  let segment = 0;
+  while (segment < 3 && phase > stops[segment + 1]) segment++;
+  const from = segment === 0 ? REST_ACTION : profile[segment - 1];
+  const to = segment === 3 ? REST_ACTION : profile[segment];
+  const amount = smooth(clamp((phase - stops[segment]) / (stops[segment + 1] - stops[segment]),0,1));
+  for (let i = 0; i < target.length; i++) target[i] = from[i] + (to[i] - from[i]) * amount;
+}
+function poseJoint(joint, x, y, z, amount) {
+  joint.rotation.x += (x - joint.rotation.x) * amount;
+  joint.rotation.y += (y - joint.rotation.y) * amount;
+  joint.rotation.z += (z - joint.rotation.z) * amount;
+}
 function material(color, metalness = 0, roughness = .8, emissive = 0) {
   const key = `${color}/${metalness}/${roughness}/${emissive}`;
   if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({ color, metalness, roughness, flatShading: true, emissive, emissiveIntensity: emissive ? .65 : 0 }));
@@ -126,7 +178,8 @@ export function createCharacter(kind='villager', seed=1) {
   const visual = pivot(group);
   const owned = new Set();
   let rig, role=kind, toolId='', toolTier=1, heldTool, attackClock=9, previousAttack=false, disposed=false;
-  let walkPhase=(Number(seed)||1)*1.173, downAmount=0, moveAmount=0;
+  let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0;
+  const actionOffsets = new Float64Array(12);
   const variation = Math.abs(Math.trunc(Number(seed)||1)) % 4;
   const skin = material([0xdba779,0xc38d65,0xe9bc8e,0xa87354][variation]);
   const beard = material([0x6b4029,0x9a6137,0xc6a77d,0x4b3730][variation]);
@@ -148,6 +201,7 @@ export function createCharacter(kind='villager', seed=1) {
     const leftShin=pivot(leftLeg,0,zombie?-.41:-.32,0);
     const rightShin=pivot(rightLeg,0,zombie?-.41:-.32,0);
     rig={body,head,leftArm,rightArm,leftFore,rightFore,hand,leftLeg,rightLeg,leftShin,rightShin,zombie};
+    attackClock=9; previousAttack=false; spellAmount=0;
 
     if (zombie) {
       const rot=material([0x7f9770,0x718a6c,0x8b9568,0x6b8e79][variation]);
@@ -311,61 +365,72 @@ export function createCharacter(kind='villager', seed=1) {
 
   function update(dt,time, options={}) {
     if(disposed) return;
-    const {moving=false,speed=5.4,attack=false,downed=false,tool}=options;
-    dt=clamp(Number(dt)||0,0,.1); time=Number(time)||0;
+    const {moving=false,speed=5.4,attack=false,downed=false,tool,channeling=false}=options;
+    dt=clamp(Number(dt)||0,0,.1);
+    idleTime+=dt;
     if(tool!==undefined) setTool(tool);
-    if((typeof attack==='number' && attack>0 && attack!==previousAttack) || (typeof attack==='boolean' && attack && (!previousAttack || attackClock>.69))) attackClock=0;
-    previousAttack=attack; attackClock+=dt;
-    const blend=1-Math.exp(-dt*12);
-    moveAmount+=(moving?1-moveAmount:-moveAmount)*blend;
+    const duration=rig.zombie?1.30:.54;
+    const newAttack=typeof attack==='number' ? attack>0 && attack!==previousAttack : attack && !previousAttack;
+    const repeatAttack=attack===true && attackClock>=duration+.06;
+    // Finish a strike before starting another; rapid clicks cannot snap the
+    // shoulder back to its windup. Numbered events and held NPC attacks work.
+    if(!downed && (newAttack || repeatAttack) && attackClock>=duration*.90) attackClock=0;
+    previousAttack=attack;
+    attackClock+=dt;
+    const requestedSpeed=Number.isFinite(Number(speed))?Math.max(0,Number(speed)):5.4;
+    const locomotion=moving && !downed;
+    moveAmount+=((locomotion?1:0)-moveAmount)*(1-Math.exp(-dt*9));
+    const nominalSpeed=rig.zombie?1.75:5.4;
+    const speedTarget=locomotion?Math.min(requestedSpeed,nominalSpeed*1.65):0;
+    const speedBlend=1-Math.exp(-dt*10);
+    // Integrate the smoothed speed analytically so different render rates do
+    // not accumulate different gait phases over the same traveled distance.
+    const strideDistance=speedTarget*dt+(motionSpeed-speedTarget)*speedBlend/10;
+    motionSpeed+=(speedTarget-motionSpeed)*speedBlend;
     downAmount+=((downed?1:0)-downAmount)*(1-Math.exp(-dt*8));
-    walkPhase+=dt*(rig.zombie?5.3:8.6)*clamp((Number(speed)||5.4)/5.4,.4,1.6);
-    const s=Math.sin(walkPhase), c=Math.cos(walkPhase), breath=Math.sin(time*2.2+variation);
-    const swing=attackClock<.62 ? Math.sin(attackClock/.62*Math.PI) : 0;
+    walkPhase=(walkPhase+strideDistance*(rig.zombie?4.1:9.0)/nominalSpeed)%TAU;
+    const s=Math.sin(walkPhase), c=Math.cos(walkPhase), breath=Math.sin(idleTime*2.2+variation);
+    const stride=moveAmount*clamp(motionSpeed/nominalSpeed,.30,1.15);
+    const liftLeft=Math.pow(Math.max(0,-s),2), liftRight=Math.pow(Math.max(0,s),2);
+    const stepRise=(1-Math.cos(walkPhase*2))*.5;
+    const casting=toolId==='heal'||toolId==='staff';
+    const spellTarget=!downed && casting && (channeling || attack===true || attackClock<.54) ? 1 : 0;
+    spellAmount+=(spellTarget-spellAmount)*(1-Math.exp(-dt*(spellTarget?9:7)));
+    const active=!casting && attackClock<duration && !downed;
+    actionOffsets.fill(0);
+    if(active) actionPose(ACTION_POSES[rig.zombie?'zombie':toolId]||ACTION_POSES.sword,attackClock/duration,actionOffsets);
+    const a=actionOffsets, alive=1-downAmount;
+    const attackWeight=active?Math.sin(Math.PI*clamp(attackClock/duration,0,1)):0;
+    const armStride=stride*(1-attackWeight*.85)*(1-spellAmount*.85);
+    const settle=1-Math.exp(-dt*25);
     visual.rotation.z=-Math.PI*.49*downAmount;
     visual.position.y=.70*downAmount;
     visual.position.z=0;
     if(rig.zombie) {
-      rig.body.position.y=1.10+Math.abs(s)*.037*moveAmount+breath*.012;
-      rig.body.rotation.set(.17+Math.sin(walkPhase*.5)*.025,Math.sin(walkPhase*.5)*.07*moveAmount,.075+s*.062*moveAmount);
-      rig.head.rotation.set(-.09+breath*.025,c*.065,.12+Math.sin(time*1.4+variation)*.045);
-      rig.leftLeg.rotation.x=s*.30*moveAmount;
-      rig.rightLeg.rotation.x=-s*.39*moveAmount;
-      rig.leftShin.rotation.x=.10+Math.max(0,-s)*.24*moveAmount;
-      rig.rightShin.rotation.x=.07+Math.max(0,s)*.32*moveAmount;
-      rig.leftArm.rotation.set(-.50+c*.15*moveAmount-swing*.90,0,.10+Math.sin(time*1.7)*.04);
-      rig.rightArm.rotation.set(-.79-c*.17*moveAmount-swing*.70,0,-.13);
-      rig.leftFore.rotation.x=-.14-breath*.06;
-      rig.rightFore.rotation.x=-.18+breath*.08;
+      rig.body.position.y+=(1.10+(stepRise*.030*stride+breath*.009)*alive-rig.body.position.y)*settle;
+      poseJoint(rig.body,.17+s*.025*stride+a[7],s*.045*stride+a[8],.065+s*.045*stride+a[9],settle);
+      poseJoint(rig.head,-.09+breath*.020-a[7]*.35,c*.045*stride,.10+Math.sin(idleTime*1.4+variation)*.025,settle);
+      poseJoint(rig.leftLeg,s*.30*stride,0,0,settle);
+      poseJoint(rig.rightLeg,-s*.37*stride,0,0,settle);
+      poseJoint(rig.leftShin,.08+liftLeft*.27*stride,0,0,settle);
+      poseJoint(rig.rightShin,.06+liftRight*.32*stride,0,0,settle);
+      poseJoint(rig.leftArm,(-.50+c*.10*armStride+a[10])*alive,0,.10+breath*.025,settle);
+      poseJoint(rig.rightArm,(-.75-c*.13*armStride+a[0])*alive,a[1],-.12+a[2],settle);
+      poseJoint(rig.leftFore,(-.14-breath*.025+a[11])*alive,0,0,settle);
+      poseJoint(rig.rightFore,(-.18+breath*.030+a[3])*alive,0,0,settle);
     } else {
-      rig.body.position.y=1.04+Math.abs(s)*.063*moveAmount+breath*.009;
-      rig.body.rotation.set(-.035*moveAmount,Math.sin(walkPhase)*.036*moveAmount,-s*.028*moveAmount);
-      rig.head.rotation.set(-.025+breath*.012,-Math.sin(walkPhase)*.025*moveAmount,0);
-      rig.leftLeg.rotation.x=s*.55*moveAmount;
-      rig.rightLeg.rotation.x=-s*.55*moveAmount;
-      rig.leftShin.rotation.x=Math.max(0,-s)*.34*moveAmount;
-      rig.rightShin.rotation.x=Math.max(0,s)*.34*moveAmount;
-      rig.leftArm.rotation.set(-s*.36*moveAmount-.06,0,.09);
-      rig.rightArm.rotation.set(s*.28*moveAmount-.12,0,-.10);
-      rig.leftFore.rotation.x=-.13;
-      rig.rightFore.rotation.x=-.14;
-      if(swing>0) {
-        // A lifted shoulder leads into the follow-through. The server controls impact.
-        const phase=attackClock/.62;
-        rig.rightArm.rotation.x=-.18-Math.sin(phase*Math.PI)*1.72;
-        rig.rightArm.rotation.z=-.12-Math.sin(phase*Math.PI)*.30;
-        rig.rightFore.rotation.x=-.15-Math.sin(phase*Math.PI)*.42;
-        rig.body.rotation.y=-Math.sin(phase*Math.PI*2)*.15;
-        if(toolId==='heal') {
-          rig.leftArm.rotation.x=-.8*swing;
-          rig.head.rotation.x=-.13*swing;
-        }
-      }
-    }
-    if(downAmount>.01) {
-      rig.leftArm.rotation.x*=1-downAmount; rig.rightArm.rotation.x*=1-downAmount;
-      rig.leftLeg.rotation.x*=1-downAmount; rig.rightLeg.rotation.x*=1-downAmount;
-      rig.head.rotation.z+=downAmount*.20;
+      rig.body.position.y+=(1.04+(stepRise*.040*stride+breath*.008)*alive-rig.body.position.y)*settle;
+      poseJoint(rig.body,.045*stride+a[7],s*.035*stride+a[8],-s*.020*stride+a[9],settle);
+      poseJoint(rig.head,-.025+breath*.01-a[7]*.45-spellAmount*.08,-s*.025*stride-a[8]*.28,downAmount*.20,settle);
+      poseJoint(rig.leftLeg,s*.53*stride,0,0,settle);
+      poseJoint(rig.rightLeg,-s*.53*stride,0,0,settle);
+      poseJoint(rig.leftShin,liftLeft*.42*stride,0,0,settle);
+      poseJoint(rig.rightShin,liftRight*.42*stride,0,0,settle);
+      poseJoint(rig.leftArm,(-s*.32*armStride-.06+a[10]-spellAmount*.70)*alive,spellAmount*.14,.09+spellAmount*.08,settle);
+      poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
+      poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32)*alive,0,0,settle);
+      poseJoint(rig.rightFore,(-.14+a[3]-spellAmount*.18)*alive,0,0,settle);
+      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5],a[6],settle);
     }
   }
   function dispose() {

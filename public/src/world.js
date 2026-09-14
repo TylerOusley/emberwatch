@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILDINGS, WALLS, ROAD, RESOURCES, seeded } from '/shared/world.js';
+import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, seeded } from '/shared/world.js';
 
 // Original procedural artwork. Everything is drawn from simple, authored geometry;
 // no downloaded models or textures are required to explore the village.
@@ -62,6 +62,7 @@ export function createWorld(scene) {
   groundG.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));groundG.computeVertexNormals();
   const ground=mesh(groundG,mat('#ffffff',{vertexColors:true,flatShading:true}));ground.castShadow=false;
 
+  const lanes=[];
   function road(points,width=7,y=.014){
     const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(p.x,y,p.z)),false,'centripetal');
     const len=curve.getLength(),steps=Math.ceil(len*2),pos=[],uv=[],indices=[];
@@ -77,13 +78,19 @@ export function createWorld(scene) {
       const t=i/(len/1.15),p=curve.getPoint(t),tan=curve.getTangent(t),off=width/2+.08;
       box(i%4?M.stone:M.moss,p.x+tan.z*off*side,.045,p.z-tan.x*off*side,.38,.13,.88,Math.atan2(tan.x,tan.z));
     }
-    return curve;
+    lanes.push({curve,width});return curve;
   }
   const mainRoad=road([...ROAD].reverse(),7.2);
-  road([{x:-29,z:-3},{x:-11,z:-3},{x:0,z:-3}],3.5);
-  road([{x:0,z:-14},{x:12,z:-14},{x:22,z:-6}],3.2);
-  road([{x:-18,z:-17},{x:-9,z:-15},{x:0,z:-15}],3.3);
-  road([{x:0,z:6},{x:8,z:7},{x:13,z:11}],3.1);
+  // Lanes lead to the actual service frontage. The narrow watch lane follows
+  // the guards' south exit and fits between the barracks and Oak & Iron.
+  road(GUARD_ROAD.slice(0,3),2.2);
+  road([{x:0,z:8},{x:-10.7,z:8}],2.8);
+  road([{x:0,z:7},{x:9.2,z:7}],2.8);
+  road([{x:0,z:-14},{x:16.1,z:-14}],3.2);
+  road([{x:0,z:-23},{x:-11.5,z:-23}],3.2);
+  road([{x:0,z:-35},{x:16.5,z:-35}],2.5);
+  road([{x:0,z:-34},{x:-13,z:-34},{x:-17,z:-39},{x:-20.6,z:-39}],2.2);
+  root.userData.lanes=lanes;
   // Paved square around the communal well, completely outside the central lane.
   const paving=mesh(new THREE.CircleGeometry(5.7,16),roadMat,root,8,.018,-4);paving.rotation.x=-Math.PI/2;
 
@@ -158,8 +165,15 @@ export function createWorld(scene) {
     const geo=new THREE.BufferGeometry();const a=w/2,b=d/2;
     geo.setAttribute('position',new THREE.Float32BufferAttribute([-a,0,b,a,0,b,0,h,b,-a,0,-b,a,0,-b,0,h,-b],3));
     geo.setIndex([0,1,2,3,5,4,0,2,5,0,5,3,2,1,4,2,4,5,0,3,4,0,4,1]);geo.computeVertexNormals();mesh(geo,material,root,x,base,z);
-    beam(M.woodDark,[x-a,base,z+b+.025],[x,base+h,z+b+.025],.19);beam(M.woodDark,[x+a,base,z+b+.025],[x,base+h,z+b+.025],.19);
+    for(const end of [-1,1]){
+      beam(M.woodDark,[x-a,base,z+end*(b+.025)],[x,base+h,z+end*(b+.025)],.19);
+      beam(M.woodDark,[x+a,base,z+end*(b+.025)],[x,base+h,z+end*(b+.025)],.19);
+      beam(M.woodLight,[x,base+.08,z+end*(b+.08)],[x,base+h-.05,z+end*(b+.08)],.12);
+      box(M.woodDark,x,base+.04,z+end*(b+.04),w,.16,.16);
+    }
+    for(const side of [-1,1])box(M.woodDark,x+side*a,base-.08,z,.18,.24,d+.18);
     box(M.roofDark,x,base+h+.06,z,.26,.2,d+.2);
+    for(let k=0;k<Math.ceil(d/.8);k++)box(k%3?M.roof:M.roofLight,x,base+h+.16,z-d/2+(k+.5)*d/Math.ceil(d/.8),.36,.12,d/Math.ceil(d/.8)-.025);
     // Shingle courses and occasional brighter tiles, built as instances.
     const angle=Math.atan2(h,a),slope=Math.hypot(h,a);
     for(const side of [-1,1])for(let row=0;row<5;row++){
@@ -171,6 +185,10 @@ export function createWorld(scene) {
     box(M.woodDark,x,y,z,w+.22,h+.2,.12);box(M.glass,x,y,z+.075,w,h,.035);
     box(M.woodDark,x,y,z+.12,.07,h,.08);box(M.woodDark,x,y,z+.12,w,.07,.08);
     box(M.woodLight,x,y-h/2-.1,z+.12,w+.37,.14,.24);
+    for(const side of [-1,1]){
+      box(M.wood,x+side*(w/2+.2),y,z+.05,.2,h+.06,.09);
+      for(const offset of [-.27,.27])box(M.iron,x+side*(w/2+.2),y+h*offset,z+.11,.23,.065,.045);
+    }
   }
   function door(x,z,y=.65,w=1.55,h=2.4){
     box(M.stoneDark,x,y+h/2,z,w+.5,h+.3,.15);box(M.woodDark,x,y+h/2,z+.11,w,h,.1);
@@ -193,6 +211,7 @@ export function createWorld(scene) {
   function cottage(b){
     const {x,z,w,d}=b,h=b.kind==='bank'?5.7:4.8,front=z+d/2;
     box(M.stoneDark,x,.4,z,w+.16,.8,d+.16);box(b.kind==='bank'?M.stoneLight:M.plaster,x,h/2+.4,z,w,h,d);
+    box(M.stoneLight,x,.74,z,w+.25,.19,d+.25);
     box(M.woodDark,x,.97,z,w+.1,.22,d+.1);box(M.woodDark,x,h+.34,z,w+.12,.24,d+.12);
     for(const dx of [-w/2+.13,0,w/2-.13])box(M.wood,x+dx,h/2+.48,front+.04,.22,h,.18);
     for(const dz of [-d/2+.12,0,d/2-.12])box(M.wood,x-w/2-.035,h/2+.48,z+dz,.17,h,.22);
@@ -203,6 +222,8 @@ export function createWorld(scene) {
     door(x,front+.05,.62,1.5,2.35);window(x-w*.3,2.16,front+.14);window(x+w*.3,2.16,front+.14);
     window(x-w*.26,h-.8,front+.14,.95,.85);window(x+w*.26,h-.8,front+.14,.95,.85);
     window(x,h+1.2,front+.12,.7,.8);chimney(x+w*.28,z-d*.23,h+.8);
+    // Small brackets tie the overhanging roof into the timber facade.
+    for(const side of [-1,1])beam(M.wood,[x+side*(w/2-.16),h-.28,front+.14],[x+side*(w/2+.3),h+.47,front+.14],.14);
     if(b.kind==='shop'||b.kind==='food'){
       const az=front+1.4,aw=w*.84;
       box(M.wood,x,1.04,az,aw,.17,1.45);box(M.woodDark,x,.5,az,aw*.93,.9,1.2);
@@ -217,7 +238,11 @@ export function createWorld(scene) {
         if(b.kind==='food')batch(sphereG,M.wheat,bx,1.3,az,.26,.18,.32,0,rng(),0);
         else{box(M.woodLight,bx,1.35,az,.08,.7,.08);box(M.stoneDark,bx+.12,1.62,az,.4,.2,.18);}
       }
-    } else if(b.kind==='bank') {sign('TREASURY',x,3.38,front+.2,3.5);banner(x-w*.45,3.6,front+.21,.8,1.7,M.blue);}
+    } else if(b.kind==='bank') {
+      sign('TREASURY',x,3.38,front+.2,3.5);banner(x-w*.45,3.6,front+.21,.8,1.7,M.blue);
+      for(const side of [-1,1])for(let row=0;row<7;row++)box(row%2?M.stone:M.stoneLight,x+side*(w/2-.17),1.18+row*.66,front+.1,.5,.52,.23);
+      box(M.stoneLight,x,4.0,front+.34,4.0,.2,.56);
+    }
     else{
       for(const side of [-1,1]){box(M.wood,x+side*w*.3,1.33,front+.4,1.15,.3,.45);for(let f=0;f<4;f++)batch(sphereG,f%2?M.fabric:M.wheatTip,x+side*w*.3-.42+f*.28,1.57,front+.42,.11,.15,.13);}
     }
@@ -230,7 +255,7 @@ export function createWorld(scene) {
   function church(b){
     const{x,z,w,d}=b,front=z+d/2;
     masonry(x,z,w,6.7,d);roof(x,z,w+1.1,d+1.1,6.9,4.2);
-    for(const dx of [-1,1])for(let i=0;i<3;i++)box(M.stoneLight,x+dx*(w/2-.18),2.6,z-d/2+2+i*4.7,.6,5.2,1);
+    for(const dx of [-1,1])for(let i=0;i<3;i++)box(M.stoneLight,x+dx*(w/2-.18),2.6,z-d/2+1.6+i*(d-3.2)/2,.6,5.2,.8);
     door(x,front+.13,.45,2.3,3.45);
     const rose=mesh(new THREE.CylinderGeometry(1.08,1.08,.13,12),M.woodDark,root,x,6.1,front+.18);rose.rotation.x=Math.PI/2;
     const roseg=mesh(new THREE.CylinderGeometry(.86,.86,.15,12),M.glass,root,x,6.1,front+.27);roseg.rotation.x=Math.PI/2;
@@ -251,7 +276,22 @@ export function createWorld(scene) {
     sign('THE HEARTHKEEP',x,5.7,z+d/2+.25,5.4);
     cylinder(M.woodDark,x,17.1,z,.1,4);banner(x+1.25,17.8,z,2.5,1.7);
   }
-  for(const b of BUILDINGS){if(b.kind==='keep')keep(b);else if(b.kind==='church')church(b);else if(b.kind==='barracks')barracks(b);else cottage(b);}
+  // Building artwork is authored with a south-facing front, then transformed as
+  // one unit, including signs, banners, steps and instanced trim. Swapping local
+  // width/depth for quarter turns preserves the shared server collision bounds.
+  const facing={keep:0,barracks:0,tools:Math.PI/2,food:-Math.PI/2,bank:Math.PI/2,church:-Math.PI/2,house1:-Math.PI/2,house2:Math.PI/2};
+  for(const b of BUILDINGS){
+    const yaw=facing[b.id]??0,quarter=Math.abs(Math.sin(yaw))>.5;
+    const local={...b,x:0,z:0,w:quarter?b.d:b.w,d:quarter?b.w:b.d};
+    const firstChild=root.children.length,firstInstances=new Map([...batches].map(([key,value])=>[key,value.transforms.length]));
+    if(b.kind==='keep')keep(local);else if(b.kind==='church')church(local);else if(b.kind==='barracks')barracks(local);else cottage(local);
+    const group=new THREE.Group();group.name=`building-${b.id}`;group.position.set(b.x,0,b.z);group.rotation.y=yaw;group.updateMatrix();
+    for(const child of root.children.slice(firstChild))group.add(child);
+    const front=new THREE.Vector3(0,0,local.d/2).applyMatrix4(group.matrix);
+    group.userData={buildingId:b.id,front:{x:front.x,z:front.z},direction:{x:Math.sin(yaw),z:Math.cos(yaw)}};
+    root.add(group);
+    for(const [key,value] of batches)for(let i=firstInstances.get(key)??0;i<value.transforms.length;i++)value.transforms[i].premultiply(group.matrix);
+  }
 
   function crate(x,z,s=.85,ry=0){
     box(M.woodLight,x,s/2,z,s,s,s,ry);for(const y of [.14,s-.14])box(M.woodDark,x,y,z,s+.04,.12,s+.04,ry);
@@ -347,9 +387,10 @@ export function createWorld(scene) {
   for(let i=0;i<53;i++){const side=i%2?1:-1;tree(side*(62+rng()*32),-36+rng()*161,20000+i,true);}
   const grassG=new THREE.BufferGeometry();grassG.setAttribute('position',new THREE.Float32BufferAttribute([-.065,0,0,.065,0,0,.025,.48,0,0,0,-.07,0,0,.07,.03,.34,0],3));grassG.setIndex([0,1,2,3,4,5]);grassG.computeVertexNormals();
   const grassMat=mat('#789a53',{side:THREE.DoubleSide});
+  const laneSamples=lanes.map(({curve,width})=>({points:curve.getSpacedPoints(Math.ceil(curve.getLength())),margin:width/2+.45}));
   for(let i=0;i<1450;i++){
     const x=-60+rng()*120,z=-47+rng()*160;
-    const nearRoad=mainRoad.getPoints(70).some(p=>Math.abs(p.x-x)<5&&Math.abs(p.z-z)<4.2);
+    const nearRoad=laneSamples.some(lane=>lane.points.some(p=>Math.hypot(p.x-x,p.z-z)<lane.margin));
     const occupied=BUILDINGS.some(b=>Math.abs(x-b.x)<b.w/2+1.3&&Math.abs(z-b.z)<b.d/2+1.3);
     if(nearRoad||occupied||Math.abs(z-18)<2||Math.abs(x)>34&&z<18||x>16&&x<27&&z>43&&z<52||x> -31&&x< -23&&z> -15&&z< -8)continue;
     batch(grassG,grassMat,x,.015,z,.6+rng()*.8,.45+rng()*.9,.6+rng()*.8,0,rng()*6.28,0);

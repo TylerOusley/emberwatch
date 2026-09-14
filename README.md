@@ -2,7 +2,17 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This is a standalone project with newly written client, server, and game systems; it does not import or depend on the code from Tyler's existing games.
 
-This first playable prototype establishes the village's appearance, third-person movement, shared gathering, NPC combat, and persistent multiplayer sessions. The full accepted game design is preserved in [docs/DESIGN.md](docs/DESIGN.md). The complete economy, player construction, and all planned content are still future work.
+**First Light — playable build 02.** This early prototype establishes the village's appearance, third-person movement, shared gathering, NPC combat, and persistent multiplayer sessions. The full accepted game design is preserved in [docs/DESIGN.md](docs/DESIGN.md). The complete economy, player construction, and all planned content are still future work.
+
+## Current scope at a glance
+
+| Available in build 02 | Still planned |
+| --- | --- |
+| Multiplayer, three roles, gathering, gate defense, priest healing/revival, repairs, banking, bread, and persistent hunger HUD. | Player plots, construction, role changes, owned shops and barracks, towers, church beds/carrying, horses/carts, and loans. |
+| Sell wheat, timber, and stone at the treasury for stock-based prices. | The complete market, transaction/land taxes, full job bonuses, merchant exports, votes and steward decisions. |
+| Wooden tools and one bread item. | Stone/iron equipment, additional resources and food tiers. |
+
+Build 02 also improves entrance orientation, village paths, tool-specific animation, and remote movement interpolation. **The full game plan is not complete.** The in-game village menu has a **Build status** button listing this boundary.
 
 ## Run on your computer
 
@@ -26,6 +36,8 @@ Create an account, create or join a village, and select Guard, Priest, or Villag
 - Guard, Priest, and Villager roles; priest healing and revival.
 - Two initial NPC guards for testing road movement and cooperative defense. Player-owned barracks and recruitment are future work.
 - Wooden gathering tools and hammer durability, replacement-tool purchases, bread purchases, personal resources, shared village stock, and repairs paid at dawn with a ten-gold allowance per cycle.
+- Stock-priced selling of wheat, timber, and stone at the treasury, with exact bundle quotes, finite treasury funds, and a 500-gold purchasing reserve.
+- Hunger displayed below health at all times during play, including a low-hunger warning.
 - Persistent accounts, personal bank balances, and village state in SQLite.
 - An eight-minute day and four-minute night. Empty villages pause. Zombie difficulty increases in five-night bands, and keep destruction ends a run.
 - Downed players wait until dawn before manually choosing respawn. A revival can preserve their belongings.
@@ -46,7 +58,21 @@ For this prototype, a new account receives 50 wallet gold once and a full set of
 | Priest revival | 45 health after a 5-second channel. |
 | Initial NPC guard supplies | 12 wheat in the public prototype barracks. |
 
-These starter supplies and simplified recipes are test defaults. The later ownership, tiered tools, food tiers, and resource-market rules are described separately in the design document.
+These starter supplies and simplified recipes are test defaults. The later ownership, tiered tools, food tiers, and complete market rules are described separately in the design document.
+
+## Resource selling in build 02
+
+Visit the treasury and press **E**. Each resource offers **Sell 1**, **Sell 10**, and **Sell all** with the total payment shown. The sale adds the resources to village stores and moves gold from the public treasury to your wallet. Personal bank savings are separate. Donating remains optional and pays no gold.
+
+| Village stock before each unit | Wheat | Timber | Stone |
+| --- | --- | --- | --- |
+| 0–24 | 4 gold | 5 gold | 5 gold |
+| 25–99 | 3 gold | 4 gold | 4 gold |
+| 100–299 | 2 gold | 3 gold | 3 gold |
+| 300–999 | 1 gold | 2 gold | 2 gold |
+| 1,000+ | 1 gold | 1 gold | 1 gold |
+
+These are provisional balance values. Bundles use the price of **each unit at its resulting stock level**, so a bundle crossing a price band is not overpaid. At stock 24, selling two wheat pays 4 + 3 = 7 gold. If another player lowers the price before your sale arrives, the server rejects it and asks you to review the updated quote. Sales never partially complete, and purchases stop before spending the treasury's last 500 gold. Other village expenses may still use that reserve.
 
 ## Controls
 
@@ -69,7 +95,7 @@ Use an axe on trees, a pickaxe on quarry stones, and a scythe on wheat. Equip th
 1. Start the server and join a village in one browser.
 2. Open another browser or a private window, register a different account, and join the same village. Both characters should appear in the same world. Two normal tabs may share the same stored login.
 3. Gather timber, stone, and wheat using their corresponding tools. Check that nearby resources change for both players and that successful actions reduce tool durability.
-4. Bring resources to the Village Treasury and donate them to village stock, then repair a damaged gate or keep with the hammer. Verify that stock is consumed and repair earnings stop increasing after ten successful rewarded repairs in the cycle.
+4. Bring resources to the Village Treasury and sell or donate them to village stock, then repair a damaged gate or keep with the hammer. Verify that stock is consumed and repair earnings stop increasing after ten successful rewarded repairs in the cycle.
 5. Defend together at night. Check that zombies approach along the road, engage defenders, and damage an undefended gate. Try priest support with the second player.
 6. If a dwarf is downed, wait for dawn and choose whether to revive them or click respawn. Respawn should require a player action.
 7. Deposit wallet gold in the bank, leave, and sign in again. Close both game sessions and confirm that returning to the village resumes its paused simulation.
@@ -113,10 +139,10 @@ Account passwords are salted and hashed with scrypt; the database stores hashed 
 
 ## Deploy as a separate Railway service
 
-The project is available in [TylerOusley/emberwatch](https://github.com/TylerOusley/emberwatch). Railway deployment and the website link are the remaining hosting steps:
+The project is available in [TylerOusley/emberwatch](https://github.com/TylerOusley/emberwatch). Tyler has deployed it on Railway at https://www.bobbybgames.com. For a new deployment, use these settings:
 
 1. Use the `TylerOusley/emberwatch` repository with this project at its root. Keep `package-lock.json`, `Dockerfile`, `public`, `server`, and `shared` in the repository. Do not upload your local `data` directory.
-2. In Railway, create a new service from that repository. Use the root `Dockerfile` to build it. The container runs `node server/index.js`; there is no separate frontend build command.
+2. In Railway, create a new service from that repository. Use the root `Dockerfile` to build it. Clear any old Python start-command override, or set **`node server/index.js`**. The container runs `node server/index.js`; there is no separate frontend build command.
 3. Attach a persistent volume to this new service at **`/data`**, then set **`DATA_DIR=/data`**. The application creates its database when it starts. Railway volumes are mounted at runtime, so this must not be moved into a build or pre-deploy command. [Railway volumes](https://docs.railway.com/volumes)
 4. Keep one replica, leave `ALLOW_DEV_TOOLS` unset or set it to `false`, and use **`/health`** as the deployment healthcheck. Let the service use Railway's `PORT`. [Railway healthchecks](https://docs.railway.com/deployments/healthchecks)
 5. Generate a public domain for the new service. Once it is running, visit its HTTPS URL and repeat the two-player and restart checks above.

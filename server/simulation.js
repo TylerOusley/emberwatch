@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { CONFIG, ROAD, GUARD_ROAD, RESOURCES, BUILDINGS, moveWithCollision } from '../shared/world.js';
+import { saleQuote, TREASURY_RESERVE } from '../shared/market.js';
 
 const TOOL_IDS = new Set(['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'heal']);
 const ROLES = new Set(['guard', 'priest', 'villager']);
@@ -116,7 +117,7 @@ export class Simulation {
       if (!node || !state || !state.available) throw new Error('That resource is regrowing.');
       if (distance(player, node) > 3.3) throw new Error('Move closer to gather.');
       use({ timber: 'axe', stone: 'pickaxe', wheat: 'scythe' }[node.type]);
-      if (Object.values(player.inventory).reduce((a, b) => a + b, 0) >= 60) throw new Error('Your pack is full. Donate materials at the treasury.');
+      if (Object.values(player.inventory).reduce((a, b) => a + b, 0) >= 60) throw new Error('Your pack is full. Sell or donate materials at the treasury.');
       player.inventory[node.type] += 1;
       player.durability[tool] -= 1;
       state.remaining -= 1;
@@ -165,6 +166,24 @@ export class Simulation {
       const delta = kind === 'deposit' ? action.amount : -action.amount;
       this.store.transaction(() => { this.store.bank(player.id, delta); player.wallet -= delta; this.store.saveVillage(village); });
       message = kind === 'deposit' ? 'Gold secured in your personal bank.' : 'Gold withdrawn to your wallet.';
+    } else if (kind === 'sell') {
+      if (!nearBuilding(player, 'bank')) throw new Error('Visit the Village Treasury to sell your resources.');
+      const { resource, amount, minTotal } = action;
+      // Quote validation rejects unknown resources and non-integer/oversized sales.
+      // The callback is synchronous, so another player's sale cannot interleave.
+      const total = saleQuote(resource, village.stock[resource], amount);
+      if (!Number.isSafeInteger(minTotal) || minTotal < 1) throw new Error('Request a current whole-gold sale quote.');
+      if (!Number.isSafeInteger(player.inventory[resource]) || player.inventory[resource] < amount) throw new Error(`You do not have enough ${resource} to sell.`);
+      if (total < minTotal) throw new Error('The price changed as village stock increased. Review the new quote and try again.');
+      if (!Number.isSafeInteger(village.treasury) || village.treasury - total < TREASURY_RESERVE) throw new Error(`The village must keep ${TREASURY_RESERVE} gold for essential expenses. Try a smaller sale or return later.`);
+      if (!Number.isSafeInteger(player.wallet) || !Number.isSafeInteger(player.wallet + total)) throw new Error('Your wallet cannot accept this sale.');
+      // Validate the entire sale before changing any inventory or balance. One saved
+      // village state contains the stock transfer and both sides of the gold transfer.
+      player.inventory[resource] -= amount;
+      village.stock[resource] += amount;
+      village.treasury -= total;
+      player.wallet += total;
+      message = `Sold ${amount} ${resource} for ${total} gold. Gold added to your wallet.`;
     } else if (kind === 'donate') {
       if (action.targetId === 'barracks') {
         if (!nearBuilding(player, 'barracks')) throw new Error('Bring wheat to The Watch to feed the guards.');
@@ -250,11 +269,12 @@ export class Simulation {
         player.hunger = Math.max(0, (player.hunger ?? 100) - dt * .05);
         const input = this.inputs.get(player.id);
         const fresh = input && performance.now() - input.received < 700;
+        // Gathering and blessings can turn toward a target without walking.
+        if (fresh) player.yaw = input.yaw;
         if (fresh && Math.hypot(input.x, input.z) > .02) {
           player.healing = null;
           const speed = input.sprint && player.hunger > 0 ? CONFIG.sprintSpeed : CONFIG.speed;
           moveWithCollision(player, input.x * speed * dt, input.z * speed * dt);
-          player.yaw = input.yaw;
           if (village.clock > player.animationUntil) player.anim = input.sprint ? 'run' : 'walk';
         } else if (village.clock > player.animationUntil) player.anim = 'idle';
         if (player.healing) {

@@ -10,6 +10,12 @@ The first milestone demonstrates a new 3D village, third-person movement, animat
 
 The complete design below is the target, **not a list of features already implemented**. Player plots, production buildings, crafted upgraded equipment, the complete treasury economy, voting/steward decisions, church beds/carrying, loans, merchant trade, horses/carts, and owned defenses require later milestones. Prototype building scenery is not a substitute for those systems.
 
+## Build 02 update
+
+The core milestone now includes a persistent hunger meter and selling wheat, timber, and stone to the treasury. Sales use whole-gold, stock-dependent unit prices, recalculate every unit in a bundle, protect a 500-gold purchasing reserve, and reject a quote if another sale reduces its payout before execution. These price bands and the reserve are provisional balance settings in `shared/market.js`; this is only the first part of the planned economy. Taxes, player shops, merchant exports and steward/voting logic remain unimplemented.
+
+Entrance orientation, access lanes, building trim, tool-specific animations, and remote movement interpolation have been improved. They do not add building ownership or construction.
+
 ## Village survival
 
 - Humans play dwarfs only. Zombies are controlled by the game.
@@ -145,7 +151,7 @@ Loans are planned, using a limited lending pool and approved purchases rather th
 ## Delivery milestones
 
 1. **Current foundation:** standalone visual identity, movement, public multiplayer villages, authoritative gathering/combat/repairs, pause/resume, and saved accounts/villages.
-2. **Village economy:** finite market transactions, complete payroll, food tiers, dynamic prices, merchant exports, and steward proposals/voting.
+2. **Village economy:** basic stock-priced resource selling is implemented; remaining work includes buying/trading, complete payroll, food tiers, dynamic prices, merchant exports, and steward proposals/voting.
 3. **Ownership and crafting:** plot purchases/conversions/taxes, private harvesting splits, tool/sword/tinker shops, and equipment tiers.
 4. **Care and defenses:** owned barracks and supplies, tower ammunition/upgrades, carrying and church beds, full death/recovery handling.
 5. **Longer-term progression:** horses/carts, carry weights, loans, additional enemy variety, balance, art/animation refinement, accessibility, and hosting load tests.

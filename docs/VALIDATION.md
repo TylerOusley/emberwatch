@@ -1,5 +1,19 @@
 # First Light build validation
 
+## Build 02: player-feedback update
+
+Date: 2026-09-14. Adds a persistent hunger HUD, stock-priced resource selling, building entrance/path corrections, tool-specific animation, and remote movement interpolation. Existing save structures are unchanged.
+
+The automated suite now contains **20 passing tests**: the eight original server tests below, six market tests, and six interpolation tests. Market checks cover scarcity/surplus prices, per-unit bulk price changes, inventory and treasury conservation, invalid/range/funds rejection, two real WebSocket sellers with a stale quote, and SQLite reload. Movement checks cover irregular snapshot timing, shortest-angle turns, stationary/stalled streams, bounded history, and teleport resets.
+
+Additional Node/Three.js checks constructed the world and character rigs without a browser renderer. All eight building fronts and approaches were checked against the shared collision map; side paths and curbs avoid solid footprints. Animation transforms remained finite across seven role/tool combinations at 30, 60, and 120 updates per second, including role/tool replacement and down/revive transitions. These checks verify structure and timing, not visual quality.
+
+**Build 02 has not been visually rendered or playtested in the current cloud browser.** Its graphics context is disabled. Tyler reported that the previous deployed build supports account creation, gathering, banking, food, two-player synchronization, priest healing, and surviving a night. He could not test repairing the gate because enemies did not reach it. This feedback is distinct from the automated checks.
+
+The original build-01 browser results are retained below as historical evidence; they do not validate the changed build-02 visuals.
+
+## Build 01 baseline
+
 Build date: 2026-09-14. Original standalone codebase; no changes to the previous games.
 
 ## Automated checks
@@ -27,6 +41,6 @@ The interaction test used server-side test fixtures to place the player beside r
 
 ## Scope and remaining checks
 
-This is the first playable foundation. It is not the full design in DESIGN.md. Player plots and owned buildings, upgraded tools, the market and steward, taxes, loans, horses, church beds, and advanced NPC navigation are later milestones.
+This is the first playable foundation. It is not the full design in DESIGN.md. Player plots and owned buildings, upgraded tools, the market and steward, taxes, loans, horses, church beds, and advanced NPC navigation are later milestones. Build 02 adds basic resource selling as described above.
 
-Railway has not been deployed or inspected. These checks do not establish a hardware frame-rate target or simultaneous multi-village hosting capacity. Test on the target computers and configure the persistent Railway volume before retaining real player progress.
+Tyler has since deployed the game on Railway and reported the live checks noted above. The cloud browser reached the login screen but could not create a WebGL context, and separate live endpoint probes timed out. These checks do not establish a hardware frame-rate target or simultaneous multi-village hosting capacity. Test on the target computers and configure the persistent Railway volume before retaining real player progress.

@@ -57,6 +57,12 @@ test('HTTP authentication, real WebSocket multiplayer synchronization, and stale
   assert.equal(synced.state.players.find(q => q.id === p.id).tool, 'axe');
   assert.equal(synced.state.players.find(q => q.id === p.id).wallet, undefined, 'other players never receive private wallet or bank values');
   assert.ok(p.x - oldX <= 5.4 * .1 + .001);
+  const beforeTurn = { x: p.x, z: p.z };
+  a.ws.send(JSON.stringify({ type: 'input', x: 0, z: 0, yaw: .75, sprint: false, tool: 'axe' }));
+  await waitFor(() => app.simulation.inputs.get(p.id)?.yaw === .75);
+  app.simulation.tick(.1); app.broadcast();
+  await waitFor(() => b.queue.find(m => m.type === 'state' && m.state.players.find(q => q.id === p.id)?.yaw === .75));
+  assert.equal(p.x, beforeTurn.x); assert.equal(p.z, beforeTurn.z, 'stationary tool aiming is shared without moving the player');
   app.simulation.inputs.get(p.id).received = -100000;
   const stoppedX = p.x; app.simulation.tick(.1); assert.equal(p.x, stoppedX, 'disconnected/stalled input never makes a dwarf walk forever');
   assert.throws(() => app.simulation.input(village.id, p.id, { x: Infinity, z: 0, yaw: 0 }), /Invalid movement/);

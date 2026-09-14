@@ -67,3 +67,9 @@
 .welcome h1{font-size:clamp(36px,3.2vw,48px);letter-spacing:-1.2px}.welcome-foot{line-height:1.6}#world:focus{outline:none}
 
 #nameplates{position:absolute;inset:0;pointer-events:none}.nameplate{position:absolute;top:0;left:0;text-align:center;min-width:67px;font-size:10px;color:#e5e6cf;text-shadow:0 1px 4px #081215}.nameplate>i{display:block;width:46px;height:3px;margin:5px auto 0;background:#111b21c9;border:1px solid #bed3b233;box-sizing:content-box}.nameplate b{display:block;height:100%;background:#98c8c0}.nameplate.enemy b{background:#bf866e}.nameplate.enemy{color:#edcbbb}
+
+/* Persistent needs display and stock-priced treasury trade. */
+.hunger-label{display:flex;justify-content:space-between;gap:8px;margin-top:11px;font-size:8px;letter-spacing:1.2px;color:#c0b58f}
+.hunger-label strong{font-weight:400;letter-spacing:0;color:#ead9a9;font-variant-numeric:tabular-nums}
+.meter.hunger{height:5px;margin-top:6px}.hunger i{background:linear-gradient(90deg,#ad8844,#edc878)}.hunger.low i{background:#e28a62}
+.market-row{padding:14px 0;border-bottom:1px solid #c0c7ad20}.market-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}.market-heading strong{display:flex;align-items:center;gap:7px;font-weight:500}.market-heading svg{width:18px;height:18px;color:var(--gold)}.market-heading>span{font-size:11px;color:#bdcbbb}.market-row p{font-size:11px;margin:8px 0 10px}.market-buttons{display:flex;gap:6px;flex-wrap:wrap}.market-buttons button{flex:1;white-space:nowrap}dialog button:disabled{opacity:.42;cursor:not-allowed}.market-buttons button:disabled:hover{background:#7a805d22}
