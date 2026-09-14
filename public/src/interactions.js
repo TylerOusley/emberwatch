@@ -1,5 +1,5 @@
-const RESOURCE_TOOLS = { axe: 'timber', pickaxe: 'stone', scythe: 'wheat' };
-const SERVICES = new Set(['bank', 'shop', 'food', 'church', 'barracks']);
+const RESOURCE_TOOLS = { axe: ['timber'], pickaxe: ['stone', 'iron', 'coal'], scythe: ['wheat'] };
+const SERVICES = new Set(['bank', 'shop', 'food', 'church', 'barracks', 'stable', 'merchant', 'keep']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 export function nearestGatherable(player, tool, nodes, states) {
@@ -8,7 +8,7 @@ export function nearestGatherable(player, tool, nodes, states) {
   const available = new Set(states.filter(s => s.available).map(s => s.id));
   let target = null, nearest = 3.3;
   for (const node of nodes) {
-    if (node.type !== type || !available.has(node.id)) continue;
+    if (!type.includes(node.type) || !available.has(node.id)) continue;
     const gap = distance(player, node);
     if (gap <= nearest) { nearest = gap; target = node; }
   }

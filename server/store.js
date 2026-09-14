@@ -14,11 +14,21 @@ export class Store {
       CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,salt TEXT NOT NULL,password_hash TEXT NOT NULL,bank INTEGER NOT NULL DEFAULT 0 CHECK(bank>=0),starter_granted INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS villages(id TEXT PRIMARY KEY,state TEXT NOT NULL,updated INTEGER NOT NULL);`);
+    // Account credit is restricted purchasing power, never protected savings or
+    // spendable wallet gold. Migrate existing Railway databases without a reset.
+    const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));
+    for (const name of ['debt', 'credit', 'repayment_remainder']) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE accounts ADD COLUMN ${name} INTEGER NOT NULL DEFAULT 0 CHECK(${name}>=0)`);
+    }
+    this.transactionDepth = 0;
   }
   transaction(fn) {
-    this.db.exec('BEGIN IMMEDIATE');
-    try { const result = fn(); this.db.exec('COMMIT'); return result; }
-    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    const depth = this.transactionDepth++, savepoint = `nested_${depth}`;
+    try {
+      this.db.exec(depth ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE');
+      try { const result = fn(); this.db.exec(depth ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT'); return result; }
+      catch (error) { this.db.exec(depth ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK'); if (depth) this.db.exec(`RELEASE SAVEPOINT ${savepoint}`); throw error; }
+    } finally { this.transactionDepth--; }
   }
   async authenticate(mode, name, password) {
     if (!['register', 'login'].includes(mode)) throw new Error('Choose register or login.');
@@ -47,9 +57,9 @@ export class Store {
   }
   accountFromToken(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
-    return this.db.prepare('SELECT a.id,a.name,a.bank,a.starter_granted FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').get(digest(token), Date.now()) ?? null;
+    return this.db.prepare('SELECT a.id,a.name,a.bank,a.starter_granted,a.debt,a.credit FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').get(digest(token), Date.now()) ?? null;
   }
-  account(id) { return this.db.prepare('SELECT id,name,bank,starter_granted FROM accounts WHERE id=?').get(id); }
+  account(id) { return this.db.prepare('SELECT id,name,bank,starter_granted,debt,credit,repayment_remainder FROM accounts WHERE id=?').get(id); }
   initialWallet(id) {
     const account = this.account(id);
     if (account.starter_granted) return 0;
@@ -59,6 +69,23 @@ export class Store {
   bank(id, difference) {
     const result = this.db.prepare('UPDATE accounts SET bank=bank+? WHERE id=? AND bank+?>=0').run(difference, id, difference);
     if (!result.changes) throw new Error('Insufficient savings.');
+  }
+  issueCredit(id, amount, maximum = 200) {
+    if (!Number.isSafeInteger(amount) || amount < 1 || !Number.isSafeInteger(maximum) || maximum < 1) throw new Error('Choose a whole-gold loan amount.');
+    const result = this.db.prepare('UPDATE accounts SET debt=debt+?,credit=credit+? WHERE id=? AND debt+?<=?').run(amount, amount, id, amount, maximum);
+    if (!result.changes) throw new Error(`Outstanding loans may not exceed ${maximum} gold.`);
+  }
+  spendCredit(id, amount) {
+    if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('Invalid purchase credit amount.');
+    if (!amount) return;
+    const result = this.db.prepare('UPDATE accounts SET credit=credit-? WHERE id=? AND credit>=?').run(amount, id, amount);
+    if (!result.changes) throw new Error('You do not have enough approved purchase credit.');
+  }
+  repayDebt(id, amount, remainder) {
+    if (!Number.isSafeInteger(amount) || amount < 0 || (remainder !== undefined && (!Number.isSafeInteger(remainder) || remainder < 0 || remainder >= 100))) throw new Error('Invalid debt repayment.');
+    const account = this.account(id);
+    if (!account || amount > account.debt) throw new Error('Repayment exceeds your outstanding debt.');
+    this.db.prepare('UPDATE accounts SET debt=debt-?,repayment_remainder=? WHERE id=?').run(amount, amount === account.debt ? 0 : remainder ?? account.repayment_remainder, id);
   }
   saveVillage(village) { this.db.prepare('INSERT INTO villages VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,updated=excluded.updated').run(village.id, JSON.stringify(village), Date.now()); }
   loadVillages() { return this.db.prepare('SELECT state FROM villages').all().map(row => JSON.parse(row.state)); }

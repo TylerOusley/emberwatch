@@ -1,4 +1,18 @@
-# First Light build validation
+# Emberwatch build validation
+
+## Build 04: the full village map and connected progression systems
+
+Date: 2026-09-14. The Watch now faces the central street and its two guards leave the east entrance. The map contains 40 internal plots and eight exterior deeds, connected streets, stable and merchant services, and public iron/coal sites. All eleven plot building types have server actions and matching scene geometry. This is the first integrated playtest of ownership, crafting, treasury policies, food tiers, church care, owned defenses, horses, carts and purchase credit.
+
+The automated suite contains **99 passing tests**. It includes actual HTTP/WebSocket authentication and multiplayer transactions, persistent SQLite saves and legacy account migration, finite resource/crafting/ammunition ledgers, exact private-harvest shares, role wages and tax accounting, steward approval/veto, safe merchant exports, manual respawn and church rescue, protected bank/loan separation, and obstacle-aware NPC movement. Integration checks exercise construction with occupants, a guard leaving a rear barracks through a fully built map, and an injected save failure that must roll back both village state and account credit. Combat regressions check attacks across a gate, a healing channel interrupted by downing, and full-pack tool purchases.
+
+New clients opt into state patches; old clients continue receiving full snapshots. Real WebSocket tests merge updates back to the exact authoritative state, verify reconnect baselines and private fields, and measure 40-byte idle updates versus 27,410-byte full snapshots, and about 1,450-byte movement updates versus 27,460-byte full snapshots in the test fixture. These are protocol measurements, not a production bandwidth guarantee.
+
+All 26 client/shared/server JavaScript modules pass syntax and local import resolution checks. The HTML has 67 unique IDs. Six UI tests exercise displayed trade quotes, construction from stored materials, equipment replacement confirmation, church treatment, safe resident-name rendering, focused form preservation, and every service/building panel branch using a narrow DOM harness. These do not establish browser layout or usability.
+
+Node/Three.js scene checks construct the map, all eleven building types and upgrades, four-bed church coordinates, ruins and collision changes, tower projectile lifecycle, private crop depletion/removal, and all road-facing service approaches without a GPU. Character probes cover tool motion at 30/60/120 Hz plus 4,320 bow/mount/carry/down transition frames with finite transforms and clean disposal.
+
+**This update has not been visually playtested in the available cloud browser, whose WebGL context is disabled.** Full-screen layout, lighting, mounted and carrying poses, eight-player frame rates, long survival runs, and economy/combat balance still need playtesting on the actual game. No live player data or production test accounts were modified during these checks. Existing Railway saves are migrated in place; neither a database reset nor a new village is required.
 
 ## Build 03: village chat and quarry access
 

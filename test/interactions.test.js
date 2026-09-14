@@ -22,3 +22,11 @@ test('gathering chooses the nearest available matching resource within server re
   assert.equal(chooseInteraction(player, 'pickaxe', nodes, depleted, [church]).kind, 'church');
   assert.equal(chooseInteraction({ ...player, downed: true }, 'pickaxe', nodes, states, [church]), null);
 });
+
+test('every pickaxe tier can target public or private iron and coal nodes', () => {
+  const ore = [{ id: 'iron', type: 'iron', x: 27, z: -22 }, { id: 'plot:mine:coal', type: 'coal', x: 27, z: -20 }];
+  const availability = ore.map(node => ({ ...node, available: true }));
+  assert.ok(['iron', 'plot:mine:coal'].includes(nearestGatherable(player, 'pickaxe', ore, availability).id));
+  assert.equal(nearestGatherable(player, 'pickaxe', ore, availability.map(node => ({ ...node, available: node.id === 'iron' }))).id, 'iron');
+  assert.equal(nearestGatherable(player, 'axe', ore, availability), null);
+});

@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#182329"><title>Emberwatch — Hold the gate</title>
   <meta name="description" content="Build by daylight. Stand together at night. An original cooperative dwarf survival game.">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/chat.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/settlement.css">
   <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
 </head>
 <body>
@@ -13,7 +13,7 @@
   <div id="loading"><div class="crest large">E</div><p>Lighting the hearths…</p></div>
   <div id="fatal" hidden><h1>The village couldn’t load.</h1><p id="fatal-message"></p><button onclick="location.reload()">Try again</button></div>
   <main id="lobby" class="lobby">
-    <header class="lobby-top"><a class="wordmark" href="/" aria-label="Emberwatch home"><span class="crest">E</span><span>EMBERWATCH</span></a><span class="build-label"><i></i> FIRST LIGHT <span> / </span> PLAYABLE BUILD 03</span></header>
+    <header class="lobby-top"><a class="wordmark" href="/" aria-label="Emberwatch home"><span class="crest">E</span><span>EMBERWATCH</span></a><span class="build-label"><i></i> FIRST LIGHT <span> / </span> PLAYABLE BUILD 04</span></header>
     <section class="welcome">
       <p class="eyebrow"><span></span> A COOPERATIVE SURVIVAL ADVENTURE</p>
       <h1>A small village.<br>A long night.</h1>
@@ -45,12 +45,12 @@
     <div id="village-chat"></div>
     <aside class="objectives panel"><p class="eyebrow">THE FIRST WATCH</p><h2 id="objective-title">Make ready for nightfall</h2><p id="objective-text">Gather supplies outside the walls.<br>Stand with the watch when darkness falls.</p><div class="objective-line"><span class="diamond"></span><span id="threat-label">The graveyard stirs at dusk</span></div></aside>
     <div class="fortifications panel"><div><span>GATE</span><strong id="gate-text">1,200 / 1,200</strong></div><div class="meter"><i id="gate-bar"></i></div><div class="keep-line"><span>HEARTHKEEP</span><strong id="keep-text">2,000 / 2,000</strong></div><div class="meter small"><i id="keep-bar"></i></div></div>
-    <aside class="map-panel"><div class="map-heading"><span id="residents-label">1 ONLINE · 0 OFFLINE</span><span>N ↑</span></div><canvas id="minimap" width="220" height="220" aria-label="Village map: gold is you, blue are allies, red are enemies"></canvas><div class="map-footer"><i></i><span id="location-label">VILLAGE SQUARE</span></div></aside>
+    <aside class="map-panel"><div class="map-heading"><span id="residents-label">1 ONLINE · 0 OFFLINE</span><span>N ↑</span></div><button id="map-button" title="Open village atlas (M)" aria-label="Open village atlas"><canvas id="minimap" width="220" height="220" aria-label="Village map: gold is you, blue are allies, red are enemies"></canvas></button><div id="waypoint-label">M · ATLAS & PLAYER SHOPS</div><div class="map-footer"><i></i><span id="location-label">VILLAGE SQUARE</span></div></aside>
     <div id="interaction" hidden><kbd>E</kbd><div><strong id="interaction-title"></strong><span id="interaction-subtitle"></span></div></div>
     <div id="nameplates"></div>
     <div id="crosshair"><i></i></div>
     <div id="toast-area" aria-live="polite"></div>
-    <section class="player-panel"><div class="player-top"><span class="portrait" id="role-portrait"></span><div><strong id="player-name">Adventurer</strong><span id="player-role">VILLAGER</span></div><span class="wallet"><span>◈</span> <strong id="wallet">50</strong></span></div><div class="hp-label"><span>HEALTH</span><strong id="hp-text">100 / 100</strong></div><div class="meter health"><i id="hp-bar"></i></div><div class="hunger-label"><span id="hunger-label">HUNGER</span><strong id="hunger-text">100 / 100</strong></div><div id="hunger-meter" class="meter hunger" role="progressbar" aria-label="Hunger" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="hunger-bar"></i></div><div class="supplies" id="supplies"></div></section>
+    <section class="player-panel"><div class="player-top"><span class="portrait" id="role-portrait"></span><div><strong id="player-name">Adventurer</strong><span id="player-role">VILLAGER</span></div><span class="wallet"><span>◈</span> <strong id="wallet">50</strong></span></div><div class="hp-label"><span>HEALTH</span><strong id="hp-text">100 / 100</strong></div><div class="meter health"><i id="hp-bar"></i></div><div class="hunger-label"><span id="hunger-label">HUNGER</span><strong id="hunger-text">100 / 100</strong></div><div id="hunger-meter" class="meter hunger" role="progressbar" aria-label="Hunger" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="hunger-bar"></i></div><div class="supplies" id="supplies"></div><div id="carry-status"></div></section>
     <section class="hotbar-wrap"><p id="tool-caption">WOODEN SWORD <span>·</span> Hold your ground</p><div id="hotbar" class="hotbar"></div><p class="control-hint"><kbd>W A S D</kbd> Move <span>·</span> <kbd>SHIFT</kbd> Sprint <span>·</span> Hold right mouse to look <span>·</span> Left click to use</p></section>
     <button id="inventory-button" class="pack-button" title="Supplies and village stores (I)"><span>▤</span><span>SUPPLIES <kbd>I</kbd></span></button>
     <div id="downed" hidden><div class="downed-card"><p class="eyebrow">THE WATCH IS NOT OVER</p><h2>You have fallen.</h2><p id="downed-message">A priest can bring you back. You can choose to respawn when dawn arrives.</p><button id="respawn-button" class="primary-button" disabled>WAITING FOR DAWN</button><p class="fine-print">Respawning removes your carried inventory and 25% of your wallet. Bank savings remain safe.</p></div></div>
