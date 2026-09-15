@@ -20,7 +20,7 @@ export function createWorld(scene) {
     dirt:mat('#705d3f'), fabric:mat('#ac6249'), fabricLight:mat('#dfbd7e'), blue:mat('#416c79'), purple:mat('#766080'),
     water:mat('#648c8c',{roughness:.2,metalness:.25}), embers:mat('#f6c971',{emissive:'#ff9b36',emissiveIntensity:1.3}),
     geology:mat('#ffffff',{vertexColors:true,roughness:.98}),
-    cloud:mat('#d4ded2',{flatShading:true}), mountain:mat('#7b9386',{flatShading:true}), mountainLight:mat('#95a596',{flatShading:true})
+    mountain:mat('#7b9386',{flatShading:true}), mountainLight:mat('#95a596',{flatShading:true})
   };
   const boxG = new THREE.BoxGeometry(1,1,1), cylinderG = new THREE.CylinderGeometry(1,1,1,8), coneG = new THREE.ConeGeometry(1,1,7);
   const sphereG = new THREE.IcosahedronGeometry(1,0), dummy = new THREE.Object3D();
@@ -455,17 +455,6 @@ export function createWorld(scene) {
   fence(-30,-14,6.5);fence(-30,-14,5.5,true);fence(17,44,8.5);fence(25.5,44,7,true);
   // Distant forest provides depth without changing navigation inside the village.
   for(let i=0;i<53;i++){const side=i%2?1:-1;tree(side*(119+rng()*27),-131+rng()*252,20000+i,true);}
-  const grassG=new THREE.BufferGeometry();grassG.setAttribute('position',new THREE.Float32BufferAttribute([-.065,0,0,.065,0,0,.025,.48,0,0,0,-.07,0,0,.07,.03,.34,0],3));grassG.setIndex([0,1,2,3,4,5]);grassG.computeVertexNormals();
-  const grassMat=mat('#789a53',{side:THREE.DoubleSide});
-  const laneSamples=lanes.map(({curve,width})=>({points:curve.getSpacedPoints(Math.ceil(curve.getLength())),margin:width/2+.45}));
-  for(let i=0;i<1450;i++){
-    const x=WORLD_BOUNDS.minX+rng()*(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX),z=WORLD_BOUNDS.minZ+rng()*(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ);
-    const nearRoad=laneSamples.some(lane=>lane.points.some(p=>Math.hypot(p.x-x,p.z-z)<lane.margin));
-    const occupied=BUILDINGS.some(b=>Math.abs(x-b.x)<b.w/2+1.3&&Math.abs(z-b.z)<b.d/2+1.3);
-    if(nearRoad||occupied||Math.hypot(x,z+66)<8.2||PLOTS.some(p=>Math.abs(x-p.x)<p.w/2+.6&&Math.abs(z-p.z)<p.d/2+.6)||Math.abs(z-18)<2||Math.abs(x)>85&&Math.abs(x)<89&&z<18||x>16&&x<27&&z>43&&z<52||x> -31&&x< -23&&z> -15&&z< -8)continue;
-    batch(grassG,grassMat,x,.015,z,.6+rng()*.8,.45+rng()*.9,.6+rng()*.8,0,rng()*6.28,0);
-    if(i%23===0){batch(sphereG,i%2?M.fabricLight:M.purple,x,.3,z,.075,.06,.075);}
-  }
   // Graveyard: the only incoming route, readable from the road and gate.
   const graveX=20,graveZ=104;
   const graveGround=mesh(new THREE.CircleGeometry(14,15),mat('#6e7960'),root,graveX,.005,graveZ);graveGround.rotation.x=-Math.PI/2;graveGround.castShadow=false;
@@ -491,12 +480,13 @@ export function createWorld(scene) {
   }
   // Flush repeated architectural details into a small number of draw calls.
   for(const {geo,material,transforms} of batches.values()){
-    const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=material!==grassMat;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);
+    const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=true;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);
   }
+  const details=createWorldDetails(lanes);root.add(details.root);
   const plotsWorld=createPlotsWorld(root);
   let previousNight=-1;
   function update(time,nightAmount=0,state={}){
-    plotsWorld.update(state,time);
+    plotsWorld.update(state,time);details.update(time);
     const t=time,night=THREE.MathUtils.clamp(nightAmount,0,1);
     for(const item of wind){if(item.o.visible)item.o.rotation.z=Math.sin(t*1.4+item.phase)*item.amount;}
     for(const item of flickers){item.o.material.opacity=.035+night*.1+Math.sin(t*6+item.phase)*.01;}
@@ -527,7 +517,7 @@ export function createWorld(scene) {
     const target=nearby?1:0;
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;
   }
-  return {root,resources,gate,update,road:mainRoad,lanterns,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
+  return {root,resources,gate,update,road:mainRoad,lanterns,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
 }
 
 // Build-time curb clipping uses the exact triangles of the rendered roads,
@@ -724,4 +714,191 @@ export function createResourceEffects(parent,{maxParticles=192,maxGhosts=16}={})
     get stats(){return {events,ghosts:ghosts.length,particles:chips.mesh.count+dust.mesh.count,particleCapacity:chips.slots.length+dust.slots.length};},
     dispose(){reset();records.clear();for(const pool of [chips,dust]){pool.mesh.dispose();pool.mesh.geometry.dispose();pool.mesh.material.dispose();}parent.remove(root);}
   };
+}
+
+// Decorative plants use a separate fixed seed from buildings/resources: adding
+// a flower cannot relocate a grave, change a harvestable tree, or alter a save.
+// The footprint includes each mesh's full horizontal spread, not just its stem.
+export function createWorldDetailLayout(lanes=[]){
+  const random=seeded(58021),items=[],cellSize=6,blocked=new Map(),trees=RESOURCES.filter(n=>n.type==='timber');
+  const key=(x,z)=>`${x},${z}`;
+  function reserve(shape,minX,maxX,minZ,maxZ){
+    for(let x=Math.floor(minX/cellSize);x<=Math.floor(maxX/cellSize);x++)for(let z=Math.floor(minZ/cellSize);z<=Math.floor(maxZ/cellSize);z++){
+      const k=key(x,z);if(!blocked.has(k))blocked.set(k,[]);blocked.get(k).push(shape);
+    }
+  }
+  function circle(x,z,r){reserve({x,z,r},x-r,x+r,z-r,z+r);}
+  function rect(x,z,w,d){reserve({x,z,w,d},x-w/2,x+w/2,z-d/2,z+d/2);}
+  for(const {curve,width} of lanes){
+    const points=curve.getSpacedPoints(Math.ceil(curve.getLength()*2));
+    for(const point of points)circle(point.x,point.z,width/2+.52);
+  }
+  for(const b of BUILDINGS){
+    rect(b.x,b.z,b.w+1.6,b.d+1.6);
+    const yaw=b.yaw??0,half=Math.abs(Math.sin(yaw))>.5?b.w/2:b.d/2;
+    // The entire doorway/counter approach stays clear, including its sides.
+    for(const depth of [half+.4,half+1.5,half+2.7])circle(b.x+Math.sin(yaw)*depth,b.z+Math.cos(yaw)*depth,2.25);
+  }
+  for(const wall of WALLS)rect(wall.x,wall.z,wall.w+.7,wall.d+.7);
+  for(const plot of PLOTS){rect(plot.x,plot.z,plot.w+1.5,plot.d+1.5);const front=plotFront(plot);circle(front.x,front.z,2.1);}
+  for(const n of RESOURCES)circle(n.x,n.z,n.type==='timber'?1.25:n.type==='wheat'?.65:1.95);
+  circle(8,-4,6.05);circle(0,-66,8.5);rect(0,18,21,7);
+  // Beds, public fields and the visiting wagon's complete parked footprint.
+  rect(15.8,-14,5.6,11.5);rect(-27,-11.3,7.6,6.4);rect(21,47.5,9.5,8.1);
+  rect(-14.9,-74.4,13.1,6.8);circle(20,104,13.2);
+  const clear=(x,z,r)=>{
+    if(x-r<WORLD_BOUNDS.minX||x+r>WORLD_BOUNDS.maxX||z-r<WORLD_BOUNDS.minZ||z+r>WORLD_BOUNDS.maxZ)return false;
+    for(let gx=Math.floor((x-r)/cellSize);gx<=Math.floor((x+r)/cellSize);gx++)for(let gz=Math.floor((z-r)/cellSize);gz<=Math.floor((z+r)/cellSize);gz++)for(const block of blocked.get(key(gx,gz))??[]){
+      if(block.r!==undefined?Math.hypot(x-block.x,z-block.z)<r+block.r:Math.abs(x-block.x)<block.w/2+r&&Math.abs(z-block.z)<block.d/2+r)return false;
+    }
+    return true;
+  };
+  const radii={grass:.40,fern:.64,shrub:.65,flowers:.37,litter:.63,cover:.65};
+  function add(kind,x,z,scale=1,zone){
+    const radius=radii[kind]*scale;if(!clear(x,z,radius))return false;
+    zone??=Math.hypot(x-20,z-104)<21?'graveyard':Math.abs(x)>88||z>25||z< -89&&Math.abs(x)>13&&Math.abs(x)<33?'woodland':'village';
+    items.push({kind,x,z,scale,radius,yaw:random()*Math.PI*2,variant:Math.floor(random()*3),zone});return true;
+  }
+  // Patches leave breathing room between clumps, instead of a uniform grid.
+  for(let patch=0;patch<310;patch++){
+    let x=-108+random()*216,z=-141+random()*265;
+    if(patch<90&&lanes.length){
+      const lane=lanes[Math.floor(random()*lanes.length)],t=random(),p=lane.curve.getPoint(t),tangent=lane.curve.getTangent(t),side=random()<.5?-1:1,offset=side*(lane.width/2+1.35+random()*2.6);
+      x=p.x+tangent.z*offset;z=p.z-tangent.x*offset;
+    }
+    const patchRadius=2.4+random()*3.4;
+    for(let blade=0;blade<16;blade++){
+      const angle=random()*6.283,r=Math.sqrt(random())*patchRadius,px=x+Math.cos(angle)*r,pz=z+Math.sin(angle)*r;
+      add('grass',px,pz,.6+random()*.75);
+      if(blade%7===0&&Math.hypot(px-20,pz-104)>23)add('flowers',px+.38,pz-.24,.65+random()*.5);
+    }
+    if(patch%3===0)add('shrub',x,z,.7+random()*.5);
+    if(patch%2===0)add('cover',x+.7,z+.9,1+random()*.6);
+  }
+  // Forest floor accents stay around trees, leaving their gathering ring open.
+  for(const tree of trees)for(let i=0;i<7;i++){
+    const a=random()*6.283,r=2.05+random()*2.45,x=tree.x+Math.cos(a)*r,z=tree.z+Math.sin(a)*r;
+    add(i%3===0?'fern':'litter',x,z,.65+random()*.65,'woodland');
+    if(i%2===0)add('grass',x+.75,z+.4,.65+random()*.6,'woodland');
+  }
+  // Small tended flower beds flank cottage/shop walls; their frontages remain
+  // empty. No permanent landscaping is placed on player-owned building plots.
+  for(const building of BUILDINGS.filter(b=>!['keep','merchant','stable','barracks'].includes(b.id))){
+    const yaw=building.yaw??0,halfSide=Math.abs(Math.sin(yaw))>.5?building.d/2:building.w/2;
+    for(const side of [-1,1])for(let i=0;i<8;i++){
+      const across=side*(halfSide+1.6+(i%2)*.48),along=-1.5+Math.floor(i/2)*.75;
+      const x=building.x+Math.cos(yaw)*across+Math.sin(yaw)*along,z=building.z-Math.sin(yaw)*across+Math.cos(yaw)*along;
+      add('flowers',x,z,.9,'village');if(i%3===0)add('cover',x,z,.8,'village');
+    }
+  }
+  // Dry, low grasses and fallen leaves frame the graveyard, not its spawn road.
+  for(let i=0;i<150;i++){
+    const a=random()*6.283,r=14+random()*6,x=20+Math.cos(a)*r,z=104+Math.sin(a)*r;
+    add(i%3?'grass':'litter',x,z,.55+random()*.7,'graveyard');
+  }
+  return items;
+}
+
+// Instanced ground plants and wall ivy share a single wind uniform. Their low silhouettes and
+// leaf-shaped geometry make them scenery rather than extra harvestable nodes.
+export function createWorldDetails(lanes=[]){
+  const root=new THREE.Group();root.name='Village gardens and woodland floor';
+  const layout=createWorldDetailLayout(lanes),time={value:0};
+  function geometry(kind){
+    const p=[],colors=[],random=seeded(90+kind.length),green=new THREE.Color('#8fa75e'),shade=new THREE.Color('#617b43'),pale=new THREE.Color('#dcd29d');
+    function triangle(a,b,c,color){p.push(...a,...b,...c);for(let i=0;i<3;i++)colors.push(color.r,color.g,color.b);}
+    function leaf(a,b,width,color=green){
+      const dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz)||1,nx=-dz/length*width,nz=dx/length*width;
+      const mid=[(a[0]+b[0])*.5,(a[1]+b[1])*.5+.022,(a[2]+b[2])*.5];
+      triangle(a,[mid[0]+nx,mid[1],mid[2]+nz],b,color);triangle(a,b,[mid[0]-nx,mid[1],mid[2]-nz],color);
+    }
+    if(kind==='grass')for(let i=0;i<6;i++){
+      const angle=i*2.4,height=.26+random()*.34,x=(random()-.5)*.34,z=(random()-.5)*.34,lean=.11+random()*.15;
+      const direction=[Math.cos(angle),Math.sin(angle)],normal=[-direction[1],direction[0]],width=.022+random()*.02;
+      for(let segment=0;segment<3;segment++){
+        const a=segment/3,b=(segment+1)/3,wa=width*(1-a),wb=width*(1-b),cx=x+direction[0]*lean*a*a,cz=z+direction[1]*lean*a*a,tx=x+direction[0]*lean*b*b,tz=z+direction[1]*lean*b*b;
+        const left=[cx+normal[0]*wa,height*a,cz+normal[1]*wa],right=[cx-normal[0]*wa,height*a,cz-normal[1]*wa],topLeft=[tx+normal[0]*wb,height*b,tz+normal[1]*wb],topRight=[tx-normal[0]*wb,height*b,tz-normal[1]*wb];
+        const c=shade.clone().lerp(green,(a+b)*.5);triangle(left,right,topLeft,c);if(segment<2)triangle(right,topRight,topLeft,c);
+      }
+    }
+    if(kind==='fern')for(let frond=0;frond<5;frond++){
+      const angle=frond*2.4,length=.44+random()*.16,dx=Math.cos(angle),dz=Math.sin(angle);
+      leaf([0,0,0],[dx*length,.18,dz*length],.018,shade);
+      for(let i=1;i<6;i++)for(const side of [-1,1]){
+        const t=i/6,y=Math.sin(t*Math.PI)*.30+.04,width=(1-t)*.18;
+        leaf([dx*length*t,y,dz*length*t],[dx*length*(t+.12)-dz*width*side,y-.06,dz*length*(t+.12)+dx*width*side],.035+width*.13,green);
+      }
+    }
+    if(kind==='shrub')for(let stem=0;stem<6;stem++){
+      const a=stem*2.4,h=.30+random()*.36,dx=Math.cos(a),dz=Math.sin(a),spread=.20+random()*.17;
+      leaf([0,0,0],[dx*spread,h,dz*spread],.018,shade);
+      for(let layer=1;layer<=3;layer++)for(const side of [-1,1]){
+        const t=layer/3,x=dx*spread*t,z=dz*spread*t;
+        leaf([x,h*t,z],[x-dz*.18*side+dx*.13,h*t+.065,z+dx*.18*side+dz*.13],.085,layer%2?green:shade);
+      }
+    }
+    if(kind==='flowers')for(let stem=0;stem<3;stem++){
+      const x=(random()-.5)*.38,z=(random()-.5)*.38,h=.25+random()*.25;
+      leaf([x,0,z],[x+.03,h,z],.014,shade);leaf([x,h*.35,z],[x+.16,h*.5,z+.05],.05,green);
+      for(let petal=0;petal<5;petal++){
+        const a=petal*Math.PI*2/5;
+        leaf([x+.03,h,z],[x+.03+Math.cos(a)*.08,h+.018,z+Math.sin(a)*.08],.04,pale);
+      }
+      const c=new THREE.Color('#deb753');triangle([x-.007,h+.023,z-.025],[x+.065,h+.023,z-.025],[x+.03,h+.025,z+.04],c);
+    }
+    if(kind==='litter')for(let i=0;i<8;i++){
+      const a=random()*6.283,x=(random()-.5)*.65,z=(random()-.5)*.65;
+      leaf([x,.006,z],[x+Math.cos(a)*.20,.01+random()*.015,z+Math.sin(a)*.20],.06,new THREE.Color(i%3?'#947146':'#77613d'));
+    }
+    if(kind==='cover')for(let i=0;i<11;i++){
+      const a=i*2.4,r=.13+random()*.36,x=Math.cos(a)*r,z=Math.sin(a)*r;
+      for(let petal=0;petal<3;petal++){
+        const b=petal*2.094;leaf([x,.01,z],[x+Math.cos(b)*.13,.025,z+Math.sin(b)*.13],.065,i%3?green:shade);
+      }
+    }
+    const result=new THREE.BufferGeometry();result.setAttribute('position',new THREE.Float32BufferAttribute(p,3));result.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));result.computeVertexNormals();result.computeBoundingSphere();return result;
+  }
+  const palette={village:['#e4ebbd','#d6dfa9','#c9ddb0'],woodland:['#aabc91','#bdcba0','#a7bf95'],graveyard:['#c4b996','#b4af8a','#a2ac8b']};
+  const material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1});
+  material.onBeforeCompile=shader=>{
+    shader.uniforms.detailTime=time;
+    shader.vertexShader='uniform float detailTime;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+      #ifdef USE_INSTANCING
+      float breeze = sin(detailTime * 1.45 + instanceMatrix[3].x * .29 + instanceMatrix[3].z * .17);
+      transformed.x += breeze * .10 * position.y * position.y;
+      transformed.z += sin(detailTime * .93 + instanceMatrix[3].z * .2) * .055 * position.y * position.y;
+      #endif`);
+  };
+  material.customProgramCacheKey=()=> 'emberwatch-ground-foliage-v1';
+  const dummy=new THREE.Object3D(),tint=new THREE.Color();let triangles=0;
+  for(const kind of ['grass','fern','shrub','flowers','litter','cover']){
+    const entries=layout.filter(item=>item.kind===kind);if(!entries.length)continue;
+    const geo=geometry(kind),instance=new THREE.InstancedMesh(geo,material,entries.length);instance.name=`Decorative ${kind}`;instance.castShadow=false;instance.receiveShadow=true;
+    for(const [i,item] of entries.entries()){
+      dummy.position.set(item.x,-.125,item.z);dummy.rotation.set(0,item.yaw,0);dummy.scale.setScalar(item.scale);dummy.updateMatrix();instance.setMatrixAt(i,dummy.matrix);
+      tint.set(palette[item.zone][item.variant]);if(kind==='flowers'&&item.variant===2)tint.set('#bdb3d8');instance.setColorAt(i,tint);
+    }
+    instance.computeBoundingBox();instance.computeBoundingSphere();instance.boundingSphere.radius+=.15;root.add(instance);triangles+=geo.attributes.position.count/3*entries.length;
+  }
+  // Ivy climbs only the rear corners of permanent civic/cottage buildings.
+  // Keeping it off front and side facades leaves doors, signs and beds readable.
+  const ivySites=BUILDINGS.filter(b=>['house1','house2','bank','church'].includes(b.id));
+  const ivyGeometry=geometry('cover'),ivy=new THREE.InstancedMesh(ivyGeometry,material,ivySites.length*10),ivyPlacements=[];
+  ivy.name='Decorative wall ivy';ivy.castShadow=false;ivy.receiveShadow=true;
+  const wallTurn=new THREE.Quaternion(),leafTurn=new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI/2,0,0));
+  for(const building of ivySites){
+    const yaw=building.yaw??0,quarter=Math.abs(Math.sin(yaw))>.5,w=quarter?building.d:building.w,d=quarter?building.w:building.d;
+    wallTurn.setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
+    for(const side of [-1,1])for(let row=0;row<5;row++){
+      const localX=side*(w/2-.72)-side*Math.sin(row*1.1)*.18,localZ=-d/2-.10;
+      const x=building.x+Math.cos(yaw)*localX+Math.sin(yaw)*localZ,z=building.z-Math.sin(yaw)*localX+Math.cos(yaw)*localZ;
+      dummy.position.set(x,.28+row*.39,z);dummy.quaternion.copy(wallTurn).multiply(leafTurn);dummy.scale.setScalar(.62-row*.045);dummy.updateMatrix();
+      const index=ivyPlacements.length;ivy.setMatrixAt(index,dummy.matrix);ivy.setColorAt(index,tint.set(row%2?'#a7bc91':'#bbcc9e'));ivyPlacements.push({building:building.id,x,z,y:dummy.position.y});
+    }
+  }
+  ivy.computeBoundingBox();ivy.computeBoundingSphere();root.add(ivy);triangles+=ivyGeometry.attributes.position.count/3*ivy.count;
+  root.userData.ivyPlacements=ivyPlacements;
+  root.userData.detailLayout=layout;root.userData.detailStats={instances:layout.length+ivy.count,drawCalls:root.children.length,triangles};
+  return {root,update(seconds){time.value=Number.isFinite(seconds)?seconds:0;},time};
 }

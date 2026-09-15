@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 08.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 09.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The requested systems now have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Grass clumps, ferns, wildflowers, shrubs, clover, fallen leaves and small patches of wall ivy give the village and woodland more detail. Plants sway in a breeze, with clear roads, doors, plots and gathering approaches. The sky now has drifting cloud layers, a sun that rises and sets, a visible moon and stars, and warm dawn/dusk lighting. It follows the village’s actual clock, including joining mid-cycle and pausing. Right-drag can look upward to follow the sky. [Sky cycle preview](docs/previews/sky-cycle.jpg).
 
 Natural mineral beds replace scattered boulders. Trees react and fall when exhausted; mineral deposits chip and crumble as they are mined. Horses have sculpted, articulated models and share the rendered rider transform while mounted. Sword grips follow the hand. Routine successful strikes, gathering and repairs no longer produce pop-ups; other notices sit in a corner. Downed players can rotate the camera while deciding whether to wait for a rescue.
 
@@ -104,7 +106,7 @@ Sales use current stock prices, tax, the treasury’s emergency reserve and norm
 | --- | --- |
 | W / A / S / D | Walk, or ride while mounted. |
 | Shift | Sprint while hunger allows. |
-| Hold right mouse and move | Turn the third-person camera, including while downed. |
+| Hold right mouse and move | Turn the third-person camera and look upward, including while downed. |
 | Left mouse | Use the selected weapon, tool, food, or blessing. |
 | 1–8 / mouse wheel | Select a configured hotbar slot. |
 | E | Gather a matching nearby resource or interact with a service, plot, horse, cart, or downed companion. |
