@@ -2,11 +2,15 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — crate gameplay build 15.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — admin testing build 16.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 16 adds a dedicated admin testing account with a one-time grant of **10,000,000 personal bank gold**. It also starts each new village with **10,000,000 wallet gold**. Its village menu includes **Refill test gold**, which tops both balances up to ten million without reducing a higher balance. Purchases, crates, equipment and survival use the normal game rules. Other accounts retain their ten-gold start.
+
+Testing access is restricted to authenticated account UUIDs in `server/admin.js`; names and client-supplied admin fields never grant access. Initial bank funding is recorded once in SQLite and does not repeat on login or restart. Refill writes the bank and current wallet in one transaction. Credentials are supplied separately and must never be committed. To revoke testing controls, remove the account UUID from that server allowlist and deploy; previously granted gold remains. This does not enable the global `ALLOW_DEV_TOOLS` flag.
 
 Build 15 connects the crate collection to gameplay. Open **Crates & equipment** from the signed-in lobby or village menu to open earned crates, spend personal bank gold or shared crate credits, and choose the next run’s loadout. Each tier shows its exact pool, equal odds and duplicate return before opening. The server saves the result before a short reel animation; Skip and reconnect keep the same outcome.
 
@@ -236,7 +240,7 @@ The game runs its authoritative simulation in one Node process. Use **one servic
 
 Existing databases migrate in place: account savings are preserved, loan fields are added, and saved villages receive the expansion state without restarting the run. Do not delete the Railway volume or database to install this update. Preserve the entire data directory. For a manual backup, stop the application cleanly before copying it; do not copy only the main database file while the server is writing to it. Keep test databases separate from real player saves. The included ignore files exclude local saves and environment files from normal Git commits and Docker builds.
 
-Account passwords are salted and hashed with scrypt; the database stores hashed session tokens. This is an initial account system, with no email recovery or shared website login. Account administration, operational monitoring, restore drills, and broader abuse/load testing remain work for a public release.
+Account passwords are salted and hashed with scrypt; the database stores hashed session tokens. This is an initial account system, with no email recovery or shared website login. General account administration, operational monitoring, restore drills, and broader abuse/load testing remain work for a public release; Build 16 only adds the restricted testing-funds capability described above.
 
 ## Deploy as a separate Railway service
 

@@ -1,5 +1,16 @@
 # Emberwatch build validation
 
+## Build 16: a funded admin testing account
+
+Validated 2026-09-15 on Node 24: **530/530 tests pass** with `npm test`. The four admin integration tests also pass after tightening the production night-control assertion. Changed runtime modules pass syntax checks, and the diff passes whitespace checks.
+
+- Eight Store tests verify exact existing UUID authorization, one-time initial bank grants, ordinary ten-gold starts, per-village admin wallets, idempotent top-ups, preservation of larger balances, restart/login persistence, revoked access, nonexistent accounts and rollback/retry of failed bank and starter grants.
+- Four integration tests use temporary SQLite databases and real HTTP/WebSocket clients. Missing or expired sessions cannot join; ordinary residents cannot gain privileges through forged IDs, amounts or admin flags. The private admin flag and balances are only included for their owner. The actual `startNight` action remains disabled in production mode.
+- Refill affects only the authenticated tester's bank and active wallet. Downed, bed and mounted states can use it without changing health, healing, cooldown, equipment, loan credit, other residents or village funds. Repeated top-ups do not add more gold. A failed village save rolls back both bank and wallet before retry.
+- Crate purchases still deduct the normal price and record a normal opening. Spent funds and crate history survive reconnect and process restart without another initial grant. A menu smoke check verifies that the refill button is present and wired only for the admin, while global development controls remain hidden.
+
+The requested dedicated testing account was registered on the live game and its generated credentials were verified by signing in. Credentials are provided privately and are excluded from the repository. No existing player's funds or village data were edited. These checks do not constitute an interactive browser playtest.
+
 ## Build 15: persistent crates and equipment
 
 Validated 2026-09-15 on Node 24: **518/518 tests pass** in the complete game suite. The final actor-cleanup change also passes the 15 focused crate UI/equipment tests. JavaScript syntax, local imports and unique HTML IDs were checked; `git diff --check` is clean.

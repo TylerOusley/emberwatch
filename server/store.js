@@ -6,11 +6,15 @@ import { promisify } from 'node:util';
 import { STARTER_GOLD } from '../shared/equipment.js';
 import { freshProgression, normalizeProgression } from '../shared/progression.js';
 import { emptyLoadout } from '../shared/crates.js';
+import { TEST_GOLD, TEST_ADMIN_ACCOUNT_IDS } from './admin.js';
 const scrypt = promisify(scryptCallback);
 const digest = token => createHash('sha256').update(token).digest('hex');
 
 export class Store {
-  constructor(directory) {
+  #testAdminAccountIds;
+  constructor(directory, { testAdminAccountIds = TEST_ADMIN_ACCOUNT_IDS } = {}) {
+    if ((!Array.isArray(testAdminAccountIds) && !(testAdminAccountIds instanceof Set)) || [...testAdminAccountIds].some(id => typeof id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id))) throw new Error('Testing administrators must be configured using exact account UUIDs.');
+    this.#testAdminAccountIds = new Set(testAdminAccountIds);
     mkdirSync(directory, { recursive: true });
     this.db = new DatabaseSync(join(directory, 'emberwatch.sqlite'));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
@@ -26,7 +30,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS crate_grants(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),tier TEXT NOT NULL,milestone INTEGER NOT NULL,result_id TEXT,UNIQUE(account_id,milestone));
       CREATE TABLE IF NOT EXISTS crate_openings(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),request_id TEXT NOT NULL,result TEXT NOT NULL,created INTEGER NOT NULL,UNIQUE(account_id,request_id));
       CREATE TABLE IF NOT EXISTS crate_runs(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),state TEXT NOT NULL,PRIMARY KEY(account_id,village_id));
-      CREATE TABLE IF NOT EXISTS crate_charges(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),source_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL CHECK(state IN ('available','reserved','consumed')),village_id TEXT);`);
+      CREATE TABLE IF NOT EXISTS crate_charges(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),source_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL CHECK(state IN ('available','reserved','consumed')),village_id TEXT);
+      CREATE TABLE IF NOT EXISTS test_admin_bank_grants(account_id TEXT PRIMARY KEY REFERENCES accounts(id),granted_at INTEGER NOT NULL);`);
     // Account credit is restricted purchasing power, never protected savings or
     // spendable wallet gold. Migrate existing Railway databases without a reset.
     const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));
@@ -34,6 +39,15 @@ export class Store {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE accounts ADD COLUMN ${name} INTEGER NOT NULL DEFAULT 0 CHECK(${name}>=0)`);
     }
     this.transactionDepth = 0;
+    try {
+      this.transaction(() => {
+        for (const id of this.#testAdminAccountIds) {
+          if (!this.account(id)) continue;
+          const grant = this.db.prepare('INSERT OR IGNORE INTO test_admin_bank_grants(account_id,granted_at) VALUES(?,?)').run(id, Date.now());
+          if (grant.changes) this.refillTestBank(id);
+        }
+      });
+    } catch (error) { this.db.close(); throw error; }
   }
   transaction(fn) {
     const depth = this.transactionDepth++, savepoint = `nested_${depth}`;
@@ -74,16 +88,30 @@ export class Store {
     return this.db.prepare('SELECT a.id,a.name,a.bank,a.starter_granted,a.debt,a.credit FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').get(digest(token), Date.now()) ?? null;
   }
   account(id) { return this.db.prepare('SELECT id,name,bank,starter_granted,debt,credit,repayment_remainder FROM accounts WHERE id=?').get(id); }
+  isTestAdmin(id) { return typeof id === 'string' && this.#testAdminAccountIds.has(id) && Boolean(this.account(id)); }
+  refillTestBank(id) {
+    if (!this.isTestAdmin(id)) throw Object.assign(new Error('This account cannot use testing funds.'), { statusCode: 403 });
+    return this.transaction(() => {
+      const account = this.account(id);
+      if (!Number.isSafeInteger(account?.bank) || account.bank < 0) throw new Error('Your bank balance cannot be refilled.');
+      const added = Math.max(0, TEST_GOLD - account.bank);
+      if (added) this.bank(id, added);
+      return { bank: account.bank + added, added };
+    });
+  }
   initialWallet(id, villageId = null) {
-    if (villageId) {
-      const result = this.db.prepare('INSERT OR IGNORE INTO starter_grants(account_id,village_id) VALUES(?,?)').run(id, villageId);
+    return this.transaction(() => {
+      const account = this.account(id);
+      if (!account) throw new Error('Sign in before claiming starting gold.');
+      if (villageId) {
+        const result = this.db.prepare('INSERT OR IGNORE INTO starter_grants(account_id,village_id) VALUES(?,?)').run(id, villageId);
+        this.db.prepare('UPDATE accounts SET starter_granted=1 WHERE id=?').run(id);
+        return result.changes ? this.isTestAdmin(id) ? TEST_GOLD : STARTER_GOLD : 0;
+      }
+      if (account.starter_granted) return 0;
       this.db.prepare('UPDATE accounts SET starter_granted=1 WHERE id=?').run(id);
-      return result.changes ? STARTER_GOLD : 0;
-    }
-    const account = this.account(id);
-    if (account.starter_granted) return 0;
-    this.db.prepare('UPDATE accounts SET starter_granted=1 WHERE id=?').run(id);
-    return STARTER_GOLD;
+      return STARTER_GOLD;
+    });
   }
   bank(id, difference) {
     const result = this.db.prepare('UPDATE accounts SET bank=bank+? WHERE id=? AND bank+?>=0').run(difference, id, difference);
