@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindCameraLook, placeOrbitCamera } from '../public/src/camera-controls.js';
+import { bindCameraLook, placeOrbitCamera, createHeldGather } from '../public/src/camera-controls.js';
 
 test('normal camera orbit still aims at the player', () => {
   const player = { x: 8, z: -12 }, position = {}, anchor = {}, lookAt = {};
@@ -45,19 +45,94 @@ function event(target, type, values = {}) {
   const e = new Event(type, { cancelable: true });
   Object.assign(e, values); target.dispatchEvent(e); return e;
 }
-test('right-drag works on the downed overlay while left-click respawn remains available', () => {
-  const world = new EventTarget(), downed = new EventTarget(), host = new EventTarget(), turns = [];
-  let enabled = true, respawns = 0;
-  const control = bindCameraLook({ surfaces: [world, downed], host, enabled: () => enabled, rotate: (x,y) => turns.push([x,y]) });
-  downed.addEventListener('mousedown', e => { if(e.button === 0 && !e.defaultPrevented) respawns++; });
-  event(downed, 'mousedown', { button: 2 }); event(host, 'mousemove', { movementX: 20, movementY: -5 });
-  assert.deepEqual(turns, [[20,-5]]);
-  event(host, 'mouseup', { button: 2 }); event(host, 'mousemove', { movementX: 20 });
-  event(downed, 'mousedown', { button: 0 }); assert.equal(respawns, 1); assert.equal(turns.length, 1);
-  event(world, 'mousedown', { button: 2 }); enabled = false; event(host, 'mousemove', { movementX: 20 });
-  enabled = true; event(host, 'mousemove', { movementX: 20 }); assert.equal(turns.length, 1, 'opening chat/dialog cancels the drag');
-  event(world, 'mousedown', { button: 2 }); event(host, 'blur'); event(host, 'mousemove', { movementX: 20 });
-  assert.equal(turns.length, 1, 'tab changes cannot leave the camera dragging');
-  control.dispose(); event(downed, 'mousedown', { button: 2 }); event(host, 'mousemove', { movementX: 20 });
-  assert.equal(turns.length, 1);
+function pointerFixture({ deferred = false } = {}) {
+  const world = new EventTarget(), downed = new EventTarget(), host = new EventTarget(), doc = new EventTarget(), turns = [], locks = [];
+  let enabled = true, requests = 0;
+  doc.pointerLockElement = null;
+  doc.exitPointerLock = () => { doc.pointerLockElement = null; event(doc, 'pointerlockchange'); };
+  for (const surface of [world, downed]) surface.requestPointerLock = () => { requests++; if (!deferred) { doc.pointerLockElement = surface; event(doc, 'pointerlockchange'); } };
+  const control = bindCameraLook({ surfaces: [world, downed], host, document: doc, enabled: () => enabled, rotate: (x, y) => turns.push([x, y]), onLockChange: locked => locks.push(locked) });
+  return { world, downed, host, doc, turns, locks, control, get requests() { return requests; }, setEnabled(value) { enabled = value; } };
+}
+
+test('a click captures the mouse without swinging; movement needs no held button', () => {
+  const f = pointerFixture();
+  const click = event(f.world, 'mousedown', { button: 0 });
+  assert.equal(click.defaultPrevented, true, 'capture click is consumed before tools');
+  assert.equal(f.control.isLocked(), true);
+  event(f.host, 'mouseup', { button: 0 });
+  event(f.host, 'mousemove', { movementX: 20, movementY: -5 });
+  assert.deepEqual(f.turns, [[20, -5]]);
+  assert.equal(event(f.world, 'mousedown', { button: 0 }).defaultPrevented, false, 'following clicks use equipment');
+  f.doc.exitPointerLock();
+  event(f.host, 'mousemove', { movementX: 20 });
+  assert.equal(f.turns.length, 1, 'Escape/unlock stops camera movement');
+  event(f.world, 'mousedown', { button: 0 });
+  assert.equal(f.control.isLocked(), true, 'click resumes capture');
+  f.control.dispose();
+});
+
+test('opening UI or losing focus releases capture and cannot leave camera movement active', () => {
+  const f = pointerFixture();
+  event(f.world, 'mousedown', { button: 0 });
+  f.setEnabled(false); event(f.host, 'mousemove', { movementX: 20 });
+  assert.equal(f.control.isLocked(), false);
+  f.setEnabled(true); event(f.host, 'mousemove', { movementX: 20 });
+  assert.equal(f.turns.length, 0);
+  event(f.world, 'mousedown', { button: 0 }); event(f.host, 'blur');
+  assert.equal(f.control.isLocked(), false);
+  event(f.world, 'mousedown', { button: 0 }); f.doc.hidden = true; event(f.doc, 'visibilitychange');
+  assert.equal(f.control.isLocked(), false);
+  f.control.dispose(); event(f.world, 'mousedown', { button: 0 });
+  assert.equal(f.control.isLocked(), false);
+});
+
+test('late pointer-lock success after a menu opens is released and overlay buttons remain usable', () => {
+  const f = pointerFixture({ deferred: true });
+  event(f.world, 'mousedown', { button: 0 }); f.control.stop();
+  f.doc.pointerLockElement = f.world; event(f.doc, 'pointerlockchange');
+  assert.equal(f.control.isLocked(), false);
+  const buttonEvent = new Event('mousedown', { cancelable: true });
+  Object.defineProperties(buttonEvent, { button: { value: 0 }, target: { value: { closest: () => true } } });
+  f.downed.dispatchEvent(buttonEvent);
+  assert.equal(buttonEvent.defaultPrevented, false);
+  assert.equal(f.requests, 1, 'respawn button does not capture the mouse');
+  f.control.dispose();
+});
+
+test('held gathering respects cooldown and never catches up in bursts after a slow frame', () => {
+  let now = 0, allowed = true, target = { id: 'iron', tool: 'pickaxe' };
+  const uses = [];
+  const hold = createHeldGather({ now: () => now, canContinue: () => allowed, getTarget: () => target, use: value => uses.push(value.id) });
+  hold.start(target);
+  for (now = 0; now < 620; now += 20) hold.tick();
+  assert.deepEqual(uses, []);
+  hold.tick(); assert.deepEqual(uses, ['iron']);
+  now = 10000; hold.tick(); hold.tick(); assert.deepEqual(uses, ['iron', 'iron']);
+  allowed = false; hold.tick(); allowed = true; now += 1000; hold.tick();
+  assert.equal(uses.length, 2, 'unlock/UI/blur interruption requires a fresh click');
+});
+
+test('depletion, changing tools, moving to a different resource, and mouse release end a held gather', () => {
+  let now = 0, target = { id: 'stone', tool: 'pickaxe' };
+  const uses = [];
+  const hold = createHeldGather({ now: () => now, canContinue: () => true, getTarget: () => target, use: value => uses.push(value.id) });
+  for (const next of [null, { id: 'stone', tool: 'axe' }, { id: 'coal', tool: 'pickaxe' }]) {
+    target = { id: 'stone', tool: 'pickaxe' }; hold.start(target); target = next; now += 620; hold.tick();
+    assert.equal(hold.isActive(), false);
+  }
+  target = { id: 'stone', tool: 'pickaxe' }; hold.start(target); hold.stop(); now += 620; hold.tick();
+  assert.deepEqual(uses, []);
+});
+
+
+test('mouse movement inside menus reports one release and does not flood network input', () => {
+  const f = pointerFixture();
+  event(f.world, 'mousedown', { button: 0 });
+  f.setEnabled(false);
+  for (let i = 0; i < 250; i++) event(f.host, 'mousemove', { movementX: 2 });
+  assert.deepEqual(f.locks, [true, false]);
+  f.control.stop(); event(f.host, 'blur');
+  assert.deepEqual(f.locks, [true, false]);
+  f.control.dispose();
 });

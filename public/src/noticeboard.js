@@ -6,10 +6,13 @@ export const NOTICEBOARD = Object.freeze({ x: -12.91, z: -26.25, yaw: Math.PI / 
 export const NOTICEBOARD_POINT = Object.freeze({ x: -11.65, z: -26.25, id: 'noticeboard', kind: 'noticeboard', name: NOTICEBOARD.name });
 export function canReadNoticeboard(player) {
   return Boolean(player && !player.downed && !(player.hp <= 0) && player.online !== false && !player.bedPlotId && !player.mountedHorseId && !player.carriedBy &&
-    Number.isFinite(player.x) && Number.isFinite(player.z) && player.x >= -12.35 && Math.hypot(player.x - NOTICEBOARD_POINT.x, player.z - NOTICEBOARD_POINT.z) <= 1.75);
+    Number.isFinite(player.x) && Number.isFinite(player.z) && player.x >= -12.75 && Math.hypot(player.x - NOTICEBOARD_POINT.x, player.z - NOTICEBOARD_POINT.z) <= 3.5);
 }
 export function noticeboardTakesPriority(player, candidate) {
-  if (!canReadNoticeboard(player) || candidate?.kind === 'gather') return false;
+  if (!canReadNoticeboard(player)) return false;
+  // E reads the board in its frontage even with a gathering tool selected.
+  // Left click remains available for gathering at the same location.
+  if (candidate?.kind === 'gather') return Math.hypot(player.x - NOTICEBOARD_POINT.x, player.z - NOTICEBOARD_POINT.z) <= 1.75;
   if (!candidate?.building) return true;
   const door = buildingEntrance(candidate.building);
   return !door || Math.hypot(player.x - NOTICEBOARD_POINT.x, player.z - NOTICEBOARD_POINT.z) < Math.hypot(player.x - door.x, player.z - door.z);

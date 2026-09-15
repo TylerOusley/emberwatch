@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAVE_AREAS, CAVE_HEIGHTS, CAVE_ENTRANCE, CAVE_ROUTE, caveAreaAt, caveTierAt, groundHeight, caveDepthAt, seeded } from '../../shared/world.js';
+import { CAVE_AREAS, CAVE_HEIGHTS, CAVE_ENTRANCE, CAVE_ROUTE, caveAreaAt, caveTierAt, groundHeight, caveDepthAt } from '../../shared/world.js';
 
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
 const within=(x,z)=>CAVE_AREAS.some(a=>Math.abs(x-a.x)<a.w/2-1e-7&&Math.abs(z-a.z)<a.d/2-1e-7);
@@ -32,9 +32,10 @@ function coloredGeometry(vertices,colors){const g=new THREE.BufferGeometry();g.s
 export function createCaveWorld(scene){
   const root=new THREE.Group();root.name='The Deepworks cave';scene?.add(root);
   const interior=new THREE.Group(),roof=new THREE.Group(),mouth=new THREE.Group();interior.name='cave-interior';roof.name='cave-ceiling';mouth.name='cave-mouth';root.add(interior,roof,mouth);
-  const owned=new Set(),materials=new Set(),cache=new Map(),batches=new Map(),random=seeded(127401),layout=createCaveLayout();
+  const owned=new Set(),materials=new Set(),cache=new Map(),batches=new Map(),layout=createCaveLayout();
   const material=(name,color,extra={})=>{const m=new THREE.MeshStandardMaterial({color,roughness:.94,...extra});m.name=name;materials.add(m);return m;};
   const rock=material('layered-cave-rock',0xffffff,{vertexColors:true}),floorMat=material('cave-floor',0xffffff,{vertexColors:true,roughness:.98}),wood=material('aged-mine-timber',0x6b5035),woodEnd=material('timber-endgrain',0x463d30),iron=material('mine-ironwork',0x4c5453,{metalness:.55,roughness:.62});
+  const masonry=material('cut-portal-stone',0x858878),brass=material('mine-brass-inlay',0xb69a5d,{metalness:.62,roughness:.47});
   const get=(key,make)=>{if(!cache.has(key)){const g=make();cache.set(key,g);owned.add(g);}return cache.get(key);};
   const box=get('box',()=>new THREE.BoxGeometry(1,1,1)),cylinder=get('cylinder',()=>new THREE.CylinderGeometry(1,1,1,10)),dummy=new THREE.Object3D(),up=new THREE.Vector3(0,1,0);
   const add=(parent,g,mat,name)=>{owned.add(g);const mesh=new THREE.Mesh(g,mat);mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;};
@@ -72,18 +73,62 @@ export function createCaveWorld(scene){
       if(Math.sin(x*7+z*3)>.2)batch(roof,stalactite,rock,[x+.6,groundHeight(x+.6,z-.6)+.018+6.40+roofRelief(x+.6,z-.6)-.17,z-.6],[.19,.54,.22],[0,.4,Math.PI]);
     }
   }
-  // A bedrock arch and sloping shoulders frame the doorway from the village.
+  // Recessed bedrock shoulders support a deliberate hewn-stone facade. All
+  // ground-level architecture remains outside the shared twelve-meter ramp.
   const outcrop=get('portal-rock',()=>{
     const g=new THREE.IcosahedronGeometry(1,1),p=g.attributes.position,colors=[];
     for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i),rough=1+.07*Math.sin(x*21+y*14+z*13);p.setXYZ(i,x*rough,y*rough,z*rough);colors.push(...tint(x*5,y*4,z*5));}g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));g.computeVertexNormals();return g;
   });
   for(const side of[-1,1]){
-    for(let i=0;i<5;i++)batch(mouth,outcrop,rock,[side*(8.7+i*.84),2.5+i*.23,-120.0-i*2.35],[2.0+i*.10,3.0+i*.14,2.7],[.05,side*.22+i*.19,.03]);
-    for(let i=0;i<4;i++)batch(mouth,outcrop,rock,[side*(8.9+i*.5),6.0,-120-i*3.8],[2.5,2.3,3.1],[.12,.1*i,side*.12]);
+    for(let i=0;i<5;i++)batch(mouth,outcrop,rock,[side*(9.4+i*.57),2.7-i*.12,-123.7-i*2.55],[2.4+i*.20,3.0-i*.12,3.35],[.03,side*.13+i*.15,.02]);
+    for(let i=0;i<3;i++)batch(mouth,outcrop,rock,[side*(8.6+i*.77),5.05-i*.42,-124.6-i*3.8],[2.0+i*.35,2.3-i*.20,3.6],[.06,.1*i,side*.06]);
   }
   const crown=new THREE.Group();crown.name='mouth-rock-crown';mouth.add(crown);
-  for(let i=0;i<4;i++)batch(crown,outcrop,rock,[(i-1.5)*2.9,7.6,-123.0],[2.5,1.7,4.8],[0,i*.1,(i-1.5)*.06]);
+  for(let i=0;i<4;i++)batch(crown,outcrop,rock,[(i-1.5)*2.9,7.35,-125.2],[2.5,1.35,4.8],[0,i*.1,(i-1.5)*.035]);
+  // Shared bevel geometry catches the light on individual masonry joints.
+  const dressedBlock=get('dressed-portal-block',()=>{
+    const shape=new THREE.Shape();shape.moveTo(-.46,-.46);shape.lineTo(.46,-.46);shape.lineTo(.46,.46);shape.lineTo(-.46,.46);shape.closePath();
+    const g=new THREE.ExtrudeGeometry(shape,{depth:.92,bevelEnabled:true,bevelThickness:.04,bevelSize:.04,bevelSegments:1,steps:1});g.translate(0,0,-.46);return g;
+  });
+  for(const side of[-1,1]){
+    const x=side*7.25;
+    for(let row=0;row<6;row++)batch(mouth,dressedBlock,masonry,[x,.48+row*.88,-119.05],[2.12,.85,1.85]);
+    for(const [height,width,depth]of [[.18,2.43,2.0],[5.40,2.48,2.08]])batch(mouth,dressedBlock,masonry,[x,height,-119.06],[width,.29,depth]);
+    // Broad buttresses anchor the frame without scattered boulders at its feet.
+    for(let row=0;row<4;row++)batch(mouth,dressedBlock,masonry,[side*(9.35-row*.12),.50+row*.93,-120.65-row*.10],[2.0-row*.12,.91,3.7]);
+    const timberX=side*6.33;
+    beam(mouth,[timberX,.12,-120.22],[timberX,5.55,-120.22],.43,.48);
+    for(const y of[.47,2.70,5.10]){
+      batch(mouth,box,iron,[timberX,y,-120.22],[.49,.19,.54]);
+      batch(mouth,cylinder,brass,[timberX,y,-119.92],[.07,.06,.07],[Math.PI/2,0,0]);
+    }
+    beam(crown,[timberX,4.70,-120.22],[timberX-side*.82,5.56,-120.22],.25,.28);
+    for(const y of[.80,4.65])batch(mouth,dressedBlock,iron,[side*7.25,y,-118.085],[.50,.50,.065],[0,0,Math.PI/4]);
+  }
+  for(let i=0;i<7;i++)batch(crown,dressedBlock,masonry,[(i-3)*2.05,6.13,-119.02],[2.01,1.17,1.95]);
+  beam(crown,[-6.38,5.58,-120.22],[6.38,5.58,-120.22],.35,.54);
+  batch(crown,dressedBlock,masonry,[0,6.94,-119.02],[15.85,.39,2.12]);
+  // The broad nameplate and crossed picks make the destination legible from
+  // the village. Inlaid letter strokes are actual mesh geometry, not a texture.
+  batch(crown,dressedBlock,woodEnd,[0,6.14,-117.99],[5.75,.91,.18]);
+  for(const y of[5.75,6.53])batch(crown,box,brass,[0,y,-117.885],[5.43,.035,.045]);
+  const glyphs={D:[[0,0,0,1],[0,1,.72,1],[.72,1,1,.78],[1,.78,1,.22],[1,.22,.72,0],[.72,0,0,0]],E:[[0,0,0,1],[0,1,1,1],[0,.5,.78,.5],[0,0,1,0]],P:[[0,0,0,1],[0,1,1,1],[1,1,1,.53],[1,.53,0,.53]],W:[[0,1,.20,0],[.20,0,.5,.47],[.5,.47,.80,0],[.80,0,1,1]],O:[[0,.15,0,.85],[0,.85,.18,1],[.18,1,.82,1],[.82,1,1,.85],[1,.85,1,.15],[1,.15,.82,0],[.82,0,.18,0],[.18,0,0,.15]],R:[[0,0,0,1],[0,1,1,1],[1,1,1,.53],[1,.53,0,.53],[.47,.53,1,0]],K:[[0,0,0,1],[0,.45,1,1],[.3,.62,1,0]],S:[[1,1,0,1],[0,1,0,.53],[0,.53,1,.53],[1,.53,1,0],[1,0,0,0]]};
+  [...'DEEPWORKS'].forEach((letter,i)=>{for(const [x0,y0,x1,y1]of glyphs[letter])beam(crown,[-2.24+i*.51+x0*.36,5.90+y0*.49,-117.86],[-2.24+i*.51+x1*.36,5.90+y1*.49,-117.86],.043,.039,brass);});
+  batch(crown,dressedBlock,iron,[0,7.51,-119.30],[1.32,1.32,.15],[0,0,Math.PI/4]);
+  for(const side of[-1,1]){
+    beam(crown,[side*.47,7.05,-119.18],[-side*.40,7.88,-119.18],.075,.085,wood);
+    beam(crown,[-side*.68,7.61,-119.14],[-side*.44,7.91,-119.14],.085,.085,brass);
+    beam(crown,[-side*.44,7.91,-119.14],[-side*.08,8.03,-119.14],.085,.085,brass);
+  }
+  // Low sleepers and two continuous rails follow the authoritative slope;
+  // decorative track never introduces a raised collision step in the ramp.
+  for(let z=-117.3;z>=-140;z-=1.75){
+    const y=groundHeight(0,z);batch(mouth,box,woodEnd,[0,y+.035,z],[3.13,.055,.25]);
+    for(const x of[-1.12,1.12])batch(mouth,box,iron,[x,y+.075,z],[.25,.035,.31]);
+  }
+  for(const x of[-1.12,1.12])for(const [from,to]of [[-116.5,-118],[-118,-140.5]])beam(mouth,[x,groundHeight(x,from)+.092,from],[x,groundHeight(x,to)+.092,to],.105,.10,iron);
   const torchFixtures=[];
+  for(const side of[-1,1])torchFixtures.push({id:`cave-portal-torch-${side}`,x:side*7.25,y:2.8,z:-117.90,mount:'wall',nx:0,nz:1,alwaysLit:true,height:1.02});
   // Underground torches remain lit through daytime for safe navigation.
   function wallTorch(x,z,side=1){torchFixtures.push({id:`cave-torch-${torchFixtures.length}`,x:x+side*.12,y:groundHeight(x,z)+2.45,z:z+.20,mount:'wall',nx:side,nz:0,alwaysLit:true,height:.82});}
   for(const area of CAVE_AREAS){

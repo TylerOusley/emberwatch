@@ -1,5 +1,18 @@
 # Emberwatch build validation
 
+## Build 14: interaction, trading, workers and connection recovery
+
+Validated 2026-09-15 on Node 24: **461/461 tests pass** with `npm test`. Runtime and test JavaScript passed syntax checks, local runtime imports resolve, and `git diff --check` is clean.
+
+- Real HTTP/WebSocket checks exercise authenticated joins, private snapshots, same-session reconnection, lost initial welcomes, stale socket fencing, delayed heartbeat responses, stalled connection cleanup, input bursts, explicit resync and legacy/patch client compatibility. Reconnection never queues or replays transactional actions.
+- Priest tests cover healing public Watch guards and owned recruits, rejecting dead NPC guards, healing interruption, and immediate companion release. Pointer-lock/controller tests cover click capture, camera rotation, menu/blur/unlock release, repeat gathering cadence and cancellation, direct E horse controls and reachable treasury-board priority. A regression prevents repeated menu mouse movement from flooding movement packets.
+- Storage tests preserve the typed amount `10` across input blur and live snapshots, verify exact/max transfer conservation and weight limits, and exercise store/take/deposit/withdraw at the same simulation time. Bank all-transfers persist through SQLite restarts. Cart ownership checks include packed, stored and deployed forms.
+- Player trading tests cover two-sided latest-version confirmation, changed offers, duplicate confirms, private notifications, invalid amounts, current quantities, net pack capacities, gifts, cancellation, timeouts and atomic SQLite rollback/restart cancellation. UI tests verify draft preservation and safe literal names. Equipment, carts, account savings and loan credit are excluded.
+- Worker tests verify productive nighttime work and wages, earned/spent attribute points, owner-only color changes, material isolation between dwarf models, retained XP/attributes/color after SQLite restart, and expanded delivery capacity. All three production building types validate upgrade costs, preserve depletion, regrow with level 2 reserves and reject invalid/duplicate upgrades atomically.
+- Geometry and audio tests cover the new mine facade's clear approach/ramp, portal fixtures and disposal, four-profile sound variation without adjacent repeats, sound cooldowns and voice limits. The actual game geometry was rendered and visually inspected in [the Build 14 cave preview](previews/cave-build14.jpg).
+
+This environment did not provide a live browser control surface. The mine preview uses actual meshes with offline lighting; it is not a live gameplay screenshot. Pointer-lock behavior, complete panel layout, sustained Internet multiplayer performance and economy balance still need a desktop playtest. Automated recovery tests cannot rule out hosting outages or every player-network failure. Existing accounts/villages are retained, and no production player data was modified during validation.
+
 ## Crate art preparation: 20 original models and a review gallery
 
 The complete `npm test` run passes **409/409 tests**. All **73** runtime JavaScript modules pass syntax and local import checks. The game retains **76 unique HTML IDs**; the separate gallery has **26**, with its script, stylesheet and font paths resolving locally.

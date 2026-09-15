@@ -108,6 +108,22 @@ test('worker names and statuses are escaped and clearing the UI drops an old vil
   assert.equal(f.fields.get('worker-0-resource').value, 'timber');
 });
 
+test('worker training and colors show current progress and submit explicit owner actions', t => {
+  const f = fixture(t);
+  Object.assign(f.worker, { level: 1, workXp: 24, upgradePoints: 0, attributes: { gathering: 0, speed: 0, carry: 0 }, color: '#71865b' });
+  f.ui.show('workers');
+  assert.match(f.html, /work day and night/); assert.match(f.html, /24 \/ 25 harvests/);
+  assert.equal(f.button('+1 rank · 1 point').disabled, true);
+  f.worker.workXp = 25; f.worker.level = 2; f.worker.upgradePoints = 1; f.ui.refresh();
+  f.click('+1 rank · 1 point');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'gathering' });
+  f.worker.attributes.gathering = 1; f.worker.upgradePoints = 0; f.ui.refresh();
+  assert.match(f.html, /3.6 seconds \/ harvest/); assert.equal(f.button('+1 rank · 1 point').disabled, true);
+  f.click('Ocean');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_color', workerId: f.worker.id, color: '#4c86a4' });
+  f.worker.color = '#4c86a4'; f.ui.refresh(); assert.equal(f.button('✓ Ocean').disabled, true);
+});
+
 test('worker hiring requires the player entrance while returning workers can wait in the forecourt', t => {
   const f = fixture(t), bank = BUILDINGS.find(b => b.id === 'bank');
   f.ui.show('workers');

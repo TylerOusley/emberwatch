@@ -393,5 +393,14 @@ export function buildClothing(rig, { role = 'villager', variation = 0, palette =
   add(rig.body,ribbon([[0,beltY-.023,beltZ+.021],[0,beltY+.025,beltZ+.021]],.008),brass);
 
   for (const bone of touched) mergeOnBone(bone,own);
-  return { materials: [], skinnedMeshes: skins, dispose() { for (const mesh of skins) mesh.skeleton.dispose(); } };
+  const colored = [];
+  rig.body.traverse(mesh => { if (mesh.isMesh && mesh.material === shirt) colored.push(mesh); });
+  return { materials: [], skinnedMeshes: skins,
+    setColor(color) {
+      const next = color ? fabric(color) : shirt;
+      // Cached fabrics are shared. Replace this rig's references instead of
+      // tinting the shared material and changing every villager's clothing.
+      for (const mesh of colored) mesh.material = next;
+    },
+    dispose() { for (const mesh of skins) mesh.skeleton.dispose(); } };
 }

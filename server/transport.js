@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { BUILDINGS, canStand, moveWithCollision, plotSolids } from '../shared/world.js';
 import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
 import { TRANSPORT, LOANS } from '../shared/transport.js';
+import { moveResource } from '../shared/transfers.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const nearBuilding = (player, id) => canUseBuilding(player, BUILDINGS.find(candidate => candidate.id === id));
@@ -32,6 +33,23 @@ export function chargePurchase(sim, village, player, amount, { credit = false } 
   return { cash, credit: borrowed };
 }
 export const spendGold = (sim, village, player, amount) => chargePurchase(sim, village, player, amount, { credit: true });
+
+export function bankTransfer(sim, village, player, action) {
+  if (!nearBuilding(player, 'bank')) throw new Error('Visit the Village Treasury to use your savings.');
+  const deposit = action.kind === 'deposit', account = sim.store.account(player.id);
+  if (!['deposit', 'withdraw'].includes(action.kind) || !account || !Number.isSafeInteger(account.bank) || !Number.isSafeInteger(player.wallet) || player.wallet < 0 || account.bank < 0) throw new Error('Your savings cannot be transferred.');
+  if (action.max !== undefined && typeof action.max !== 'boolean') throw new Error('Enter a whole gold amount.');
+  const source = deposit ? player.wallet : account.bank, destination = deposit ? account.bank : player.wallet;
+  const amount = action.max === true ? Math.min(source, Number.MAX_SAFE_INTEGER - destination) : action.amount;
+  if (!Number.isSafeInteger(amount) || amount < 1 || (action.max !== true && amount > 1000000)) throw new Error(source ? 'Enter a whole gold amount.' : deposit ? 'Your wallet is empty.' : 'Your savings are empty.');
+  if (amount > source) throw new Error(deposit ? 'You do not have that much gold in your wallet.' : 'Insufficient bank savings.');
+  if (!Number.isSafeInteger(destination + amount)) throw new Error('That account cannot hold more gold.');
+  const delta = deposit ? amount : -amount;
+  const beforeWallet = player.wallet;
+  try { sim.store.transaction(() => { sim.store.bank(player.id, delta); player.wallet -= delta; sim.store.saveVillage(village); }); }
+  catch (error) { player.wallet = beforeWallet; throw error; }
+  return `${amount} gold ${deposit ? 'secured in your personal bank' : 'withdrawn to your wallet'}.`;
+}
 
 // Only earnings enter this path. Deposits, withdrawals and refunds never repay
 // loans automatically. Fractional accounting prevents 1-gold sales evading debt.
@@ -137,13 +155,11 @@ export function transportAction(sim, village, player, action) {
     horse.cartId = cart.id; cart.horseId = horse.id;
     return 'Cart attached. Its cargo travels behind your horse.';
   }
-  const cart = ownerCart(village, player, action.targetId), amount = wholeAmount(action.amount), resource = action.resource;
+  const cart = ownerCart(village, player, action.targetId), resource = action.resource;
   if (!Object.hasOwn(RESOURCE_WEIGHTS, resource)) throw new Error('Choose a stackable resource or food item.');
-  const depositing = action.kind === 'cartDeposit', source = depositing ? player.inventory : cart.storage, destination = depositing ? cart.storage : player.inventory;
-  if ((source[resource] ?? 0) < amount) throw new Error('There are not enough items to move.');
-  const weight = amount * RESOURCE_WEIGHTS[resource];
-  if (depositing ? inventoryWeight(cart.storage) + weight > TRANSPORT.cartCapacity : inventoryWeight(player) + weight > carryCapacity(player)) throw new Error(depositing ? 'The cart cannot carry that much cargo.' : 'Your pack cannot carry that much cargo.');
-  source[resource] -= amount; destination[resource] = (destination[resource] ?? 0) + amount;
+  const depositing = action.kind === 'cartDeposit';
+  const amount = moveResource({ source: depositing ? player : cart.storage, destination: depositing ? cart.storage : player, resource, action,
+    capacity: depositing ? TRANSPORT.cartCapacity : carryCapacity(player), fullMessage: depositing ? 'The cart cannot carry that much cargo.' : 'Your pack cannot carry that much cargo.' });
   return `${amount} ${resource} ${depositing ? 'loaded into' : 'taken from'} your cart.`;
 }
 

@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Store } from './store.js';
 import { Simulation } from './simulation.js';
 import { VillageChat } from './chat.js';
+import { randomUUID } from 'node:crypto';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary' };
@@ -28,6 +29,10 @@ export function createApp(options = {}) {
   const simulation = new Simulation(store, { ...options, devTools: options.devTools ?? process.env.ALLOW_DEV_TOOLS === 'true' });
   const chat = new VillageChat(options.chatClock);
   const sockets = new Map();
+  const reconnectSessions = new Map();
+  const networkClock = options.networkClock ?? (() => performance.now());
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 10000;
+  const heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 45000;
   const authAttempts = new Map();
   let activeAuth = 0;
   const server = createServer(async (req, res) => {
@@ -78,7 +83,8 @@ export function createApp(options = {}) {
     wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws));
   });
   const send = (socket, data) => {
-    if (socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 1024 * 1024) socket.send(JSON.stringify(data));
+    if (socket?.readyState !== WebSocket.OPEN || socket.bufferedAmount >= 1024 * 1024) return false;
+    socket.send(JSON.stringify(data)); return true;
   };
   const sendState = (socket, village, viewerId) => {
     const snapshot = simulation.snapshot(village, viewerId);
@@ -91,8 +97,7 @@ export function createApp(options = {}) {
       const serialized = JSON.stringify(value); next.set(key, serialized);
       if (!previous || previous.get(key) !== serialized) changed[key] = value;
     }
-    send(socket, { type: 'state', patch: Boolean(previous), state: previous ? changed : snapshot });
-    socket.snapshotFields = next;
+    if (send(socket, { type: 'state', patch: Boolean(previous), state: previous ? changed : snapshot })) socket.snapshotFields = next;
   };
   const sendVillage = (identity, data, includeSender = true) => {
     if (!data) return;
@@ -104,33 +109,59 @@ export function createApp(options = {}) {
   };
   wss.on('connection', socket => {
     let identity = null, messages = 0, windowStart = performance.now();
-    socket.alive = true;
-    socket.on('pong', () => { socket.alive = true; });
+    socket.lastSeen = networkClock();
+    socket.on('pong', () => { socket.lastSeen = networkClock(); });
     const joinTimeout = setTimeout(() => { if (!identity) socket.close(1008, 'Sign in to join.'); }, 10000);
     socket.on('message', data => {
       try {
         const now = performance.now();
+        socket.lastSeen = networkClock();
         if (now - windowStart >= 1000) { windowStart = now; messages = 0; }
-        if (++messages > 60) { socket.close(1008, 'Too many messages.'); return; }
+        // Input can arrive in a burst after a paused tab or congested link.
+        // Shed excess messages without disconnecting an otherwise valid game.
+        if (++messages > 120) {
+          if (messages === 121) send(socket, { type: 'error', code: 'RATE_LIMIT', message: 'Too many actions at once. Please slow down.' });
+          return;
+        }
         let message;
         try { message = JSON.parse(data.toString()); } catch { throw new Error('Invalid message.'); }
         if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid message.');
         if (message.type === 'join') {
           if (identity) throw new Error('You have already joined.');
           const account = store.accountFromToken(message.token);
-          if (!account) throw new Error('Your session expired. Please sign in again.');
+          if (!account) throw Object.assign(new Error('Your session expired. Please sign in again.'), { code: 'SESSION_EXPIRED' });
           const previous = sockets.get(account.id);
-          if (previous) throw new Error('This dwarf is already connected. Close the other game tab first.');
+          const clientId = typeof message.clientId === 'string' && /^[a-f0-9]{32}$/.test(message.clientId) ? message.clientId : null;
+          const resumesPrevious = previous && ((typeof message.resumeToken === 'string' && message.resumeToken === previous.resumeToken) || (clientId && clientId === previous.clientId));
+          const previousStale = previous && (previous.readyState !== WebSocket.OPEN || networkClock() - previous.lastSeen >= heartbeatTimeoutMs);
+          if (previous && !resumesPrevious && !previousStale) throw Object.assign(new Error('This dwarf is already connected. Close the other game tab first.'), { code: 'ALREADY_CONNECTED' });
           const player = simulation.join(message.villageId, account, message.role ?? 'villager');
           socket.statePatches = message.statePatches === true;
+          socket.villageId = message.villageId;
+          socket.clientId = clientId;
+          const savedResume = reconnectSessions.get(account.id);
+          socket.resumeToken = resumesPrevious ? previous.resumeToken : savedResume && savedResume.token === message.resumeToken ? savedResume.token : randomUUID();
           identity = { playerId: player.id, villageId: message.villageId, name: account.name };
           sockets.set(player.id, socket); clearTimeout(joinTimeout);
-          send(socket, { type: 'welcome', id: player.id, villageId: message.villageId });
+          reconnectSessions.set(player.id, { token: socket.resumeToken, seen: networkClock() });
+          // Install the replacement before closing its predecessor: delayed
+          // messages and close events from the old socket cannot mutate state.
+          if (previous && previous !== socket) {
+            if (previous.villageId !== identity.villageId) simulation.disconnect(previous.villageId, player.id);
+            previous.close(4001, 'This connection was resumed in another window.');
+            setTimeout(() => { if (previous.readyState !== WebSocket.CLOSED) previous.terminate(); }, 1000).unref();
+          }
+          send(socket, { type: 'welcome', id: player.id, villageId: message.villageId, resumeToken: socket.resumeToken });
           sendState(socket, simulation.villages.get(message.villageId), player.id);
           send(socket, { type: 'chatHistory', messages: chat.history(identity.villageId) });
         } else {
           if (!identity) throw new Error('Join a village first.');
-          if (message.type === 'input') simulation.input(identity.villageId, identity.playerId, message);
+          if (sockets.get(identity.playerId) !== socket) return;
+          if (message.type === 'ping') send(socket, { type: 'pong', nonce: message.nonce });
+          else if (message.type === 'resync') {
+            socket.snapshotFields = null;
+            sendState(socket, simulation.villages.get(identity.villageId), identity.playerId);
+          } else if (message.type === 'input') simulation.input(identity.villageId, identity.playerId, message);
           else if (message.type === 'chat') {
             const entry = chat.post(identity, message.text);
             sendVillage(identity, chat.clearTyping(identity), false);
@@ -142,12 +173,14 @@ export function createApp(options = {}) {
             if (response && !['attack', 'gather', 'repair', 'repairPlot'].includes(message.kind)) send(socket, { type: 'notice', message: response });
           } else throw new Error('Unknown message.');
         }
-      } catch (error) { send(socket, { type: 'error', message: error.message || 'Action failed.' }); }
+      } catch (error) { send(socket, { type: 'error', message: error.message || 'Action failed.', ...(identity ? {} : { code: error.code ?? 'JOIN_FAILED', fatal: true }) }); }
     });
     socket.on('close', () => {
       clearTimeout(joinTimeout);
       if (identity && sockets.get(identity.playerId) === socket) {
         sendVillage(identity, chat.clearTyping(identity), false);
+        const session = reconnectSessions.get(identity.playerId);
+        if (session) session.seen = networkClock();
         sockets.delete(identity.playerId); simulation.disconnect(identity.villageId, identity.playerId);
       }
     });
@@ -171,11 +204,16 @@ export function createApp(options = {}) {
       for (const player of Object.values(village.players)) if (player.online) send(sockets.get(player.id), { type: 'notice', message: notice.message });
     }
   }
-  const heartbeat = setInterval(() => {
-    for (const socket of wss.clients) { if (!socket.alive) socket.terminate(); else { socket.alive = false; socket.ping(); } }
+  function heartbeatCheck() {
+    for (const socket of wss.clients) {
+      if (networkClock() - socket.lastSeen >= heartbeatTimeoutMs) socket.terminate();
+      else if (socket.readyState === WebSocket.OPEN) socket.ping();
+    }
+    for (const [id, session] of reconnectSessions) if (!sockets.has(id) && networkClock() - session.seen > 120000) reconnectSessions.delete(id);
     for (const [key, times] of authAttempts) if (Date.now() - times.at(-1) > 60000) authAttempts.delete(key);
     chat.prune();
-  }, 15000);
+  }
+  const heartbeat = setInterval(heartbeatCheck, heartbeatIntervalMs);
   async function close() {
     clearInterval(timer); clearInterval(heartbeat);
     for (const socket of wss.clients) socket.terminate();
@@ -184,7 +222,7 @@ export function createApp(options = {}) {
     for (const village of simulation.villages.values()) for (const player of Object.values(village.players)) player.online = false;
     simulation.saveAll(); store.close();
   }
-  return { server, wss, simulation, store, broadcast, close };
+  return { server, wss, simulation, store, broadcast, heartbeatCheck, close };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

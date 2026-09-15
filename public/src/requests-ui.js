@@ -88,7 +88,7 @@ export function createRequestsUI({ getState, getMe, getActivePanel, openPanel, c
   }
   function show() { view = { kind: 'board' }; signature = ''; render(); }
   function showDestination(id) { view = { kind: 'destination', id }; signature = ''; render(); }
-  function findBoard() { markAndClose(NOTICEBOARD_POINT); }
+  function findBoard() { if (standing() && canReadNoticeboard(getMe())) show(); else markAndClose(NOTICEBOARD_POINT); }
   function clear() { view = null; signature = ''; drafts.clear(); }
   return { show, showDestination, findBoard, update, clear };
 }

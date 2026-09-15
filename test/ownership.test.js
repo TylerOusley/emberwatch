@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { PLOTS, RESOURCES } from '../shared/world.js';
 import { BUILDING_TYPES, carryCapacity, inventoryWeight, RECIPES, TOOL_TIERS } from '../shared/content.js';
 import { ensureOwnership, ownershipAction, ownershipSnapshot, ownershipTick } from '../server/ownership.js';
+import { PRODUCTION_UPGRADES, plotStorageCapacity, productionNodeCapacity, productionRegrowSeconds } from '../shared/production.js';
 
 function fixture() {
   const player = (id, role = 'villager') => ({ id, name: id, role, online: true, wallet: 10000, inventory: {}, durability: { sword: 100, axe: 100, pickaxe: 100, scythe: 100, hammer: 100 }, x: 0, z: 0, tool: 'sword' });
@@ -20,6 +21,53 @@ function fixture() {
   };
   return { village, owner, visitor, accounts, sim, at, act, built };
 }
+
+test('level-two production upgrades pay displayed costs and preserve prior depletion across every resource', () => {
+  for (const building of ['mine', 'tree_farm', 'wheat_farm']) {
+    const { village, owner, act, built, sim } = fixture(), plot = built(building), cost = PRODUCTION_UPGRADES[building];
+    for (const [id, amount] of Object.entries(cost.resources)) { plot.storage[id] = amount - 1; owner.inventory[id] = 1; }
+    const nodes = village.plotResources.filter(node => node.plotId === plot.id);
+    const active = nodes[0], exhausted = nodes[1];
+    const remaining = active.remaining, beforeHp = plot.maxHp, wallet = owner.wallet, treasury = village.treasury;
+    exhausted.available = false; exhausted.remaining = 0; exhausted.regrowAt = 100;
+    act(owner, { kind: 'upgradeProduction', plotId: plot.id });
+    assert.equal(plot.level, 2); assert.equal(plot.maxHp, Math.round(beforeHp * 1.5));
+    assert.equal(owner.wallet, wallet - cost.gold); assert.equal(village.treasury, treasury + cost.gold);
+    for (const id of Object.keys(cost.resources)) { assert.equal(plot.storage[id], 0); assert.equal(owner.inventory[id], 0); }
+    assert.equal(active.remaining, remaining + productionNodeCapacity(active.type, plot) - productionNodeCapacity(active.type));
+    assert.equal(exhausted.available, false); assert.equal(exhausted.remaining, 0); assert.equal(exhausted.regrowAt, 75);
+    assert.equal(plotStorageCapacity(plot), 2000);
+    assert.throws(() => act(owner, { kind: 'upgradeProduction', plotId: plot.id }), /already level 2/);
+    village.clock = 75; ownershipTick(sim, village, .1);
+    assert.equal(exhausted.remaining, productionNodeCapacity(exhausted.type, plot));
+    assert.equal(exhausted.available, true);
+    for (const resource of new Set(nodes.map(node => node.type))) {
+      const node = nodes.find(node => node.type === resource);
+      node.available = true; node.remaining = 1; owner.tool = resource === 'wheat' ? 'scythe' : resource === 'timber' ? 'axe' : 'pickaxe';
+      Object.assign(owner, { x: node.x, z: node.z });
+      act(owner, { kind: 'gather', targetId: node.id });
+      assert.equal(node.available, false);
+      assert.equal(node.regrowAt - village.clock, productionRegrowSeconds(resource, plot));
+    }
+    const saved = JSON.parse(JSON.stringify(village)); ensureOwnership(saved);
+    assert.equal(saved.plots[0].level, 2); assert.deepEqual(saved.plotResources, village.plotResources);
+  }
+});
+
+test('production upgrades reject missing costs, foreign ownership and ruined buildings without consuming anything', () => {
+  const { village, owner, visitor, at, act, built } = fixture(), plot = built('mine');
+  at(visitor); assert.throws(() => act(visitor, { kind: 'upgradeProduction', plotId: plot.id }), /owner/);
+  plot.storage = { timber: 30, stone: 30, iron: 9 };
+  const before = JSON.stringify({ plot, wallet: owner.wallet, treasury: village.treasury, nodes: village.plotResources });
+  assert.throws(() => act(owner, { kind: 'upgradeProduction', plotId: plot.id }), /10 iron/);
+  assert.equal(JSON.stringify({ plot, wallet: owner.wallet, treasury: village.treasury, nodes: village.plotResources }), before);
+  plot.storage.iron = 10; owner.wallet = 149;
+  assert.throws(() => act(owner, { kind: 'upgradeProduction', plotId: plot.id }), /150 wallet gold/);
+  assert.equal(plot.storage.iron, 10); assert.equal(plot.level, 1);
+  owner.wallet = 150; plot.hp = 0;
+  assert.throws(() => act(owner, { kind: 'upgradeProduction', plotId: plot.id }), /Repair/);
+  assert.equal(owner.wallet, 150);
+});
 
 test('plot purchases enforce proximity, increasing prices and a five-plot limit', () => {
   const { village, owner, visitor, at, act } = fixture();
@@ -159,4 +207,42 @@ test('church conversion is explicit and refuses active patients without charging
   const snap = ownershipSnapshot(village, owner.id);
   assert.equal(snap.plots.length, PLOTS.length); assert.equal(snap.plots[0].ownerName, 'Owner');
   assert.equal(RECIPES.wood_axe, undefined, 'free-material wooden tools stay exclusive to the starter shop');
+});
+
+test('exact and maximum plot transfers conserve supplies and resolve current source and destination limits', () => {
+  const { owner, visitor, at, act, built } = fixture(), plot = built('house');
+  owner.inventory = { timber: 15 }; owner.durability = {};
+  act(owner, { kind: 'plot_deposit', plotId: plot.id, resource: 'timber', amount: 10 });
+  assert.equal(owner.inventory.timber, 5); assert.equal(plot.storage.timber, 10);
+  const before = JSON.stringify([owner.inventory, plot.storage]);
+  for (const amount of [0, -1, 1.5, '10', NaN, Infinity]) assert.throws(() => act(owner, { kind: 'plot_deposit', plotId: plot.id, resource: 'timber', amount }));
+  assert.equal(JSON.stringify([owner.inventory, plot.storage]), before);
+  plot.storage = { wheat: 1495 }; owner.inventory = { stone: 10 };
+  act(owner, { kind: 'plot_deposit', plotId: plot.id, resource: 'stone', max: true });
+  assert.equal(plot.storage.stone, 1); assert.equal(owner.inventory.stone, 9);
+  assert.throws(() => act(owner, { kind: 'plot_deposit', plotId: plot.id, resource: 'stone', max: true }), /full/);
+  owner.inventory = { wheat: carryCapacity(owner) - 5 };
+  plot.storage = { stone: 50 };
+  act(owner, { kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', max: true });
+  assert.equal(owner.inventory.stone, 1); assert.equal(plot.storage.stone, 49);
+  at(visitor); assert.throws(() => act(visitor, { kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', max: true }), /owner/);
+});
+
+test('cart purchases count packed, stored and deployed carts, and gifts check the receiving owner', () => {
+  const { village, owner, visitor, at, act, built } = fixture(), plot = built('tinker_shop');
+  plot.storage = { timber: 200, iron: 100 }; owner.durability = {}; visitor.durability = {}; at(visitor);
+  act(visitor, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' });
+  const before = JSON.stringify([plot.storage, owner.wallet, visitor.wallet, village.treasury]);
+  assert.throws(() => act(visitor, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' }), /one cargo cart/);
+  assert.equal(JSON.stringify([plot.storage, owner.wallet, visitor.wallet, village.treasury]), before);
+  act(visitor, { kind: 'plot_deposit', plotId: plot.id, resource: 'cart', amount: 1 });
+  assert.equal(visitor.inventory.cart, 0); assert.equal(plot.storage.cart, 1);
+  at(owner); assert.throws(() => act(owner, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' }), /one cargo cart/);
+  act(owner, { kind: 'plot_withdraw', plotId: plot.id, resource: 'cart', amount: 1 });
+  assert.equal(owner.inventory.cart, 1, 'moving an owned cart from storage keeps the same ownership');
+  at(visitor); act(visitor, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' });
+  assert.throws(() => act(visitor, { kind: 'plot_deposit', plotId: plot.id, resource: 'cart', max: true }), /one cargo cart/);
+  assert.equal(visitor.inventory.cart, 1); assert.equal(plot.storage.cart, 0);
+  visitor.inventory.cart = 0; village.carts = [{ ownerId: visitor.id, storage: {} }];
+  assert.throws(() => act(visitor, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' }), /one cargo cart/);
 });

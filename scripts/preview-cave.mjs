@@ -69,7 +69,7 @@ const lights=torches.lights.filter(light=>light.visible&&light.intensity>0).map(
 const chambers=CAVE_AREAS.filter(a=>a.kind==='chamber').map(a=>({label:`${a.tier.toUpperCase()}  /  ${-groundHeight(a.x,a.z)} m`,point:[a.x,groundHeight(a.x,a.z)+.15,a.z]}));
 const panels=[
   {id:'overview',projection:'orthographic',view:[.10,2.1,1],hide:['roof','crown'],label:'THREE DESCENDING CHAMBERS',caption:'Ceiling and mouth crown hidden for this cutaway.',chambers},
-  {id:'entrance',projection:'perspective',camera:[4,4,-102],target:[0,2,-123],fov:60,hide:[],label:'THE DEEPWORKS ENTRANCE',caption:'Isolated bedrock mouth and timber-supported descent.'},
+  {id:'entrance',projection:'perspective',camera:[4,4,-102],target:[0,2,-123],fov:60,hide:[],label:'THE DEEPWORKS ENTRANCE',caption:'Dressed stone, brass-inlaid nameplate and a continuous rail descent.'},
   {id:'interior',projection:'perspective',camera:[-2,1,-147],target:[7,-1.5,-161],fov:70,hide:[],label:'INSIDE THE UPPER WORKINGS',caption:'Rock chambers and torch holders; animated fire has its own GLSL preview.',lights}
 ];
 fs.writeFileSync(output,JSON.stringify({format:1,triangles,panels,stats}));

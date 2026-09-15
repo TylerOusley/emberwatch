@@ -27,6 +27,10 @@ function fixture(t, options = {}) {
       return button;
     });
     for (const match of html.matchAll(/<(input|select)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) fields.set(match[3], { tagName: match[1].toUpperCase(), value: match[2].match(/\bvalue="([^"]*)"/)?.[1] || '', max: match[2].match(/\bmax="([^"]*)"/)?.[1] || '' });
+    for (const match of html.matchAll(/<select\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/select>/gs)) {
+      const options = [...match[2].matchAll(/<option\b([^>]*)>/g)];
+      fields.get(match[1]).value = (options.find(option => /\sselected(?:\s|$)/.test(option[1])) || options[0])?.[1].match(/\bvalue="([^"]*)"/)?.[1] || '';
+    }
     for (const match of html.matchAll(/<(p|span|strong)\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/\1>/gs)) fields.set(match[2], { tagName: match[1].toUpperCase(), textContent: match[3] });
     details = [...html.matchAll(/<details\b([^>]*)>/g)].map(match => ({ tagName: 'DETAILS', dataset: { shopInspect: match[1].match(/data-shop-inspect="([^"]+)"/)[1] }, open: /\sopen(?:\s|$)/.test(match[1]) }));
     summaries = [...html.matchAll(/<summary\b([^>]*)>/g)].map(match => ({ tagName: 'SUMMARY', dataset: { shopFocus: match[1].match(/data-shop-focus="([^"]+)"/)[1] }, focus() { document.activeElement = this; } }));
@@ -470,4 +474,40 @@ test('council voting remains remote but submitting a proposal needs a council en
   f.player.x = 100; f.click('Submit proposal');
   assert.equal(f.sent.length, 1);
   assert.equal(f.buttons.find(b => b.text === 'Submit proposal').disabled, true);
+});
+
+test('storage preserves typed 10 and its selected resource after focus moves to a button and a snapshot rerenders', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory.stone = 25;
+  f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, maxHp: 500, storage: { stone: 4 } }];
+  f.visit('plot', site.id);
+  const resource = f.fields.get('storage-resource'), input = f.fields.get('storage-amount');
+  resource.value = 'stone'; resource.onchange(); input.value = '10'; input.oninput();
+  document.activeElement = f.fields.get('storage-store');
+  f.player.hunger--; f.ui.refresh();
+  assert.equal(f.fields.get('storage-resource').value, 'stone');
+  assert.equal(f.fields.get('storage-amount').value, '10');
+  f.click('Store');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_deposit', plotId: site.id, resource: 'stone', amount: 10 });
+  f.fields.get('storage-amount').value = ''; f.fields.get('storage-amount').oninput();
+  assert.equal(f.fields.get('storage-store').disabled, true);
+  f.click('Store max');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_deposit', plotId: site.id, resource: 'stone', max: true });
+  f.click('Take max');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_withdraw', plotId: site.id, resource: 'stone', max: true });
+  f.fields.get('storage-amount').value = '1.5'; f.fields.get('storage-amount').oninput();
+  assert.equal(f.fields.get('storage-take').disabled, true, 'fractional quantities cannot silently round down');
+});
+
+test('bank quantities survive snapshots after blur and all buttons ignore unfinished drafts', t => {
+  const f = fixture(t); f.visit('bank');
+  const field = f.fields.get('bank-amount'); field.value = '37'; field.oninput();
+  document.activeElement = f.fields.get('bank-deposit'); f.player.wallet++; f.ui.refresh();
+  assert.equal(f.fields.get('bank-amount').value, '37');
+  f.click('Deposit'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'deposit', amount: 37 });
+  f.fields.get('bank-amount').value = ''; f.fields.get('bank-amount').oninput();
+  f.click('Deposit all'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'deposit', max: true });
+  f.click('Withdraw all'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'withdraw', max: true });
+  f.player.bank = 0; document.activeElement = f.fields.get('bank-amount'); f.ui.refresh();
+  assert.equal(f.fields.get('bank-withdraw-max').disabled, true);
 });

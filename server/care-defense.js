@@ -14,6 +14,15 @@ const hasStock = (storage, cost) => Object.entries(cost).every(([id, amount]) =>
 const spendStock = (storage, cost) => { for (const [id, amount] of Object.entries(cost)) storage[id] -= amount; };
 const validWallet = (player, amount) => Number.isSafeInteger(player?.wallet) && player.wallet >= amount;
 
+// Public watchmen and paid barracks troops share the same guard roster. Dead
+// troops use the barracks replacement system; a blessing heals living troops.
+export function resolveHealTarget(village, id) {
+  const player = village.players[id];
+  if (player?.online) return { target: player, isGuard: false };
+  const guard = village.guards?.find(guard => guard.id === id && guard.hp > 0);
+  return guard ? { target: guard, isGuard: true } : null;
+}
+
 function entrance(plot) {
   const site = siteFor(plot);
   if (typeof world.plotFront === 'function') return world.plotFront(site, 1);
@@ -210,6 +219,13 @@ export function careAction(sim, village, player, action) {
   if (!kinds.includes(action.kind)) return null;
   ensureCare(village);
   if (!player.online || (player.downed && action.kind !== 'churchLeave')) throw new Error('A living dwarf must perform that action.');
+  // Releasing a companion needs no nearby target and must remain possible if
+  // an old save has left the carrier in an otherwise incompatible state.
+  if (action.kind === 'dropPlayer') {
+    if (!player.carryingId) throw new Error('You are not carrying anyone.');
+    cancelCarry(village, player);
+    return 'Your companion is safely on the ground.';
+  }
   if (player.mountedHorseId) throw new Error('Dismount your horse before using a building or carrying a dwarf.');
   if (player.bedPlotId && action.kind !== 'churchLeave') throw new Error('Leave your church bed before doing that.');
   if (player.carryingId && !['dropPlayer', 'churchTreat'].includes(action.kind)) throw new Error('Put your companion down before doing that.');
@@ -220,11 +236,6 @@ export function careAction(sim, village, player, action) {
     player.healing = null; target.healing = null;
     sim.inputs?.delete(target.id);
     return `Carrying ${target.name}. Walk to a church bed for rescue.`;
-  }
-  if (action.kind === 'dropPlayer') {
-    if (!player.carryingId) throw new Error('You are not carrying anyone.');
-    cancelCarry(village, player);
-    return 'Your companion is safely on the ground.';
   }
   if (action.kind === 'churchLeave') {
     if (!player.bedPlotId) throw new Error('You are not using a church bed.');

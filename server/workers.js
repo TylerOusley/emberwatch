@@ -1,13 +1,14 @@
 import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
-import { RESOURCE_WEIGHTS, STORAGE_CAPACITY, inventoryWeight, carryCapacity } from '../shared/content.js';
+import { RESOURCE_WEIGHTS, inventoryWeight, carryCapacity } from '../shared/content.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
-import { WORKER_RULES as RULES, WORKER_RESOURCES } from '../shared/workers.js';
+import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../shared/workers.js';
+import { plotStorageCapacity, productionRegrowSeconds } from '../shared/production.js';
 import { stepNpcNavigation } from './navigation.js';
 
-const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss']);
+const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss', 'worker_upgrade', 'worker_color']);
 const tools = { wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe' };
 const production = { wheat: 'wheat_farm', timber: 'tree_farm', stone: 'mine', iron: 'mine', coal: 'mine' };
 const publicNodes = new Map(RESOURCES.map(node => [node.id, node]));
@@ -31,9 +32,23 @@ const marketFor = (v, w) => {
   return { x: marketDoor.x - Math.floor(slot / 4) * .6, z: marketDoor.z + (slot % 4 - 1.5) * .9 };
 };
 
+function ensureWorkerProgress(w) {
+  w.workXp = whole(w.workXp) ? Math.min(WORKER_MAX_XP, w.workXp) : 0;
+  const earned = Math.floor(w.workXp / RULES.xpPerPoint);
+  let remaining = earned;
+  const attributes = {};
+  for (const id of Object.keys(WORKER_ATTRIBUTES)) {
+    attributes[id] = whole(w.attributes?.[id]) ? Math.min(RULES.maxAttributeRank, w.attributes[id], remaining) : 0;
+    remaining -= attributes[id];
+  }
+  w.attributes = attributes; w.upgradePoints = remaining; w.level = earned + 1;
+  if (!WORKER_COLORS.some(color => color.value === w.color)) w.color = WORKER_COLORS[0].value;
+}
+
 export function ensureWorkers(v) {
   if (!Array.isArray(v.workers)) v.workers = [];
   for (const w of v.workers) {
+    ensureWorkerProgress(w);
     w.cargo ??= {};
     for (const id of WORKER_RESOURCES) if (!whole(w.cargo[id])) w.cargo[id] = 0;
     w.name ??= `${v.players?.[w.ownerId]?.name ?? 'Village'}'s worker`;
@@ -42,7 +57,7 @@ export function ensureWorkers(v) {
     if (!Number.isFinite(w.paidWorkSeconds) || w.paidWorkSeconds < 0) w.paidWorkSeconds = 0;
     w.paidWorkSeconds = Math.min(RULES.wageSeconds, w.paidWorkSeconds);
     if (!Number.isFinite(w.gatherProgress) || w.gatherProgress < 0) w.gatherProgress = 0;
-    w.gatherProgress = Math.min(RULES.gatherSeconds, w.gatherProgress);
+    w.gatherProgress = Math.min(workerStats(w).gatherSeconds, w.gatherProgress);
     if (typeof w.paused !== 'boolean') w.paused = true;
     w.sourcePlotId ??= null; w.destinationPlotId ??= null;
     w.resource ??= null; w.mode ??= 'sell';
@@ -83,6 +98,19 @@ export function workersAction(sim, v, p, action) {
     return 'Worker hired. Choose a resource and delivery order to begin.';
   }
   const w = ownedWorker(v, p, action.workerId);
+  if (action.kind === 'worker_upgrade') {
+    if (typeof action.attribute !== 'string' || !Object.hasOwn(WORKER_ATTRIBUTES, action.attribute)) throw new Error('Choose gathering, movement or carrying to improve.');
+    if (w.attributes[action.attribute] >= RULES.maxAttributeRank) throw new Error('This worker attribute is fully upgraded.');
+    if (w.upgradePoints < 1) throw new Error(`Your worker earns an upgrade point every ${RULES.xpPerPoint} completed harvests.`);
+    w.attributes[action.attribute]++; ensureWorkerProgress(w);
+    return `${WORKER_ATTRIBUTES[action.attribute].name} improved to ${w.attributes[action.attribute]} / ${RULES.maxAttributeRank}.`;
+  }
+  if (action.kind === 'worker_color') {
+    const color = WORKER_COLORS.find(option => option.value === action.color);
+    if (!color) throw new Error('Choose one of the worker clothing colors.');
+    w.color = color.value;
+    return `Worker clothing changed to ${color.name.toLowerCase()}.`;
+  }
   if (action.kind === 'worker_assign') {
     if (!WORKER_RESOURCES.includes(action.resource)) throw new Error('Choose wheat, timber, stone, iron or coal.');
     if (action.sourcePlotId !== null && typeof action.sourcePlotId !== 'string') throw new Error('Choose public resources or one of your production plots.');
@@ -93,13 +121,13 @@ export function workersAction(sim, v, p, action) {
     if (action.mode === 'sell' && action.destinationPlotId !== null) throw new Error('Resource Exchange sales do not need a storage building.');
     Object.assign(w, { resource: action.resource, sourcePlotId: action.sourcePlotId, mode: action.mode, destinationPlotId: action.mode === 'store' ? action.destinationPlotId : null,
       paused: false, status: 'Starting work', targetNodeId: null, gatherProgress: 0, delivering: hasCargo(w), nextSearchAt: 0 });
-    return 'Worker assigned. Work resumes in daylight while you are online.';
+    return 'Worker assigned. Work continues day and night while you are online.';
   }
   if (action.kind === 'worker_pause') {
     if (typeof action.paused !== 'boolean') throw new Error('Choose whether to pause your worker.');
     w.paused = action.paused; w.gatherProgress = 0; w.targetNodeId = null;
     w.status = w.paused ? 'Returning to treasury — paused' : 'Starting work';
-    return w.paused ? 'Worker paused and returning to the treasury with their cargo.' : 'Worker will resume the saved assignment in daylight.';
+    return w.paused ? 'Worker paused and returning to the treasury with their cargo.' : 'Worker will resume the saved assignment, day or night.';
   }
   if (action.kind === 'worker_collect') {
     if (distance(p, w) > 3.3) throw new Error('Move closer to your worker to collect their cargo.');
@@ -184,9 +212,10 @@ function move(w, target, dt, neighbors, solids, p = null) {
     const approachGate = Math.abs(w.x) > 4 || (inside ? w.z < 10 : w.z > 26);
     destination = { x: 0, z: approachGate ? (inside ? 11 : 25) : (inside ? 25 : 11) };
   }
-  stepNpcNavigation(w, destination, RULES.speed, dt, neighbors, solids);
+  const speed = workerStats(w).speed;
+  stepNpcNavigation(w, destination, speed, dt, neighbors, solids);
   const moved = distance(before, w);
-  if (p && moved > .001) payForTime(w, p, Math.min(dt, moved / RULES.speed));
+  if (p && moved > .001) payForTime(w, p, Math.min(dt, moved / speed));
   return moved > .001;
 }
 
@@ -201,7 +230,7 @@ function returnHome(v, w, reason, dt, neighbors, solids) {
 function storeCargo(v, w) {
   const plot = destinationPlot(v, w);
   if (!plot) return false;
-  let room = Math.max(0, STORAGE_CAPACITY - inventoryWeight(plot.storage));
+  let room = Math.max(0, plotStorageCapacity(plot) - inventoryWeight(plot.storage));
   for (const id of WORKER_RESOURCES) {
     const amount = Math.min(w.cargo[id], Math.floor((room + 1e-6) / RESOURCE_WEIGHTS[id]));
     if (amount > 0 && whole(plot.storage[id] ?? 0) && whole((plot.storage[id] ?? 0) + amount)) {
@@ -240,15 +269,15 @@ export function workersTick(sim, v, dt) {
   for (const w of v.workers) {
     w.anim = 'idle';
     const p = v.players?.[w.ownerId];
-    const threat = (v.zombies ?? []).some(z => z.hp > 0 && distance(z, w) < 12);
-    const reason = w.paused ? 'Paused' : !p?.online ? 'Owner offline' : v.phase !== 'day' ? 'Resting until dawn' : threat ? 'Sheltering from zombies' : !WORKER_RESOURCES.includes(w.resource) ? 'Choose an assignment' : null;
+    const stats = workerStats(w);
+    const reason = w.paused ? 'Paused' : !p?.online ? 'Owner offline' : !WORKER_RESOURCES.includes(w.resource) ? 'Choose an assignment' : null;
     if (reason) { returnHome(v, w, reason, dt, neighbors, solids); continue; }
     if (w.mode === 'store' && !destinationPlot(v, w)) { returnHome(v, w, 'Choose a storage building', dt, neighbors, solids); continue; }
     if (w.sourcePlotId !== null && !sourcePlot(v, w) && !hasCargo(w)) { returnHome(v, w, 'Choose a resource source', dt, neighbors, solids); continue; }
     const time = allowance(w, p, dt);
     if (!time) { returnHome(v, w, 'Needs wallet gold for wages', dt, neighbors, solids); continue; }
     const resourceWeight = RESOURCE_WEIGHTS[w.resource];
-    if (inventoryWeight(w.cargo) + resourceWeight > RULES.carryCapacity) w.delivering = true;
+    if (inventoryWeight(w.cargo) + resourceWeight > stats.carryCapacity) w.delivering = true;
     const nodes = availableNodes(v, w);
     if (!nodes.length && hasCargo(w)) w.delivering = true;
     if (w.delivering && hasCargo(w)) {
@@ -266,7 +295,7 @@ export function workersTick(sim, v, dt) {
     }
     if (w.mode === 'store') {
       const plot = destinationPlot(v, w);
-      if (inventoryWeight(plot.storage) + resourceWeight > STORAGE_CAPACITY) { w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue; }
+      if (inventoryWeight(plot.storage) + resourceWeight > plotStorageCapacity(plot)) { w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue; }
     }
     if (w.mode === 'sell' && (!whole(v.treasury) || v.treasury <= TREASURY_RESERVE)) { w.status = 'Waiting for treasury funds'; w.gatherProgress = 0; continue; }
     let chosen = nodes.find(({ node }) => node.id === w.targetNodeId), target = chosen && approach(chosen.node, w, solids);
@@ -288,15 +317,16 @@ export function workersTick(sim, v, dt) {
     }
     payForTime(w, p, time); w.gatherProgress += time; w.status = `Gathering ${w.resource}`; w.anim = 'gather';
     w.yaw = Math.atan2(chosen.node.x - w.x, chosen.node.z - w.z);
-    if (w.gatherProgress + 1e-7 < RULES.gatherSeconds) continue;
+    if (w.gatherProgress + 1e-7 < stats.gatherSeconds) continue;
     w.gatherProgress = 0;
     // Re-read the shared node at the moment of harvest: another worker or a
     // player may have exhausted it earlier in this same simulation step.
     if (!chosen.state.available || chosen.state.remaining <= 0) continue;
     w.cargo[w.resource]++; chosen.state.remaining--;
+    w.workXp = Math.min(WORKER_MAX_XP, w.workXp + 1); ensureWorkerProgress(w);
     if (chosen.state.remaining <= 0) {
       chosen.state.available = false;
-      chosen.state.regrowAt = v.clock + (w.resource === 'wheat' ? 90 : 150) * (w.sourcePlotId === null ? 1 : .65);
+      chosen.state.regrowAt = v.clock + productionRegrowSeconds(w.resource, w.sourcePlotId === null ? null : sourcePlot(v, w));
       w.targetNodeId = null;
     }
   }
@@ -306,10 +336,11 @@ export function workersSnapshot(v, viewerId) {
   ensureWorkers(v);
   return { workers: v.workers.map(w => ({
     id: w.id, name: w.name, ownerId: w.ownerId, x: w.x, z: w.z, yaw: w.yaw,
-    hp: 100, maxHp: 100, role: 'villager', tool: tools[w.resource] ?? '', anim: w.anim,
+    hp: 100, maxHp: 100, role: 'villager', tool: tools[w.resource] ?? '', anim: w.anim, color: w.color,
     backpackTier: 1, tiers: { axe: 'wood', pickaxe: 'wood', scythe: 'wood' },
     ...(viewerId === w.ownerId ? { resource: w.resource, sourcePlotId: w.sourcePlotId,
       mode: w.mode, destinationPlotId: w.destinationPlotId, status: w.status,
-      paused: w.paused, cargo: { ...w.cargo }, paidWorkSeconds: w.paidWorkSeconds } : {})
+      paused: w.paused, cargo: { ...w.cargo }, paidWorkSeconds: w.paidWorkSeconds,
+      level: w.level, workXp: w.workXp, upgradePoints: w.upgradePoints, attributes: { ...w.attributes } } : {})
   })) };
 }

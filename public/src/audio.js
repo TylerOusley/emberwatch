@@ -4,7 +4,7 @@ import { caveAreaAt } from '../../shared/caves.js';
 // oscillators: short cached buffers share one master bus and a bounded voice pool.
 const TAU = Math.PI * 2, clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const SOUND = Object.freeze({
-  swing: [.20, .17], tap: [.17, .19], wood: [.19, .19], stone: [.17, .18],
+  swing: [.20, .17], tap: [.17, .19], wood: [.19, .19], stone: [.17, .18], gather: [.24, .13], repair: [.21, .17],
   grass: [.20, .12], stepStone: [.13, .15], hoof: [.16, .15], hit: [.20, .15],
   gate: [.65, .33], bell: [2.8, .19], bird: [1.1, .075], cricket: [.85, .038],
   breeze: [2.7, .055], groan: [1.8, .14], emerge: [1.1, .13], split: [.55, .15], heal: [.65, .11]
@@ -12,6 +12,15 @@ const SOUND = Object.freeze({
 const AMBIENT = new Set(['bird', 'cricket', 'breeze', 'groan']);
 const OUTDOOR = new Set(['bird', 'cricket', 'breeze']);
 const MAX_VOICES = 16, MAX_AMBIENT = 4;
+// Four distinct strikes per task, including different resonances, transient
+// textures and decay lengths. Pitch jitter alone made repeated work monotonous.
+const TASK_PROFILES = Object.freeze([
+  {duration:1, tone:1, overtone:1, decay:1, noise:1},
+  {duration:1.18, tone:.81, overtone:1.16, decay:.78, noise:.70},
+  {duration:.86, tone:1.22, overtone:.89, decay:1.28, noise:1.22},
+  {duration:1.07, tone:.94, overtone:1.34, decay:.91, noise:.85}
+].map(Object.freeze));
+const VARIED_TASKS = new Set(['tap','wood','stone','gather','repair']);
 
 // Use the very same curved lanes as the rendered world. The spatial index is
 // built once, so footsteps do not search every road or allocate scene objects.
@@ -42,11 +51,12 @@ export function createFootstepSurface(lanes = []) {
   };
 }
 
-function makeBuffer(context, kind) {
-  const duration=SOUND[kind][0], rate=context.sampleRate;
+function makeBuffer(context, kind, variant=0) {
+  const profile=VARIED_TASKS.has(kind)?TASK_PROFILES[variant]:TASK_PROFILES[0];
+  const duration=SOUND[kind][0]*profile.duration, rate=context.sampleRate;
   const buffer=context.createBuffer(1,Math.ceil(rate*duration),rate), data=buffer.getChannelData(0);
   // A private deterministic generator leaves game randomness untouched.
-  let seed=kind.split('').reduce((a,c)=>a*31+c.charCodeAt(0),91)>>>0, smooth=0;
+  let seed=(kind.split('').reduce((a,c)=>a*31+c.charCodeAt(0),91)+variant*104729)>>>0, smooth=0;
   const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296*2-1;};
   for(let i=0;i<data.length;i++){
     const t=i/rate,u=t/duration,n=random(),fade=Math.min(1,t/.009)*Math.min(1,(duration-t)/.025);
@@ -75,10 +85,12 @@ function makeBuffer(context, kind) {
       case 'grass': s=(n*.32+smooth*.55)*Math.sin(Math.PI*u)**2;break;
       case 'stepStone': s=(Math.sin(TAU*117*t)*.4+smooth*.7+n*.15)*Math.exp(-t*32);break;
       case 'hoof': s=(Math.sin(TAU*330*t)*.36+Math.sin(TAU*163*t)*.25+n*.22)*Math.exp(-t*31);break;
-      case 'stone': s=(Math.sin(TAU*960*t)*.33+Math.sin(TAU*1730*t)*.15+n*.23)*Math.exp(-t*30);break;
-      case 'wood': s=(Math.sin(TAU*237*t)*.40+Math.sin(TAU*381*t)*.17+smooth*.7)*Math.exp(-t*24);break;
+      case 'stone': s=(Math.sin(TAU*960*profile.tone*t)*.33+Math.sin(TAU*1730*profile.overtone*t)*.15+n*.23*profile.noise)*Math.exp(-t*30*profile.decay);break;
+      case 'wood': s=(Math.sin(TAU*237*profile.tone*t)*.40+Math.sin(TAU*381*profile.overtone*t)*.17+smooth*.7*profile.noise)*Math.exp(-t*24*profile.decay);break;
+      case 'gather': s=(n*.22*profile.noise+smooth*.85)*Math.sin(Math.PI*u)**1.5+Math.sin(TAU*640*profile.tone*t)*.13*Math.exp(-t*48*profile.decay);break;
+      case 'repair': s=(Math.sin(TAU*390*profile.tone*t)*.33+Math.sin(TAU*1160*profile.overtone*t)*.11+smooth*.56*profile.noise+n*.10)*Math.exp(-t*27*profile.decay);break;
       case 'hit': s=(smooth*1.25+Math.sin(TAU*93*t)*.35)*Math.exp(-t*23);break;
-      default: s=(smooth*.9+Math.sin(TAU*430*t)*.32+n*.18)*Math.exp(-t*25);
+      default: s=(smooth*.9+Math.sin(TAU*430*profile.tone*t)*.32+n*.18*profile.noise)*Math.exp(-t*25*profile.decay);
     }
     data[i]=clamp(s*fade,-.92,.92);
   }
@@ -94,10 +106,21 @@ export function createGameAudio(options = {}) {
   let surfaceAt=options.surfaceAt||createFootstepSurface(), listener=null, camera=null, now=0;
   let previous=null, snapshotRef=null, previousPosition=null, steps=0, nextBird=Infinity, nextCricket=Infinity, nextBreeze=Infinity, nextGroan=Infinity;
   let bellNight=null,underground=false;
-  const buffers=new Map(), voices=new Set(), lastPlayed=new Map(), counts={};
+  const buffers=new Map(), voices=new Set(), lastPlayed=new Map(), taskBags=new Map(), counts={};
   const contextFactory=options.contextFactory||(()=>{const Context=globalThis.AudioContext||globalThis.webkitAudioContext;return Context?new Context():null;});
   const random=typeof options.random==='function'?options.random:Math.random;
   const hidden=()=>doc?.hidden===true;
+  function nextVariant(kind){
+    if(!VARIED_TASKS.has(kind))return 0;
+    let bag=taskBags.get(kind);
+    if(!bag){bag={remaining:[],last:-1};taskBags.set(kind,bag);}
+    if(!bag.remaining.length){
+      bag.remaining=TASK_PROFILES.map((_,i)=>i);
+      for(let i=bag.remaining.length-1;i>0;i--){const j=Math.floor(clamp(random(),0,.999999)* (i+1));[bag.remaining[i],bag.remaining[j]]=[bag.remaining[j],bag.remaining[i]];}
+      if(bag.remaining.at(-1)===bag.last)[bag.remaining[0],bag.remaining[bag.remaining.length-1]]=[bag.remaining.at(-1),bag.remaining[0]];
+    }
+    bag.last=bag.remaining.pop();return bag.last;
+  }
   function release(voice, stop=false){
     if(!voices.delete(voice))return;
     voice.source.onended=null;
@@ -127,9 +150,10 @@ export function createGameAudio(options = {}) {
     }
     let source,gain,panner,voice;
     try{
-      if(!buffers.has(kind))buffers.set(kind,makeBuffer(context,kind));
+      const variant=nextVariant(kind),bufferKey=VARIED_TASKS.has(kind)?`${kind}:${variant}`:kind;
+      if(!buffers.has(bufferKey))buffers.set(bufferKey,makeBuffer(context,kind,variant));
       source=context.createBufferSource();gain=context.createGain();
-      source.buffer=buffers.get(kind);
+      source.buffer=buffers.get(bufferKey);
       source.playbackRate.value=kind==='bell'||kind==='heal'?1:.94+random()*.12;
       gain.gain.value=SOUND[kind][1]*attenuation*clamp(Number.isFinite(detail.strength)?detail.strength:1,0,1.4);
       source.connect(gain);
@@ -201,7 +225,7 @@ export function createGameAudio(options = {}) {
           if(prior&&actor.hp<prior.hp)play('hit',{position:actor,strength:.7});
           if(actor.id===me.id)continue;
           if(prior&&actor.anim!==prior.anim){
-            const kind=actor.anim==='attack'?'swing':actor.anim==='heal'?'heal':actor.anim==='repair'?'wood':null;
+            const kind=actor.anim==='attack'?'swing':actor.anim==='heal'?'heal':actor.anim==='repair'?'repair':null;
             if(kind)play(kind,{position:actor,strength:.7});
           }
         }
@@ -253,7 +277,7 @@ export function createGameAudio(options = {}) {
     if(master)master.gain.value=muted?0:.62;
     if(muted)stopAll();return muted;
   }
-  function reset(){pause();bellNight=null;lastPlayed.clear();}
+  function reset(){pause();bellNight=null;lastPlayed.clear();taskBags.clear();}
   const onVisibility=()=>{if(hidden())pause();};doc?.addEventListener?.('visibilitychange',onVisibility);
   return {unlock,setMuted,play,update,reset,
     setSurfaceResolver(resolver){if(typeof resolver==='function')surfaceAt=resolver;},
