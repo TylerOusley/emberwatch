@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/index.js';
 import { BUILDINGS, PLOTS, canStand, plotFront, plotSolids } from '../shared/world.js';
-import { CARRY_CAPACITY, inventoryWeight } from '../shared/content.js';
+import { carryCapacity, inventoryWeight } from '../shared/content.js';
 
 async function fixture(t, role = 'villager', companion = false) {
   const dataDir = await mkdtemp(join(tmpdir(), 'emberwatch-combat-'));
@@ -60,8 +60,8 @@ test('a full pack rejects a replacement wooden tool without charging or changing
   const shop = BUILDINGS.find(b => b.id === 'tools');
   Object.assign(player, { x: shop.x + shop.w / 2 + 1, z: shop.z });
   player.durability.pickaxe = 0;
-  player.inventory.wheat = CARRY_CAPACITY - inventoryWeight(player);
-  assert.equal(inventoryWeight(player), CARRY_CAPACITY);
+  player.inventory.wheat = carryCapacity(player) - inventoryWeight(player);
+  assert.equal(inventoryWeight(player), carryCapacity(player));
   app.store.saveVillage(village);
   const before = structuredClone(village), persisted = app.store.loadVillages(), account = app.store.account(player.id);
   assert.throws(() => sim.action(village.id, player.id, { kind: 'buyTool', tool: 'pickaxe' }), /room in your pack/);

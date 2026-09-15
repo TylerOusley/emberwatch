@@ -18,8 +18,13 @@ function fixture(t) {
   t.after(() => { globalThis.document = prior; });
   const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
     html = next; activePanel = panel; openCount++; fields.clear();
-    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => ({ dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, text: match[2], disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' }));
-    for (const match of html.matchAll(/<(input|select)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) fields.set(match[3], { tagName: match[1].toUpperCase(), value: match[2].match(/\bvalue="([^"]*)"/)?.[1] || '' });
+    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
+      const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
+      const id = match[1].match(/\bid="([^"]+)"/)?.[1]; if (id) fields.set(id, button);
+      return button;
+    });
+    for (const match of html.matchAll(/<(input|select)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) fields.set(match[3], { tagName: match[1].toUpperCase(), value: match[2].match(/\bvalue="([^"]*)"/)?.[1] || '', max: match[2].match(/\bmax="([^"]*)"/)?.[1] || '' });
+    for (const match of html.matchAll(/<(p|span)\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/\1>/gs)) fields.set(match[2], { tagName: match[1].toUpperCase(), textContent: match[3] });
     nodes = [...buttons, ...fields.values()];
   } });
   return { ui, player, state, sent, fields, get html() { return html; }, get openCount() { return openCount; }, get buttons() { return buttons; }, click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); button.onclick(); } };
@@ -86,4 +91,157 @@ test('all service and plot panel branches render from a complete expansion snaps
     f.state.plots = [{ id: PLOTS[0].id, ownerId: 'alice', ownerName: 'Alice', building, hp: 300, maxHp: 500, level: 1, storage: { timber: 100, stone: 100, iron: 100, coal: 100, wheat: 100, arrows: 100 } }];
     f.ui.show('plot', PLOTS[0].id); assert.match(f.html, /Building storage/); assert.doesNotMatch(f.html, /\[object Object\]/);
   }
+});
+
+test('new arrivals can choose one wooden tool and see where to buy larger backpacks', t => {
+  const f = fixture(t);
+  f.player.wallet = 10; f.player.inventory = {}; f.player.durability = {}; f.player.tiers = {};
+  f.ui.show('tools');
+  assert.match(f.html, /Start with 10 gold and choose your first wooden tool/);
+  assert.equal(f.buttons.filter(b => b.text === 'Buy · 10g' && !b.disabled).length, 4);
+  assert.ok(f.buttons.filter(b => b.text.startsWith('Equip ·')).every(b => b.disabled));
+  f.click('Buy · 10g');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyTool', tool: 'axe' });
+  f.ui.show('inventory');
+  assert.match(f.html, /0 \/ 100/); assert.doesNotMatch(f.html, /Wooden axe/);
+  f.click('Mark the backpack shop');
+  assert.equal(f.ui.getWaypoint().id, 'tools');
+});
+
+test('backpack shop uses equipped capacity, offers only upgrades, and accepts purchase credit', t => {
+  const f = fixture(t);
+  f.player.backpackTier = 1; f.player.wallet = 30; f.state.loan.credit = 70;
+  f.ui.show('tools');
+  assert.match(f.html, /\/ 200/); assert.match(f.html, /Simple backpack/);
+  assert.ok(!f.buttons.some(b => b.text === 'Equip · 40g'));
+  assert.ok(f.buttons.find(b => b.text === 'Equip · 200g').disabled);
+  f.click('Equip · 100g');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyBackpack', tier: 2 });
+  f.player.backpackTier = 2; f.ui.refresh();
+  assert.match(f.html, /\/ 350/);
+  assert.ok(!f.buttons.some(b => b.text === 'Equip · 100g'));
+});
+
+test('resource purchase controls allow upgraded backpack capacity and stop at its actual limit', t => {
+  const f = fixture(t);
+  f.player.inventory = { wheat: 150 }; f.player.durability = {}; f.player.backpackTier = 1;
+  const price = taxedPurchaseQuote('wheat', 100, 10, 10).total;
+  f.ui.show('bank');
+  assert.ok(!f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled);
+  f.player.inventory.wheat = 195; f.ui.refresh();
+  assert.ok(f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled);
+});
+
+test('barracks preserve recruited slots while showing replacement wheat and countdown', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  f.state.plots = [{ id, ownerId: 'alice', building: 'barracks', hp: 650, maxHp: 650, storage: { wheat: 0, timber: 100, iron: 100 } }];
+  f.state.guards = [{ id: 'one', plotId: id, hp: 100 }, { id: 'two', plotId: id, hp: 100 }];
+  f.state.guardReplacements = [{ guardId: 'three', plotId: id, ownerId: 'alice', remaining: 12, waitingForWheat: true }];
+  f.ui.show('plot', id);
+  assert.match(f.html, /Recruited slots<\/span><strong>3 \/ 3/);
+  assert.match(f.html, /Waiting for 1 wheat in this barracks/);
+  assert.ok(f.buttons.find(b => b.text === 'Recruit a guard').disabled);
+  f.state.guardReplacements[0].waitingForWheat = false;
+  f.state.guardReplacements[0].remaining = 8; f.ui.refresh();
+  assert.match(f.html, /Returns in 8 seconds/);
+  f.state.guardReplacements = [{ guardId: 'watch', plotId: null, ownerId: null, remaining: 0, waitingForWheat: true }];
+  f.ui.show('barracks'); assert.match(f.html, /Waiting for 1 wheat in this barracks/);
+});
+
+test('automatic defenses explain ammunition, server firing status, range, and repair needs', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  const plot = { id, ownerId: 'alice', building: 'archer_tower', hp: 700, maxHp: 700, storage: {} };
+  f.state.plots = [plot];
+  f.state.defenseStatus = [{ plotId: id, status: 'empty', range: 22, shotsRemaining: 0 }];
+  f.ui.show('plot', id);
+  assert.match(f.html, /data-defense-state="empty"/);
+  assert.match(f.html, /Out of ammunition/); assert.match(f.html, /player tinker shop or the traveling merchant/);
+  assert.match(f.html, /New towers include 20 arrows/);
+  plot.storage.arrows = 8;
+  f.state.defenseStatus = [{ plotId: id, status: 'firing', range: 26, shotsRemaining: 8 }];
+  f.ui.refresh();
+  assert.match(f.html, /Engaging zombies/); assert.match(f.html, /26 m/);
+  assert.match(f.html, /Shots available<\/span><strong>8/);
+  f.state.defenseStatus[0].status = 'out_of_range'; f.ui.refresh();
+  assert.match(f.html, /Waiting for targets/);
+  plot.hp = 0; f.ui.refresh(); assert.match(f.html, /data-defense-state="destroyed"/);
+  plot.hp = 500; plot.building = 'cannon'; plot.storage = { coal: 3, stone: 8 }; f.state.defenseStatus = [];
+  f.ui.show('plot', id); assert.match(f.html, /Shots available<\/span><strong>3/);
+  assert.match(f.html, /Coal stored/); assert.match(f.html, /Stone stored/);
+});
+
+test('treasury accepts a full-pack quantity and displays exact tax before submitting its quote', t => {
+  const f = fixture(t);
+  f.player.inventory = { wheat: 325 }; f.player.durability = {}; f.player.backpackTier = 2;
+  f.ui.show('bank');
+  const input = f.fields.get('trade-amount-wheat'), sale = taxedSaleQuote('wheat', 100, 325, 10);
+  input.value = '325'; input.oninput();
+  assert.equal(f.fields.get('trade-sell-quote-wheat').textContent, `Sell: receive ${sale.total}g (${sale.gross}g value − ${sale.tax}g tax).`);
+  f.click(`Sell 325 · ${sale.total}g`);
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'sell', resource: 'wheat', amount: 325, minTotal: sale.total });
+  f.player.inventory.wheat = 0; f.state.stock.wheat = 500;
+  input.value = '137'; input.oninput();
+  const purchase = taxedPurchaseQuote('wheat', 500, 137, 10);
+  assert.equal(f.fields.get('trade-buy-quote-wheat').textContent, `Buy: pay ${purchase.total}g (${purchase.subtotal}g price + ${purchase.tax}g tax).`);
+  f.click(`Buy 137 · ${purchase.total}g`);
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyResource', resource: 'wheat', amount: 137, maxTotal: purchase.total });
+});
+
+test('treasury quantity stays focused while live stock changes refresh displayed quotes', t => {
+  const f = fixture(t); f.player.inventory.wheat = 40; f.ui.show('bank');
+  const input = f.fields.get('trade-amount-wheat'); input.value = '37'; input.oninput();
+  document.activeElement = input;
+  const before = f.openCount; f.state.stock.wheat = 20; f.ui.refresh();
+  assert.equal(f.openCount, before); assert.equal(document.activeElement, input); assert.equal(input.value, '37');
+  assert.equal(f.fields.get('trade-buy-wheat').disabled, true);
+  assert.match(f.fields.get('trade-buy-quote-wheat').textContent, /village has only 20 wheat/);
+  const sale = taxedSaleQuote('wheat', 20, 37, 10);
+  f.click(`Sell 37 · ${sale.total}g`);
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'sell', resource: 'wheat', amount: 37, minTotal: sale.total });
+  document.activeElement = null; f.ui.refresh();
+  assert.equal(f.fields.get('trade-amount-wheat').value, '37');
+});
+
+test('treasury rejects invalid quantities and prevents buying beyond pack, wallet, or stock', t => {
+  const f = fixture(t); f.player.inventory = { wheat: 95 }; f.player.durability = {}; f.ui.show('bank');
+  const input = f.fields.get('trade-amount-wheat');
+  for (const raw of ['', '0', '-1', '1.5', '10001', 'Infinity']) {
+    input.value = raw; input.oninput();
+    assert.ok(f.fields.get('trade-sell-wheat').disabled); assert.ok(f.fields.get('trade-buy-wheat').disabled);
+    f.fields.get('trade-sell-wheat').onclick(); f.fields.get('trade-buy-wheat').onclick();
+  }
+  assert.equal(f.sent.length, 0);
+  input.value = '6'; input.oninput();
+  assert.match(f.fields.get('trade-buy-quote-wheat').textContent, /room for 5 more wheat/);
+  assert.ok(f.fields.get('trade-buy-wheat').disabled);
+  input.value = '5'; f.player.wallet = 0; input.oninput();
+  assert.match(f.fields.get('trade-buy-quote-wheat').textContent, /not have enough gold/);
+  f.player.wallet = 2000; f.state.stock.wheat = 3; input.oninput();
+  assert.match(f.fields.get('trade-buy-quote-wheat').textContent, /village has only 3 wheat/);
+  f.state.treasury = 500; input.oninput();
+  assert.ok(f.fields.get('trade-sell-wheat').disabled);
+  assert.match(f.fields.get('trade-sell-quote-wheat').textContent, /treasury cannot pay/);
+});
+
+test('backpack totals include the villager carrying bonus while upgrades retain their added capacity', t => {
+  const f = fixture(t); f.player.role = 'villager'; f.player.backpackTier = 1;
+  f.ui.show('tools');
+  assert.match(f.html, /250 total carrying capacity/);
+  assert.match(f.html, /400 total capacity · \+150 more weight/);
+  assert.match(f.html, /550 total capacity · \+300 more weight/);
+  f.player.role = 'guard'; f.ui.refresh();
+  assert.match(f.html, /200 total carrying capacity/);
+  assert.match(f.html, /350 total capacity · \+150 more weight/);
+});
+
+test('starter tools can use approved purchase credit and role cards explain their traits', t => {
+  const f = fixture(t); f.player.wallet = 0; f.player.durability = {}; f.state.loan.credit = 10;
+  f.ui.show('tools');
+  assert.match(f.html, /Purchase credit/);
+  f.click('Buy · 10g');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyTool', tool: 'axe' });
+  f.ui.show('roles');
+  assert.match(f.html, /Carry 50 extra weight/);
+  assert.match(f.html, /Gain 40 shield; it recovers 4 per second after 6 seconds/);
+  assert.match(f.html, /125 maximum health/);
 });

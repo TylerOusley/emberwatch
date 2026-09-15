@@ -1,6 +1,101 @@
 import * as THREE from 'three';
 import { PLOTS, plotFront, seeded } from '/shared/world.js';
 
+// Harvest rocks are weathered, partly buried beds, with ore colors authored
+// into the rock surface itself. No separate nuggets float above the formation.
+// One vertex-colored mesh per node also keeps large mining areas inexpensive.
+export function mineralOutcropGeometry(type,seed,{width=1.85,depth=1.55,height=.83,rubble=true}={}){
+ const random=seeded(seed),positions=[],colors=[];
+ const base=new THREE.Color(type==='coal'?'#797974':type==='iron'?'#7b7668':'#8b9183');
+ const pale=new THREE.Color(type==='coal'?'#999589':'#b0ad98');
+ const dark=new THREE.Color(type==='coal'?'#202829':'#5a625b');
+ const rust=new THREE.Color('#915637'),rustLight=new THREE.Color('#b17a4a');
+ const soil=new THREE.Color('#756b51'),color=new THREE.Color();
+ const phase=random()*9,tilt=.13+random()*.14;
+ function tint(x,y,z,chip=false){
+  const grain=Math.sin(x*24+z*18+y*31)*Math.sin(z*33-x*17+y*9);
+  // Sloping deposits pass continuously through the face and exposed top.
+  const strata=y+z*tilt+x*.11+Math.sin(x*4.1+phase)*.025;
+  const band=Math.sin(strata*37+phase);
+  color.copy(base).lerp(band>.55?pale:dark,band>.55?.13:.12);
+  if(type==='iron'){
+   const seam=Math.abs(Math.sin(strata*11+phase+Math.sin(x*6-z*4)*.18));
+   const deposit=1-THREE.MathUtils.smoothstep(seam,.18,.55);
+   color.lerp(rust,deposit*.92).lerp(rustLight,deposit*Math.max(0,grain)*.32);
+  }else if(type==='coal'){
+   const seam=Math.abs(Math.sin(strata*12+phase));
+   const deposit=1-THREE.MathUtils.smoothstep(seam,.36,.61);
+   color.lerp(dark,deposit*.97);
+  }
+  if(y<.12)color.lerp(soil,.35);
+  if(chip)color.lerp(pale,.12);
+  color.multiplyScalar(.91+grain*.065+random()*.09);
+  return color.toArray();
+ }
+ function triangle(a,b,c,chip=false){
+  const normal=new THREE.Vector3().subVectors(new THREE.Vector3(...b),new THREE.Vector3(...a)).cross(new THREE.Vector3().subVectors(new THREE.Vector3(...c),new THREE.Vector3(...a)));
+  if(normal.lengthSq()<1e-12)return;
+  for(const p of [a,b,c]){positions.push(...p);colors.push(...tint(...p,chip));}
+ }
+ function slab(cx,cz,sx,sz,h,yaw,chip=false){
+  // An irregular polygon is sheared along its bedding planes. Chipped ledges
+  // interrupt its sides; the uneven upper cap is a broken face, not a sphere.
+  const sides=chip?7:15,profiles=chip?[[-.1,1],[.38,.92],[.73,.66]]:[[-.12,1],[.11,1.01],[.31,.88],[.35,.95],[.61,.83],[.65,.89],[.82,.77],[.86,.35]],rings=[];
+  const perimeter=Array.from({length:sides},(_,i)=>({a:i/sides*Math.PI*2,r:.76+random()*.25,top:.77+Math.sin(i/sides*Math.PI*2+phase)*.14+random()*.09}));
+  const cs=Math.cos(yaw),sn=Math.sin(yaw),shear=(random()-.5)*.27;
+  for(const [level,radius] of profiles){
+   rings.push(perimeter.map(({a,r,top})=>{
+    const lx=Math.cos(a)*r*radius*sx+level*shear,lz=Math.max(-sz*.58,Math.sin(a)*r*radius*sz);
+    return [cx+lx*cs+lz*sn,level*h*top+Math.cos(a+phase)*.055*h,cz-lx*sn+lz*cs];
+   }));
+  }
+  for(let row=0;row<rings.length-1;row++)for(let j=0;j<sides;j++){
+   const next=(j+1)%sides,a=rings[row][j],b=rings[row][next],c=rings[row+1][j],d=rings[row+1][next];
+   triangle(a,c,b,chip);triangle(b,c,d,chip);
+  }
+  const top=[cx+shear*h*.18,h*(chip?.78:.68),cz];
+  for(let j=0;j<sides;j++)triangle(rings.at(-1)[j],top,rings.at(-1)[(j+1)%sides],chip);
+ }
+ const yaw=(random()-.5)*.8;
+ slab(-width*.07,depth*.08,width*.45,depth*.42,height,yaw);
+ // Two fractured plates lean into the main bed and share its strata. Their
+ // contact edges lie below ground so the formation reads as exposed bedrock.
+ slab(width*.24,-depth*.19,width*.25,depth*.30,height*.52,yaw+.16);
+ slab(-width*.27,-depth*.25,width*.25,depth*.20,height*.34,yaw-.1);
+ if(rubble)for(let i=0;i<7;i++){
+  const a=random()*Math.PI*2,s=.035+random()*.065;
+  slab(Math.cos(a)*width*(.43+random()*.09),Math.sin(a)*depth*(.39+random()*.08),s*1.3,s,.055+random()*.07,random()*6.28,true);
+ }
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();geometry.computeBoundingSphere();
+ return geometry;
+}
+
+// Irregular mineral-soil aprons visually connect the individual working faces.
+// Everything stays ground level: these do not introduce invisible collisions.
+export function mineralBedGeometry(seed,width,depth){
+ const random=seeded(seed),positions=[],colors=[],indices=[],segments=38;
+ const shades=['#7b725c','#8e8570','#807860','#6d7754'].map(hex=>new THREE.Color(hex));
+ const perimeter=Array.from({length:segments},()=>.9+random()*.1);
+ positions.push(0,-.037,0);colors.push(...shades[0].toArray());
+ for(let ring=0;ring<4;ring++)for(let j=0;j<segments;j++){
+  const a=j/segments*Math.PI*2,t=[.37,.69,.91,1][ring],radius=perimeter[j]*t;
+  // Rounded rectangular work areas join a row of resources without making a
+  // rectangular paint swatch or reaching the adjacent streets and buildings.
+  const x=Math.sign(Math.cos(a))*Math.abs(Math.cos(a))**.65*width*.5*radius;
+  const z=Math.sign(Math.sin(a))*Math.abs(Math.sin(a))**.65*depth*.5*radius;
+  positions.push(x,[-.034,-.027,-.045,-.118][ring]+(random()-.5)*.018,z);
+  const color=shades[ring].clone().multiplyScalar(.94+random()*.11);colors.push(...color.toArray());
+ }
+ for(let j=0;j<segments;j++){const next=(j+1)%segments;indices.push(0,1+next,1+j);}
+ for(let ring=0;ring<3;ring++)for(let j=0;j<segments;j++){
+  const next=(j+1)%segments,a=1+ring*segments+j,b=1+ring*segments+next,c=a+segments,d=b+segments;
+  indices.push(a,b,c,b,d,c);
+ }
+ const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.setIndex(indices);geometry.computeVertexNormals();
+ return geometry;
+}
+
 // Plot buildings share the village's warm timber, pale stone and blue roofs.
 // Each deed is one batched group, replaced only when its structure changes.
 export function createPlotsWorld(parent){
@@ -8,6 +103,7 @@ export function createPlotsWorld(parent){
  const geometries={box:new THREE.BoxGeometry(1,1,1),cylinder:new THREE.CylinderGeometry(1,1,1,8),cone:new THREE.ConeGeometry(1,1,6),rock:new THREE.IcosahedronGeometry(1,0)};
  const colors={stone:'#8b9484',pale:'#d8c495',wood:'#805b38',dark:'#3a3028',roof:'#315b61',trim:'#aa8051',iron:'#344047',glass:'#edbc69',cloth:'#ac6249',purple:'#766080',leaf:'#64854a',dirt:'#6d593c',gold:'#d9b452'};
  const materials=Object.fromEntries(Object.entries(colors).map(([id,color])=>[id,new THREE.MeshStandardMaterial({color,roughness:.9,...(id==='glass'?{emissive:color,emissiveIntensity:.3}:{})})]));
+ materials.geology=new THREE.MeshStandardMaterial({color:'#ffffff',vertexColors:true,roughness:.98});
  const records=new Map(),shots=new Map(),dummy=new THREE.Object3D();
  const shotDirection=new THREE.Vector3(),forward=new THREE.Vector3(0,0,1);
  let renderTime=0;
@@ -97,10 +193,18 @@ export function createPlotsWorld(parent){
    box('gold',-2.15,13.4,-1.7,.12,1.45,.12);box('gold',-2.15,13.55,-1.7,.8,.12,.12);
    for(const side of [-1,1]){box('purple',side*2.8,3.2,3.2,.75,1.7,.04);for(let row=0;row<((state?.level??1)>=2?2:1);row++){const bz=4.2+row*1.8;box('wood',side*2.5,.42,bz,1.4,.34,1.7);box('pale',side*2.5,.7,bz,1.28,.22,1.6);box('trim',side*2.5,.98,bz-.8,1.4,.6,.13);box('pale',side*2.5,.87,bz-.5,1.15,.17,.4);}}
   }else if(type==='mine'){
-   for(let i=0;i<7;i++)add('rock',i%2?'stone':'dark',-3.8+i*1.22,1.25+(i%3)*.25,-2.1-(i%2)*.6,1.7,2+(i%3)*.35,1.65,0,i*.7);
-   box('dark',0,1.5,-.8,3.4,3,.08);for(const x of [-1.6,1.6])box('wood',x,1.5,-.62,.3,3,.35);box('trim',0,3.02,-.61,3.7,.4,.43);
+   const mineralSeed=Array.from(plot.id).reduce((sum,char)=>sum*31+char.charCodeAt(0)|0,421);
+   const floor=new THREE.Mesh(mineralBedGeometry(mineralSeed,w-.5,d-1),materials.geology);floor.name='excavated-mine-floor';floor.receiveShadow=true;floor.userData.sharedMaterial=true;group.add(floor);
+   // A low, continuous exposed bench replaces the heap of round boulders.
+   // The open forecourt still contains the six authoritative harvest anchors.
+   const bench=new THREE.Mesh(mineralOutcropGeometry('stone',mineralSeed,{width:w-1.5,depth:3.1,height:1.05}),materials.geology);bench.position.z=-3.15;bench.name='mine-bedrock';bench.castShadow=true;bench.receiveShadow=true;bench.userData.sharedMaterial=true;group.add(bench);
+   for(const x of [-1.65,1.65])box('wood',x,.83,-1.55,.22,1.66,.25);box('trim',0,1.69,-1.55,3.6,.24,.29);
+   // Retaining braces and a hand winch make this an excavated working mine.
+   for(const side of [-1,1]){box('wood',side*3.4,.48,-2.2,.16,.96,.2);box('trim',side*3.4,.32,-1.91,.13,.76,.14,0,side*.15);}
+   box('dark',-3.4,.09,.2,1.25,.18,1.4);for(const x of [-3.88,-2.92])box('wood',x,.58,.2,.16,.98,.18);
+   add('cylinder','wood',-3.4,.94,.2,.18,.98,.18,0,0,Math.PI/2);box('iron',-2.81,1.1,.2,.1,.48,.1);
    for(const x of [-.55,.55])box('iron',x,.05,1.3,.065,.06,4.2);for(let i=0;i<6;i++)box('wood',0,.025,-.5+i*.65,1.55,.08,.17);
-   textSign('MINE',group,0,3.12,-.34,2.15);
+   textSign('MINE',group,0,1.71,-1.37,1.8);
   }else if(type==='wheat_farm'||type==='tree_farm'){
    box('dirt',0,-.03,0,w-1,.06,d-1.2);
    if(type==='wheat_farm')for(let i=0;i<8;i++)box('dark',-w/2+.8+i*(w-1.6)/7,.025,0,.08,.04,d-1.5);

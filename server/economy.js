@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
-import { CARRY_CAPACITY, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
+import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE } from '../shared/market.js';
 import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 
@@ -19,7 +19,7 @@ const addIncome = (sim, v, p, amount) => {
   else p.wallet += amount;
 };
 const capacity = (p, id, amount) => {
-  if (inventoryWeight(p) + (RESOURCE_WEIGHTS[id] ?? 1) * amount > CARRY_CAPACITY + .00001) throw new Error('Your pack is full. Store or sell some items first.');
+  if (inventoryWeight(p) + (RESOURCE_WEIGHTS[id] ?? 1) * amount > carryCapacity(p) + .00001) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store or sell some items first.');
 };
 
 export function ensureEconomy(v) {

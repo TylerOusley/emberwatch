@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLOTS, RESOURCES } from '../shared/world.js';
-import { BUILDING_TYPES, CARRY_CAPACITY, inventoryWeight, RECIPES, TOOL_TIERS } from '../shared/content.js';
+import { BUILDING_TYPES, carryCapacity, inventoryWeight, RECIPES, TOOL_TIERS } from '../shared/content.js';
 import { ensureOwnership, ownershipAction, ownershipSnapshot, ownershipTick } from '../server/ownership.js';
 
 function fixture() {
@@ -98,13 +98,13 @@ test('closed private plots, pack weight and owner storage are checked before har
   const plot = built('wheat_farm'), node = village.plotResources[0]; visitor.x = node.x; visitor.z = node.z; visitor.tool = 'scythe';
   plot.allowVisitors = false;
   assert.throws(() => act(visitor, { kind: 'gather', targetId: node.id }), /closed/);
-  plot.allowVisitors = true; visitor.inventory.wheat = CARRY_CAPACITY;
+  plot.allowVisitors = true; visitor.inventory.wheat = carryCapacity(visitor) - inventoryWeight(visitor);
   assert.throws(() => act(visitor, { kind: 'gather', targetId: node.id }), /pack is full/);
   assert.equal(node.available, true); assert.equal(visitor.durability.scythe, 100);
   visitor.inventory.wheat = 0; plot.splitRemainders.wheat = 4; plot.storage.wheat = 1500;
   assert.throws(() => act(visitor, { kind: 'gather', targetId: node.id }), /make room/);
   assert.equal(plot.splitRemainders.wheat, 4); assert.equal(visitor.durability.scythe, 100);
-  owner.inventory.stone = 30; assert.ok(inventoryWeight(owner) > CARRY_CAPACITY, 'tools are included in carried weight');
+  owner.inventory.stone = Math.floor(carryCapacity(owner) / 3); assert.ok(inventoryWeight(owner) > carryCapacity(owner), 'tools are included in carried weight');
 });
 
 test('all pickaxe tiers can harvest iron and coal without mining access restrictions', () => {

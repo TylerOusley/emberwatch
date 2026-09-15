@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHash, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import { STARTER_GOLD } from '../shared/equipment.js';
 const scrypt = promisify(scryptCallback);
 const digest = token => createHash('sha256').update(token).digest('hex');
 
@@ -13,7 +14,8 @@ export class Store {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,salt TEXT NOT NULL,password_hash TEXT NOT NULL,bank INTEGER NOT NULL DEFAULT 0 CHECK(bank>=0),starter_granted INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),expires INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS villages(id TEXT PRIMARY KEY,state TEXT NOT NULL,updated INTEGER NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS villages(id TEXT PRIMARY KEY,state TEXT NOT NULL,updated INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS starter_grants(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),PRIMARY KEY(account_id,village_id));`);
     // Account credit is restricted purchasing power, never protected savings or
     // spendable wallet gold. Migrate existing Railway databases without a reset.
     const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));
@@ -60,11 +62,16 @@ export class Store {
     return this.db.prepare('SELECT a.id,a.name,a.bank,a.starter_granted,a.debt,a.credit FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').get(digest(token), Date.now()) ?? null;
   }
   account(id) { return this.db.prepare('SELECT id,name,bank,starter_granted,debt,credit,repayment_remainder FROM accounts WHERE id=?').get(id); }
-  initialWallet(id) {
+  initialWallet(id, villageId = null) {
+    if (villageId) {
+      const result = this.db.prepare('INSERT OR IGNORE INTO starter_grants(account_id,village_id) VALUES(?,?)').run(id, villageId);
+      this.db.prepare('UPDATE accounts SET starter_granted=1 WHERE id=?').run(id);
+      return result.changes ? STARTER_GOLD : 0;
+    }
     const account = this.account(id);
     if (account.starter_granted) return 0;
     this.db.prepare('UPDATE accounts SET starter_granted=1 WHERE id=?').run(id);
-    return 50;
+    return STARTER_GOLD;
   }
   bank(id, difference) {
     const result = this.db.prepare('UPDATE accounts SET bank=bank+? WHERE id=? AND bank+?>=0').run(difference, id, difference);

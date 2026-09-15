@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BUILDINGS } from '../shared/world.js';
 import { FOOD, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
+import { MAX_TRADE_AMOUNT } from '../shared/market.js';
+import { carryCapacity } from '../shared/content.js';
 import { ensureEconomy, economyAction, economyDawn, economySnapshot, exportReserves, stewardReview } from '../server/economy.js';
 
 function fixture(roles = ['villager']) {
@@ -43,12 +45,12 @@ test('taxed market transfers real items and money and buying back cannot mint go
 test('quotes, stock, carry capacity and whole numbers are validated atomically', () => {
   const { v, p, sim } = fixture();
   p.inventory.wheat = 5;
-  for (const amount of [0, -1, 1.2, '2', Infinity, 61]) rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount, minTotal: 1 }), /whole amount/);
+  for (const amount of [0, -1, 1.2, '2', Infinity, MAX_TRADE_AMOUNT + 1]) rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount, minTotal: 1 }), /whole amount/);
   for (const resource of ['food', '__proto__', 'constructor']) rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource, amount: 1, minTotal: 1 }), /Choose/);
   rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount: 2, minTotal: 99 }), /price changed/);
   v.treasury = 500;
   rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount: 1, minTotal: 1 }), /essential expenses/);
-  rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'stone', amount: 40, maxTotal: 1000 }), /pack is full/);
+  rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'stone', amount: Math.floor(carryCapacity(p) / 3) + 1, maxTotal: 1000 }), /pack is full/);
   rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'iron', amount: 1, maxTotal: 1000 }), /not have enough/);
   rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 1 }), /price changed/);
 });

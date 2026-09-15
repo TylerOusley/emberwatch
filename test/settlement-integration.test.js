@@ -26,6 +26,9 @@ async function residents(app, role = 'villager') {
   const founder = await account(app, 'SettlementFounder'), guest = await account(app, 'SettlementGuest');
   const { id } = app.simulation.create('Integrated Settlement', founder.user);
   const owner = app.simulation.join(id, founder.user, role), visitor = app.simulation.join(id, guest.user, 'villager');
+  // These mature settlement scenarios start after both residents have earned
+  // some gold; starter allowance and first-tool purchases have their own tests.
+  owner.wallet = visitor.wallet = 50;
   return { founder, guest, village: app.simulation.villages.get(id), owner, visitor };
 }
 const act = (app, village, player, action) => { village.clock += .7; return app.simulation.action(village.id, player.id, action); };

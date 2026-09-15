@@ -99,7 +99,9 @@ test('each troop eats from its own barracks once per night, including late deliv
   plot.storage.wheat = 5; careTick(sim, village, .05); careNight(sim, village); careTick(sim, village, .05);
   assert.equal(plot.storage.wheat, 4, 'only the hungry troop consumes a late wheat delivery');
   village.guards[0].hp = 0;
-  careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id });
+  careTick(sim, village, .05);
+  village.clock += RECRUIT.respawnSeconds;
+  careTick(sim, village, .05);
   assert.equal(plot.storage.wheat, 3, 'replacement needs its own ration');
   village.day++; careNight(sim, village); careNight(sim, village);
   assert.equal(plot.storage.wheat, 1, 'two living troops each eat once on the new night');
@@ -112,7 +114,7 @@ test('barracks recruitment is finite, limited to three, and removed with the bui
   for (let i = 0; i < 3; i++) careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id });
   assert.equal(owner.wallet, 500 - RECRUIT.gold * 3);
   assert.equal(plot.storage.iron, 100 - RECRUIT.resources.iron * 3);
-  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /three living/);
+  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /three recruited/);
   for (const guard of village.guards) {
     assert.ok(canStand(guard.x, guard.z, .4, plotSolids(village.plots)), 'recruits start outside the building');
     assert.ok(guardPathFor(village, guard).some(p => p.x === 0 && p.z === 25), 'marching route passes through the gate');
@@ -194,4 +196,76 @@ test('plot repairs use hammer tier, real shared materials and the same capped da
   village.stock.stone = 0;
   assert.throws(() => careAction(sim, village, visitor, { kind: 'repairPlot', plotId: plot.id }), /timber and stone/);
   assert.equal(plot.hp, 170);
+});
+
+test('fallen recruits retain their paid slots, wait for wheat, and respawn without a second night ration', () => {
+  const { sim, village, plot, owner } = fixture('barracks');
+  owner.role = 'guard'; village.phase = 'night'; plot.storage.wheat = 3;
+  for (let i = 0; i < RECRUIT.capacity; i++) careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id });
+  const troop = village.guards[0], paidWallet = owner.wallet;
+  troop.hp = 0;
+  careTick(sim, village, .05);
+  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /three recruited/);
+  assert.equal(owner.wallet, paidWallet);
+  let waiting = careSnapshot(village).guardReplacements[0];
+  assert.equal(waiting.remaining, 30); assert.equal(waiting.waitingForWheat, true);
+  village.clock = 50; careTick(sim, village, .05);
+  assert.equal(troop.hp, 0, 'a replacement cannot appear without its own barracks wheat');
+  assert.equal(village.barracks.wheat, 10, 'public wheat is never borrowed for an owned barracks');
+  plot.storage.wheat = 2; careTick(sim, village, .05);
+  const replacement = village.guards.find(g => g.id === troop.id);
+  assert.notEqual(replacement, troop, 'new navigation entity starts from its own door');
+  assert.equal(replacement.hp, replacement.maxHp); assert.equal(replacement.slot, troop.slot);
+  assert.equal(replacement.ownerId, owner.id); assert.equal(replacement.plotId, plot.id);
+  assert.equal(replacement.roadIndex, 0); assert.equal(replacement.cooldown, 0);
+  assert.ok(canStand(replacement.x, replacement.z, .4, plotSolids(village.plots)));
+  assert.equal(plot.storage.wheat, 1);
+  careTick(sim, village, 5); careNight(sim, village);
+  assert.equal(plot.storage.wheat, 1, 'respawn ration also feeds this deployment for the current night');
+  assert.equal(village.guards.length, 3); assert.equal(owner.wallet, paidWallet);
+  assert.equal(careSnapshot(village).guardReplacements.length, 0);
+});
+
+test('barracks never fill unpaid slots and destroyed or converted barracks cancel replacements', () => {
+  for (const removal of ['destroy', 'convert']) {
+    const { sim, village, plot, owner } = fixture('barracks');
+    owner.role = 'guard'; plot.storage.wheat = 30;
+    village.clock = 100; careTick(sim, village, 100);
+    assert.equal(village.guards.length, 0, 'empty barracks cannot recruit for free');
+    careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id });
+    village.guards[0].hp = 0; careTick(sim, village, .05);
+    if (removal === 'destroy') plot.hp = 0;
+    else plot.building = 'house';
+    village.clock += 31; careTick(sim, village, .05);
+    assert.equal(village.guards.length, 0); assert.equal(plot.storage.wheat, 30);
+    assert.equal(careSnapshot(village).guardReplacements.length, 0);
+  }
+});
+
+test('roster migration preserves living recruits and newest casualties without duplicating paid slots', () => {
+  const { village, plot } = fixture('barracks');
+  village.guards = [
+    { id: 'old-casualty', plotId: plot.id, ownerId: plot.ownerId, slot: 0, hp: 0 },
+    { id: 'living-replacement', plotId: plot.id, ownerId: plot.ownerId, slot: 0, hp: 160 },
+    { id: 'older-second', plotId: plot.id, ownerId: plot.ownerId, slot: 1, hp: 0 },
+    { id: 'newer-second', plotId: plot.id, ownerId: plot.ownerId, slot: 1, hp: 0 }
+  ];
+  delete village.guardRosterVersion; ensureCare(village); ensureCare(village);
+  assert.deepEqual(village.guards.map(g => g.id), ['living-replacement', 'newer-second']);
+});
+
+test('tower status distinguishes missing ammo, range, obstructed shots, and destroyed structures', () => {
+  const { sim, village, plot, site } = fixture('archer_tower', 'outpost-1');
+  const status = () => careSnapshot(village, null, sim).defenseStatus[0];
+  plot.storage.arrows = 0;
+  assert.equal(status().status, 'empty'); assert.equal(status().shotsRemaining, 0);
+  plot.storage.arrows = 4;
+  village.zombies = [{ id: 'distant', x: site.x + 40, z: site.z, hp: 100 }];
+  assert.equal(status().status, 'out_of_range');
+  village.zombies[0].x = site.x + 10; sim.clearAttack = () => false;
+  assert.equal(status().status, 'blocked'); assert.equal(status().shotsRemaining, 4);
+  sim.clearAttack = () => true;
+  assert.equal(status().status, 'ready'); careTick(sim, village, .05);
+  assert.equal(status().status, 'firing'); assert.equal(status().shotsRemaining, 3);
+  plot.hp = 0; assert.equal(status().status, 'destroyed');
 });

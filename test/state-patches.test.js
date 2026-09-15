@@ -55,7 +55,7 @@ test('opt-in state patches coexist with legacy snapshots, preserve private state
   assert.deepEqual([modern.merged.loan.debt, modern.merged.loan.credit], [200, 200]);
   assert.deepEqual([legacy.merged.loan.debt, legacy.merged.loan.credit], [0, 0]);
   for (const [stream, ownId, otherId] of [[modern, first.id, second.id], [legacy, second.id, first.id]]) {
-    assert.equal(stream.merged.players.find(player => player.id === ownId).wallet, 50);
+    assert.equal(stream.merged.players.find(player => player.id === ownId).wallet, 10);
     const other = stream.merged.players.find(player => player.id === otherId);
     for (const field of ['wallet', 'inventory', 'bank', 'loan', 'credit', 'debt']) assert.equal(other[field], undefined, `${field} remains private in ${stream === modern ? 'patch' : 'legacy'} state`);
   }
@@ -77,6 +77,7 @@ test('opt-in state patches coexist with legacy snapshots, preserve private state
   assert.deepEqual(modern.merged, wire(app.simulation.snapshot(village, first.id)));
 
   const node = RESOURCES.find(resource => resource.type === 'iron'); first.x = node.x; first.z = node.z;
+  first.durability.pickaxe = 100; // Equipment already obtained before this gather/snapshot scenario.
   modern.ws.send(JSON.stringify({ type: 'input', x: 0, z: 0, yaw: 0, tool: 'pickaxe' }));
   await waitFor(() => first.tool === 'pickaxe');
   const originalIron = first.inventory.iron; village.clock += .7;

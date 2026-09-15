@@ -138,7 +138,8 @@ export function createApp(options = {}) {
           } else if (message.type === 'typing') sendVillage(identity, chat.setTyping(identity, message.typing), false);
           else if (message.type === 'action') {
             const response = simulation.action(identity.villageId, identity.playerId, message);
-            if (response) send(socket, { type: 'notice', message: response });
+            // Routine hits and harvests already have visual and HUD feedback.
+            if (response && !['attack', 'gather', 'repair', 'repairPlot'].includes(message.kind)) send(socket, { type: 'notice', message: response });
           } else throw new Error('Unknown message.');
         }
       } catch (error) { send(socket, { type: 'error', message: error.message || 'Action failed.' }); }

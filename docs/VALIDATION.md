@@ -1,5 +1,17 @@
 # Emberwatch build validation
 
+## Build 05: both playtest feedback lists
+
+Validated 2026-09-15 on Node 24: **148/148 tests pass** with `npm test`. All 34 client, server and shared JavaScript modules pass `node --check`.
+
+Added regression coverage for empty-handed ten-gold arrivals, one grant per run and reconnect persistence, rejecting unowned equipment, inventory/backpack loss on manual dawn respawn, credit-funded replacement tools, backpack purchases and every weight-limited transfer, larger villager capacity, whole-quantity bulk trading, treasury UI quotes and preserved input focus, role shield/health migration and regeneration, downed-overlay camera dragging, recruited guard replacements and saved timers, and tower construction/firing/ammo depletion/restocking.
+
+Actual Three.js geometry checks cover sculpted horses, skin weights, finite animated poses, exact mounted rider/horse position and yaw, shared geometry cleanup, sword grip alignment, natural quarry formations, bounded harvest particle/fall effects, depletion/regrowth and reconnect suppression. Independently reviewed the combined client/server wiring. Horse, mineral-bed and sword-grip CPU renders are in `docs/previews` and were visually inspected.
+
+**Limits:** the available cloud browser has no usable WebGL context. These are automated simulation, real WebSocket, DOM-harness and actual-mesh checks; they do not establish live browser frame rate or end-to-end visual quality on the production site. Production deployment status must be checked separately.
+
+Existing accounts, savings, inventories, plots and villages migrate in place. New arrivals receive 10 gold and no equipment; existing residents are not reset. A unique account/village grant record prevents reconnect grants. Existing depleted archer towers still require arrows; only new paid construction includes the starter quiver. Guard shield, priest HP and villager capacity values are initial playtest settings.
+
 ## Build 04: the full village map and connected progression systems
 
 Date: 2026-09-14. The Watch now faces the central street and its two guards leave the east entrance. The map contains 40 internal plots and eight exterior deeds, connected streets, stable and merchant services, and public iron/coal sites. All eleven plot building types have server actions and matching scene geometry. This is the first integrated playtest of ownership, crafting, treasury policies, food tiers, church care, owned defenses, horses, carts and purchase credit.

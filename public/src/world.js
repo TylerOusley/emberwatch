@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, PLOTS, WORLD_BOUNDS, plotFront, seeded } from '/shared/world.js';
-import { createPlotsWorld } from './plots-world.js';
+import { createPlotsWorld, mineralOutcropGeometry, mineralBedGeometry } from './plots-world.js';
 
 // Original procedural artwork. Everything is drawn from simple, authored geometry;
 // no downloaded models or textures are required to explore the village.
 export function createWorld(scene) {
   const root = new THREE.Group(); root.name = 'Emberwatch • world'; scene.add(root);
   const resources = new Map(), flickers = [], wind = [], lanterns = [];
+  const resourceEffects=createResourceEffects(root);
   const rng = seeded(9153);
   const color = (c) => new THREE.Color(c);
   const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({color:c, roughness:.93, ...extra});
@@ -18,6 +19,7 @@ export function createWorld(scene) {
     pine:mat('#385e44'), pineLight:mat('#517748'), bark:mat('#655440'), wheat:mat('#d9b452'), wheatTip:mat('#f0d782'),
     dirt:mat('#705d3f'), fabric:mat('#ac6249'), fabricLight:mat('#dfbd7e'), blue:mat('#416c79'), purple:mat('#766080'),
     water:mat('#648c8c',{roughness:.2,metalness:.25}), embers:mat('#f6c971',{emissive:'#ff9b36',emissiveIntensity:1.3}),
+    geology:mat('#ffffff',{vertexColors:true,roughness:.98}),
     cloud:mat('#d4ded2',{flatShading:true}), mountain:mat('#7b9386',{flatShading:true}), mountainLight:mat('#95a596',{flatShading:true})
   };
   const boxG = new THREE.BoxGeometry(1,1,1), cylinderG = new THREE.CylinderGeometry(1,1,1,8), coneG = new THREE.ConeGeometry(1,1,7);
@@ -375,8 +377,8 @@ export function createWorld(scene) {
   for(const side of [-1,1]){cylinder(M.woodDark,side*30,1.35,-59,.1,2.7);sign(side<0?'WEST HEARTHS':'EAST HEARTHS',side*30,2.75,-59,4.3);}
   cylinder(M.woodDark,4.5,1.4,-89,.1,2.8);sign('NORTH COMMON',4.5,2.8,-89,4.2);
 
-  // Merge the few primitive pieces in each resource by material. A harvest hides
-  // one complete object, while the field remains inexpensive to draw.
+  // Merge resource artwork by material. Confirmed harvests animate separately
+  // so resource availability stays authoritative and fields remain inexpensive.
   function mergeParts(parts){
     const byMaterial=new Map();
     for(const p of parts){p.updateMatrix();let g=p.geometry.clone();g.applyMatrix4(p.matrix);if(g.index)g=g.toNonIndexed();const key=p.material.uuid;if(!byMaterial.has(key))byMaterial.set(key,{material:p.material,gs:[]});byMaterial.get(key).gs.push(g);}
@@ -404,7 +406,7 @@ export function createWorld(scene) {
       for(const p of parts){p.updateMatrix();const key=p.geometry.uuid+p.material.uuid;if(!batches.has(key))batches.set(key,{geo:p.geometry,material:p.material,transforms:[]});batches.get(key).transforms.push(parentMatrix.clone().multiply(p.matrix));}
       return null;
     }
-    const o=mergeParts(parts);o.position.set(x,0,z);o.rotation.y=rotation;root.add(o);wind.push({o,phase:r()*6.28,amount:.007});return o;
+    const o=mergeParts(parts);o.position.set(x,0,z);o.rotation.y=rotation;root.add(o);o.userData.resourceWind={phase:r()*6.28,amount:.007};o.userData.resourceHeight=h;return o;
   }
   function wheat(x,z,seed){
     const r=seeded(seed),parts=[];
@@ -414,7 +416,7 @@ export function createWorld(scene) {
       parts.push(part(sphereG,M.wheatTip,dx,h,dz,.074,.22,.068,r()*3));
       parts.push(part(coneG,M.wheat,dx-.06,h*.53,dz,.07,.4,.015,0,-.47));
     }
-    const o=mergeParts(parts);o.position.set(x,.025,z);root.add(o);wind.push({o,phase:r()*6.28,amount:.045});return o;
+    const o=mergeParts(parts);o.position.set(x,.025,z);root.add(o);o.userData.resourceWind={phase:r()*6.28,amount:.045};return o;
   }
   function createResource(n){
     let object;
@@ -422,12 +424,22 @@ export function createWorld(scene) {
     if(n.type==='timber')object=tree(n.x,n.z,seed);
     else if(n.type==='wheat')object=wheat(n.x,n.z,seed);
     else{
-      const r=seeded(seed),parts=[];
-      for(let j=0;j<3;j++)parts.push(part(sphereG,n.type==='coal'?M.woodDark:j%2?M.stoneLight:M.stone,(r()-.5)*.65,.3+r()*.28,(r()-.5)*.55,.4+r()*.4,.4+r()*.4,.35+r()*.45,r()*3));
-      if(n.type==='iron')for(let j=0;j<5;j++)parts.push(part(sphereG,j%2?M.copper:M.iron,(r()-.5)*.9,.45+r()*.45,(r()-.5)*.8,.14,.13,.15));
-      object=mergeParts(parts);object.position.set(n.x,0,n.z);root.add(object);
+      object=mesh(mineralOutcropGeometry(n.type,seed),M.geology,root,n.x,0,n.z);
+      object.name=`${n.type}-exposed-bedrock`;
+      object.userData.formation='layered-outcrop';
     }
-    object.userData.resourceId=n.id;resources.set(n.id,object);return object;
+    object.userData.resourceId=n.id;resources.set(n.id,object);resourceEffects.register(n,object);return object;
+  }
+  // These soil and gravel aprons join the individual deposits into recognizable
+  // workings. They are below foot level and stay clear of every building/lane.
+  // The existing resource positions and IDs remain the interaction authority.
+  for(const [name,x,z,width,depth,seed] of [
+    ['Sanctuary quarry',31.45,-22.75,5.95,16.2,714],
+    ['Western iron cut',-25,-80.5,13.7,6.7,715],
+    ['Eastern coal bed',22.75,-82.5,11.2,6.7,716],
+    ['Outer mineral shelf',-49,96.5,21.7,6.9,717]
+  ]){
+    const bed=mesh(mineralBedGeometry(seed,width,depth),M.geology,root,x,0,z);bed.name=name;bed.castShadow=false;
   }
   for(const n of RESOURCES)createResource(n);
   const publicResourceIds=new Set(RESOURCES.map(n=>n.id));
@@ -490,6 +502,8 @@ export function createWorld(scene) {
     if(Math.abs(night-previousNight)>.025){M.glass.emissiveIntensity=.35+night*1.3;M.embers.emissiveIntensity=1+night*1.7;for(const l of lanterns)l.intensity=night*13;previousNight=night;}
     const raw=state.resources;
     if(raw){
+      resourceEffects.beginSnapshot(state);
+      const harvesters=Array.isArray(state.players)?state.players:Object.values(state.players||{});
       const entries=Array.isArray(raw)?raw:Object.entries(raw).map(([id,value])=>typeof value==='object'?{id,...value}:{id,available:value});
       const plotEntries=Array.isArray(state.plotResources)?state.plotResources:[];
       const dynamicIds=new Set();
@@ -497,14 +511,14 @@ export function createWorld(scene) {
         if(!publicResourceIds.has(n.id))dynamicIds.add(n.id);
         let object=resources.get(n.id);
         if(!object&&Number.isFinite(n.x)&&Number.isFinite(n.z)&&n.type)object=createResource(n);
-        if(object){const available=n.available??n.active??n.alive??(n.remaining!==undefined?n.remaining>0:n.hp!==undefined?n.hp>0:true);object.visible=Boolean(available);}
+        if(object)resourceEffects.observe(n,time,harvesters);
       }
       for(const [id,object] of resources){
         if(publicResourceIds.has(id)||dynamicIds.has(id))continue;
-        root.remove(object);object.traverse(child=>{if(child.isMesh)child.geometry.dispose();});resources.delete(id);
-        for(let i=wind.length-1;i>=0;i--)if(wind[i].o===object)wind.splice(i,1);
+        resourceEffects.remove(id);root.remove(object);object.traverse(child=>{if(child.isMesh)child.geometry.dispose();});resources.delete(id);
       }
     }
+    resourceEffects.update(time);
     const gateHP=state.gateHp??state.gateHP??state.gate?.hp??state.gateHealth??1200;
     gate.visible=gateHP>0;
     const players=Array.isArray(state.players)?state.players:Object.values(state.players||{}),guards=Array.isArray(state.guards)?state.guards:Object.values(state.guards||{});
@@ -512,5 +526,141 @@ export function createWorld(scene) {
     const target=nearby?1:0;
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;
   }
-  return {root,resources,gate,update,road:mainRoad,lanterns,plots:plotsWorld};
+  return {root,resources,gate,update,road:mainRoad,lanterns,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
+}
+
+// Cosmetic feedback follows confirmed resource changes, never local clicks.
+// The depleted authoritative mesh is hidden immediately; short-lived visual
+// copies can finish falling or crumbling without remaining gather targets.
+export function createResourceEffects(parent,{maxParticles=192,maxGhosts=16}={}){
+  const root=new THREE.Group();root.name='Harvest feedback';parent.add(root);
+  const records=new Map(),ghosts=[],dummy=new THREE.Object3D(),axis=new THREE.Vector3(),rotation=new THREE.Quaternion();
+  let villageId,lastClock,events=0;
+  const chipMaterial=new THREE.MeshStandardMaterial({color:'#ffffff',roughness:.95,flatShading:true});
+  const dustMaterial=new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:.19,depthWrite:false});
+  function pool(name,geometry,material,capacity){
+    const mesh=new THREE.InstancedMesh(geometry,material,capacity);mesh.name=name;mesh.count=0;mesh.visible=false;mesh.frustumCulled=false;mesh.castShadow=false;root.add(mesh);
+    return {mesh,slots:Array(capacity).fill(null),cursor:0};
+  }
+  const chips=pool('harvest-chips',new THREE.TetrahedronGeometry(1,0),chipMaterial,Math.max(1,Math.floor(maxParticles*.75)));
+  const dust=pool('harvest-dust',new THREE.IcosahedronGeometry(1,1),dustMaterial,Math.max(1,Math.floor(maxParticles*.25)));
+  const palettes={timber:['#b98a53','#8b663d','#65884a'],stone:['#999c8e','#727c72','#b0ad98'],iron:['#a0744b','#8a6a4c','#79796e'],coal:['#333b39','#636a62','#878679'],wheat:['#e2c171','#c5a150','#9bac62']};
+  const smooth=t=>t*t*(3-2*t),clamp=t=>THREE.MathUtils.clamp(t,0,1);
+  function restore(record){record.object.position.copy(record.position);record.object.quaternion.copy(record.quaternion);record.object.scale.copy(record.scale);}
+  function register(node,object){
+    remove(node.id);
+    const seed=node.seed??Array.from(node.id).reduce((value,char)=>Math.imul(value,31)+char.charCodeAt(0)|0,1);
+    records.set(node.id,{id:node.id,type:node.type,seed,object,position:object.position.clone(),quaternion:object.quaternion.clone(),scale:object.scale.clone(),wind:object.userData.resourceWind,previous:null,hitAt:-Infinity,hitDirection:{x:0,z:1},serial:0,capacity:node.type==='wheat'?1:node.type==='timber'?5:8});
+  }
+  function removeGhost(index){const ghost=ghosts[index];root.remove(ghost.object);ghosts.splice(index,1);}
+  function clearGhosts(id){for(let i=ghosts.length-1;i>=0;i--)if(id===undefined||ghosts[i].id===id)removeGhost(i);}
+  function remove(id){clearGhosts(id);records.delete(id);}
+  function direction(record,players=[]){
+    let nearest=null,distance=3.8;
+    for(const player of players){
+      if(player.online===false||player.downed||player.anim!=='gather')continue;
+      const d=Math.hypot(record.position.x-player.x,record.position.z-player.z);
+      if(d<distance&&d>.1){nearest=player;distance=d;}
+    }
+    if(nearest)return {x:(record.position.x-nearest.x)/distance,z:(record.position.z-nearest.z)/distance};
+    const angle=seeded(record.seed)()*Math.PI*2;return {x:Math.cos(angle),z:Math.sin(angle)};
+  }
+  function emit(record,time,depleted=false,impact=false,origin=record.position){
+    const random=seeded(record.seed+Math.imul(++record.serial,719)),palette=palettes[record.type]??palettes.stone;
+    const wood=record.type==='timber',wheat=record.type==='wheat';
+    const amount=impact?13:depleted?(wood?15:wheat?9:22):wood?8:6;
+    for(let i=0;i<amount;i++){
+      const slot=chips.slots[chips.cursor]??={};chips.cursor=(chips.cursor+1)%chips.slots.length;
+      const angle=random()*Math.PI*2,speed=(depleted?1.4:.9)+random()*(depleted?2:1.3),leaf=wood&&impact&&i%3===0;
+      Object.assign(slot,{start:time,life:.42+random()*.42,x:origin.x+(random()-.5)*.3,y:origin.y+(impact?.12:wood?.8:wheat?.55:.28),z:origin.z+(random()-.5)*.3,vx:Math.cos(angle)*speed,vy:1.4+random()*1.5,vz:Math.sin(angle)*speed,size:(wheat?.035:wood?.045:.055)+random()*.06,stretch:leaf?2.1:wood?1.8:1.1,spin:random()*8,color:new THREE.Color(leaf?palette[2]:palette[i%2])});
+    }
+    if(!wheat)for(let i=0;i<(depleted?7:3);i++){
+      const slot=dust.slots[dust.cursor]??={};dust.cursor=(dust.cursor+1)%dust.slots.length;
+      Object.assign(slot,{start:time,life:.45+random()*.42,x:origin.x+(random()-.5)*.45,y:origin.y+(impact?.08:wood?.72:.19),z:origin.z+(random()-.5)*.45,vx:(random()-.5)*.75,vy:.3+random()*.4,vz:(random()-.5)*.75,size:.12+random()*.11,stretch:1,spin:0,color:new THREE.Color(record.type==='coal'?'#7b8077':wood?'#b29c79':'#aba38a')});
+    }
+  }
+  function ghost(record,time,fallDirection){
+    clearGhosts(record.id);while(ghosts.length>=Math.max(1,maxGhosts))removeGhost(0);
+    const copy=record.object.clone(true);copy.name=`harvest-${record.type}-${record.id}`;copy.visible=true;
+    copy.position.copy(record.position);copy.quaternion.copy(record.quaternion);root.add(copy);
+    // Geometry and materials are shared with the source. Never dispose them
+    // when a temporary visual finishes, or a regrown node would be corrupted.
+    ghosts.push({id:record.id,type:record.type,record,object:copy,position:copy.position.clone(),quaternion:copy.quaternion.clone(),scale:copy.scale.clone(),direction:fallDirection,start:time,duration:record.type==='timber'?1.22:record.type==='wheat'?.25:.66,impacted:false});
+  }
+  function observe(node,time,players=[]){
+    const record=records.get(node.id);if(!record)return;
+    const available=Boolean(node.available??node.active??node.alive??(node.remaining!==undefined?node.remaining>0:node.hp!==undefined?node.hp>0:true));
+    const remaining=Number.isFinite(node.remaining)?node.remaining:Number.isFinite(node.hp)?node.hp:null,previous=record.previous;
+    if(remaining!==null)record.capacity=Math.max(record.capacity,remaining);
+    if(previous?.available&&(available===false||remaining!==null&&previous.remaining!==null&&remaining<previous.remaining)){
+      record.hitDirection=direction(record,players);record.hitAt=time;events++;
+      emit(record,time,!available);
+      if(!available)ghost(record,time,record.hitDirection);
+    }else if(available&&!previous?.available){
+      clearGhosts(record.id);record.hitAt=-Infinity;restore(record);
+    }
+    record.previous={available,remaining};record.object.visible=available;
+  }
+  function beginSnapshot(state={}){
+    const clock=Number.isFinite(state.clock)?state.clock:null;
+    // Large clock jumps also suppress old actions after a suspended tab or
+    // missed connection, even if the caller did not explicitly reset history.
+    if(villageId!==undefined&&state.id!==villageId||clock!==null&&lastClock!==undefined&&(clock<lastClock||clock-lastClock>2.5))reset();
+    villageId=state.id;if(clock!==null)lastClock=clock;
+  }
+  function drawPool(pool,time,isDust){
+    let active=0;
+    for(const slot of pool.slots){
+      if(!slot)continue;const age=(time-slot.start)/slot.life;if(age<0||age>=1)continue;
+      const t=time-slot.start,fade=isDust?(.4+age*2.5)*Math.sin(Math.PI*age):(1-age)**.55;
+      if(fade<.0001)continue;
+      dummy.position.set(slot.x+slot.vx*t,Math.max(.035,slot.y+slot.vy*t-(isDust?0:3.5)*t*t),slot.z+slot.vz*t);
+      dummy.rotation.set(slot.spin*t,slot.spin*t*.7,slot.spin*t*.4);dummy.scale.set(slot.size*fade*slot.stretch,slot.size*fade,slot.size*fade*.7);dummy.updateMatrix();
+      pool.mesh.setMatrixAt(active,dummy.matrix);pool.mesh.setColorAt(active,slot.color);active++;
+    }
+    pool.mesh.count=active;pool.mesh.visible=active>0;
+    if(active){pool.mesh.instanceMatrix.needsUpdate=true;pool.mesh.instanceColor.needsUpdate=true;}
+  }
+  function update(time){
+    for(const record of records.values()){
+      restore(record);if(!record.object.visible)continue;
+      const wood=record.type==='timber',wheat=record.type==='wheat',elapsed=time-record.hitAt;
+      if(record.wind)record.object.rotation.z+=Math.sin(time*1.4+record.wind.phase)*record.wind.amount;
+      if(!wood&&!wheat&&Number.isFinite(record.previous?.remaining)){
+        const fraction=clamp(record.previous.remaining/record.capacity);
+        record.object.scale.x*=.84+.16*fraction;record.object.scale.y*=.6+.4*fraction;record.object.scale.z*=.84+.16*fraction;
+      }
+      if(elapsed>=0&&elapsed<.38){
+        const shake=Math.sin(elapsed*45)*Math.exp(-elapsed*11);
+        if(wood){record.object.rotation.x+=record.hitDirection.z*shake*.035;record.object.rotation.z-=record.hitDirection.x*shake*.035;}
+        else if(wheat)record.object.rotation.z+=shake*.12;
+        else{record.object.position.x+=record.hitDirection.x*shake*.045;record.object.position.z+=record.hitDirection.z*shake*.045;record.object.rotation.z+=shake*.015;}
+      }
+    }
+    for(let i=ghosts.length-1;i>=0;i--){
+      const g=ghosts[i],t=clamp((time-g.start)/g.duration),o=g.object;
+      if(t>=1){removeGhost(i);continue;}
+      o.position.copy(g.position);o.quaternion.copy(g.quaternion);o.scale.copy(g.scale);
+      if(g.type==='timber'){
+        const fall=clamp(t/.82),angle=(Math.PI/2-.04)*fall*fall;
+        axis.set(g.direction.z,0,-g.direction.x);rotation.setFromAxisAngle(axis,angle);o.quaternion.premultiply(rotation);
+        const settle=smooth(clamp((t-.75)/.25));o.scale.multiplyScalar(1-settle);o.position.y-=settle*.14;
+        if(t>.73&&!g.impacted){g.impacted=true;const reach=Math.min(5,g.record.object.userData.resourceHeight*.65||4);emit(g.record,time,true,true,{x:g.position.x+g.direction.x*reach,y:.03,z:g.position.z+g.direction.z*reach});}
+      }else if(g.type==='wheat'){
+        o.rotation.z+=t*.75;o.scale.y*=1-smooth(t);o.scale.x*=1-t*.5;o.scale.z*=1-t*.5;
+      }else{
+        const crumble=smooth(t);o.rotation.z+=Math.sin(t*12)*(1-t)*.1;o.position.y-=crumble*.21;o.scale.x*=1-crumble*.45;o.scale.y*=1-crumble;o.scale.z*=1-crumble*.45;
+      }
+    }
+    drawPool(chips,time,false);drawPool(dust,time,true);
+  }
+  function reset(){
+    clearGhosts();for(const pool of [chips,dust]){pool.slots.fill(null);pool.cursor=0;pool.mesh.count=0;pool.mesh.visible=false;}
+    for(const record of records.values()){restore(record);record.previous=null;record.hitAt=-Infinity;}
+    villageId=undefined;lastClock=undefined;
+  }
+  return {root,register,remove,observe,beginSnapshot,update,reset,
+    get stats(){return {events,ghosts:ghosts.length,particles:chips.mesh.count+dust.mesh.count,particleCapacity:chips.slots.length+dust.slots.length};},
+    dispose(){reset();records.clear();for(const pool of [chips,dust]){pool.mesh.dispose();pool.mesh.geometry.dispose();pool.mesh.material.dispose();}parent.remove(root);}
+  };
 }
