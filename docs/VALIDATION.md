@@ -1,5 +1,17 @@
 # Emberwatch build validation
 
+## Build 11: gate detail, well interior and physical request board
+
+The complete `npm test` run passes **320/320 tests**. All **57** client/shared/server JavaScript modules pass syntax and local import checks; all local HTML assets resolve and **76 HTML IDs** are unique. The B shortcut is removed from the client.
+
+The gate retains its original moving root, lift range, nearby-player opening rule and easing. New timber, metal fittings and fixed guides use eight material batches including the moving chain instances: 22,410 triangles when closed and 14,970 raised. Chain matrices change only when the gate moves. Fixed supports fit within the existing turret footprint. The well has inward-facing masonry and thick coping, with an open shaft and lower water surface; raycasts from inside in 24 directions at four heights confirm ordinary front-facing geometry instead of a one-sided outer cylinder. Its 13 material batches contain 10,904 triangles. Geometry, disposal, foliage clearances and road-junction regressions pass.
+
+The [gate and well preview](previews/gate-well.jpg) was rendered from the actual game geometry and visually inspected in closed/raised and elevated/interior views. Its well roof is omitted to expose the stone lining, winding mechanism and bucket. Offline preview lighting does not reproduce the live renderer's procedural bump maps and shadows. In-game appearance and sustained frame rate still require a live playtest.
+
+Request UI checks cover reachable board frontage, selecting the board versus the nearby bank door, retained gathering priority, preventing remote board access, and releasing the modal before walking to a marked destination. Treasury, public Watch and cannon entrances expose only their own requested deliveries. Quantity drafts and focused inputs survive snapshots; stale quantities, changed buildings and lost entrance access prevent sends. Existing server delivery validation, finite escrow, multiplayer and persistence tests remain green.
+
+Only client artwork, request access, tests and documentation change. No server rules, balances, account statistics or saved village data change. The [crate and helmet proposal](CRATE-PROPOSAL.md) is documentation for review only: crates, new armor effects, starting kits and the gold helmet are not implemented in this release.
+
 ## Build 10: varied attacks, village requests and shared progression
 
 The complete `npm test` run passes **313/313 tests**, including all earlier gameplay regressions. All **57** client, shared and server JavaScript modules pass syntax and local import checks. The HTML contains **76 unique IDs**, and its local script and stylesheet paths resolve.

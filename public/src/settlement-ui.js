@@ -6,6 +6,7 @@ import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote } from '../../shared
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS } from '../../shared/defense.js';
 import { ROLE_STATS } from '../../shared/roles.js';
 import { WORKER_RULES, WORKER_RESOURCES } from '../../shared/workers.js';
+import { NOTICEBOARD_POINT } from './noticeboard.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -16,7 +17,7 @@ const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow'];
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
-export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar }) {
+export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null }) {
   let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const workerDrafts = new Map();
@@ -131,7 +132,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
@@ -157,6 +158,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function bank() {
     const p = me(), s = state(), tax = s.policies?.tradeTax || 0, loan = s.loan || {};
     let html = head('VILLAGE TREASURY', 'A village built on shared supplies.', 'Trade prices follow the stock in the village. Quotes include the price change across the whole bundle.') + stats([['Wallet', `${num(p.wallet)} gold`], ['Protected savings', `${num(p.bank)} gold`], ['Treasury', `${num(s.treasury)} gold`]]);
+    html += deliveries('bank');
     html += '<p>Your bank savings carry into another run. Trading tax: ' + num(tax) + '%. Emergency purchase reserve: ' + TREASURY_RESERVE + ' gold.</p><div class="transfer-form">' + quantity('bank-amount', Math.max(p.wallet, p.bank), 10) + button('Deposit', () => send({ type: 'action', kind: 'deposit', amount: amount('bank-amount') }), p.wallet < 1) + button('Withdraw', () => send({ type: 'action', kind: 'withdraw', amount: amount('bank-amount') }), p.bank < 1) + '</div><h3>Buy and sell resources</h3>';
     html += '<p>Enter any whole quantity. Quotes include the changing price of every unit and the village tax. You can sell a full pack in one trade.</p>';
     for (const [resource, info] of Object.entries(RESOURCE_MARKET)) {
@@ -305,7 +307,12 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function watch() {
     const replacements = (state().guardReplacements || []).filter(g => !g.plotId && !g.ownerId);
-    return head('THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + `<p>Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.</p>` + replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !me().inventory?.wheat) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
+    return head('THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + `<p>Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.</p>` + replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !me().inventory?.wheat) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
+  }
+  function deliveries(id) {
+    if (typeof showDeliveries !== 'function') return '';
+    const count = (state().requests?.items || []).filter(request => request.status === 'open' && request.destinationId === id).length;
+    return '<div class="requested-deliveries">' + row('Steward requests', `${count} funded ${count === 1 ? 'delivery' : 'deliveries'} for this destination. Use the posted request to earn its payment.`, button('Requested deliveries', () => showDeliveries(id))) + '</div>';
   }
   function replacementRows(replacements, destroyed = false) {
     return replacements.map((g, index) => row(`Fallen guard ${index + 1}`, destroyed ? 'Waiting for barracks repairs' : g.waitingForWheat ? `Waiting for ${RECRUIT.respawnWheat} wheat in this barracks${g.remaining > 0 ? ` · ${Math.ceil(g.remaining)} seconds preparation remaining` : ''}` : `Returns in ${Math.ceil(g.remaining)} seconds · costs ${RECRUIT.respawnWheat} stored wheat`)).join('');
@@ -407,6 +414,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       return html;
     }
     html += stats([['Owner', p.ownerName || 'Village resident'], ['Building health', p.building ? `${num(p.hp)} / ${num(p.maxHp)}` : 'Unbuilt'], ['Level', num(p.level || 1)]]);
+    if (p.building === 'cannon' && p.hp > 0) html += deliveries(id);
     if (p.building && p.hp > 0 && p.hp < p.maxHp) html += command('Repair with equipped hammer', 'repairPlot', { plotId: id }, !me().durability?.hammer, 'Consumes shared village repair supplies and hammer durability.');
     if (['mine', 'wheat_farm', 'tree_farm'].includes(p.building)) html += '<p>' + (mine ? 'Your harvest is yours. When visitors harvest, their output is split 80% to them and 20% into your storage over time.' : p.allowVisitors ? 'Visitors may gather here. Your share is 80%; the owner receives the remaining 20% over time.' : 'This owner has closed harvesting to visitors.') + '</p>' + (mine ? command(p.allowVisitors ? 'Close visitor harvesting' : 'Allow visitor harvesting', 'plot_access', { plotId: id, allowVisitors: !p.allowVisitors }) : '');
     const recipes = Object.entries(RECIPES).filter(([, r]) => r.shop === p.building);
@@ -462,6 +470,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function atlas() {
     let html = head('VILLAGE ATLAS', 'Find your place in the village.', 'Gold marks your land. Open plots lie beyond the central services, with exposed defense plots beside the approach road. Mark a destination to find it on your minimap.');
     html += '<h3>Permanent services</h3><div class="atlas-list">';
+    html += row(NOTICEBOARD_POINT.name, `${Math.round(gap(NOTICEBOARD_POINT, me()))} m · treasury east wall · press E to read`, button('Find request board', () => { waypoint = { ...NOTICEBOARD_POINT }; toast('Request board marked on your minimap. Close the atlas to walk there.'); }));
     for (const b of BUILDINGS.filter(b => !['house'].includes(b.kind))) html += row(b.name, `${Math.round(gap(buildingEntrance(b), me()))} m to entrance`, button('Mark', () => markService(b.id)));
     html += '</div><h3>Plots & player businesses</h3><div class="atlas-list">';
     for (const place of PLOTS) {

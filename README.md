@@ -2,15 +2,19 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 10.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 11.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
-The requested systems now have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
+The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
 
+Build 11 refines the lifting gate with beveled timber, forged metal joints and moving chains, and fixes the well with thick inward-facing masonry. [Gate and well preview](docs/previews/gate-well.jpg). Read village requests by walking up to the treasury noticeboard and pressing **E**. The HUD/menu can mark the board on the map; requests for a particular delivery destination are available at that destination’s entrance.
+
+The proposed crates, functional armor and 100-night gold helmet are **not implemented**. Their prices, suggested items and open balance questions are recorded separately in [the crate proposal](docs/CRATE-PROPOSAL.md) for review.
+
 Build 10 adds six zombie types, graveyard emergence, sword cleave and dodgeable enemy attacks. Players and guards can strike multiple zombies in a forward arc; a short blade trail and swoosh follow the swing. Red ground circles mark enemy attacks before impact. The large Brood husk releases up to three weak Grave mites when killed, subject to the 120-enemy battlefield limit, and a Gravebreaker leads every fifth night. Archer towers now fire without ammunition, including existing empty towers; bows and cannons still need their normal supplies.
 
-Press **B** for steward-funded deliveries or read the board on the treasury wall. Press **R** to command your own barracks troops to defend, hold your current position, follow, or retreat. The village menu includes **Honors & appearance** and the optional **First-watch guide**. Surviving credited nights unlocks permanent cosmetic colors and crests. New footsteps, village ambience, zombie cues and the dusk bell share the saved Game sound setting.
+Read steward-funded deliveries at the board on the treasury wall. Press **R** to command your own barracks troops to defend, hold your current position, follow, or retreat. The village menu includes **Honors & appearance** and the optional **First-watch guide**. Surviving credited nights unlocks permanent cosmetic colors and crests. New footsteps, village ambience, zombie cues and the dusk bell share the saved Game sound setting.
 
 Grass clumps, ferns, wildflowers, shrubs, clover, fallen leaves and small patches of wall ivy give the village and woodland more detail. Plants sway in a breeze, with clear roads, doors, plots and gathering approaches. The sky now has drifting cloud layers, a sun that rises and sets, a visible moon and stars, and warm dawn/dusk lighting. It follows the village’s actual clock, including joining mid-cycle and pausing. Right-drag can look upward to follow the sky. [Sky cycle preview](docs/previews/sky-cycle.jpg).
 
@@ -132,10 +136,9 @@ Sales use current stock prices, tax, the treasury’s emergency reserve and norm
 | Hold right mouse and move | Turn the third-person camera and look upward, including while downed. |
 | Left mouse | Use the selected weapon, tool, food, or blessing. |
 | 1–8 / mouse wheel | Select a configured hotbar slot. |
-| E | Gather a matching nearby resource or interact with a service, plot, horse, cart, or downed companion. |
+| E | Gather a matching nearby resource or interact with the noticeboard, a service, plot, horse, cart, or downed companion. |
 | I | Open your pack, equipment and hotbar setup. |
 | M | Open the village atlas and mark a destination. |
-| B | Read village delivery requests; actual deliveries need the destination entrance. |
 | R | Command troops belonging to your own barracks. |
 | Enter | Focus chat; send the typed message. |
 | T | Toggle village chat. |

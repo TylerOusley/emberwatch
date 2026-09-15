@@ -4,10 +4,11 @@ import { createSettlementUI } from '../public/src/settlement-ui.js';
 import { BUILDINGS, PLOTS, plotBedPoint } from '../shared/world.js';
 import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { taxedSaleQuote, taxedPurchaseQuote, foodQuote } from '../shared/economy.js';
+import { NOTICEBOARD_POINT } from '../public/src/noticeboard.js';
 
 // A narrow DOM harness verifies displayed quotes and dispatched actions without
 // WebGL. It is intentionally not a screenshot or browser rendering test.
-function fixture(t) {
+function fixture(t, options = {}) {
   const prior = globalThis.document;
   let html = '', openCount = 0, nodes = [], buttons = [], activePanel = null;
   const fields = new Map(), sent = [];
@@ -17,7 +18,7 @@ function fixture(t) {
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = prior; });
-  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
+  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
     html = next; activePanel = panel; openCount++; fields.clear();
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
       const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
@@ -43,6 +44,23 @@ test('market buttons send the tax-inclusive quotes displayed to the player', t =
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'sell', resource: 'wheat', amount: 10, minTotal: sale });
   f.click(`Buy 10 · ${purchase}g`);
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyResource', resource: 'wheat', amount: 10, maxTotal: purchase });
+});
+
+test('treasury, public Watch and cannon entrances expose destination-specific requested delivery counters', t => {
+  const destinations = [], f = fixture(t, { showDeliveries: id => destinations.push(id) }), site = PLOTS.find(p => p.id === 'outpost-1');
+  const cannon = { id: site.id, ownerId: 'bob', ownerName: 'Bob', building: 'cannon', hp: 500, maxHp: 500, storage: {} };
+  f.state.plots = [cannon];
+  f.state.requests = { items: [{ id: 'one', status: 'open', destinationId: 'bank' }, { id: 'two', status: 'open', destinationId: 'barracks' }, { id: 'three', status: 'open', destinationId: site.id }] };
+  for (const [kind, id] of [['bank', null], ['barracks', null], ['plot', site.id]]) {
+    f.visit(kind, id); assert.match(f.html, /1 funded delivery for this destination/); f.click('Requested deliveries'); assert.equal(destinations.at(-1), id || kind);
+  }
+  f.visit('bank'); const stale = f.buttons.find(b => b.text === 'Requested deliveries'); const before = destinations.length;
+  Object.assign(f.player, { x: 0, z: 0 }); stale.onclick(); assert.equal(destinations.length, before); assert.match(f.html, /BUILDING ENTRANCE/);
+  assert.ok(!f.buttons.some(b => b.text === 'Requested deliveries'), 'remote service navigation cannot open a delivery counter');
+  f.visit('bank'); f.state.requests.items.push({ id: 'four', status: 'open', destinationId: 'bank' }); f.ui.refresh(); assert.match(f.html, /2 funded deliveries for this destination/);
+  cannon.building = 'barracks'; f.visit('plot', site.id); assert.ok(!f.buttons.some(b => b.text === 'Requested deliveries'), 'owned barracks are not public request destinations');
+  cannon.building = 'cannon'; cannon.hp = 0; f.visit('plot', site.id); assert.ok(!f.buttons.some(b => b.text === 'Requested deliveries'), 'ruined destinations offer no turn-in counter');
+  f.ui.show('atlas'); f.click('Find request board'); assert.deepEqual(f.ui.getWaypoint(), NOTICEBOARD_POINT);
 });
 
 test('empty owned land exposes storage and construction can use staged materials', t => {
@@ -273,7 +291,7 @@ test('services and owned buildings require their entrances, while the atlas rema
   f.player.x = 100; f.player.z = 100; f.ui.show('atlas');
   assert.match(f.html, /VILLAGE ATLAS/);
   const serviceRows = BUILDINGS.filter(b => b.kind !== 'house');
-  f.buttons[serviceRows.length].onclick();
+  f.buttons.filter(button => button.text === 'Mark')[serviceRows.length].onclick();
   assert.deepEqual({ x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z }, plotEntrance(site, plot));
   assert.equal(f.ui.getWaypoint().kind, 'plot');
   plot.building = null;
@@ -282,7 +300,7 @@ test('services and owned buildings require their entrances, while the atlas rema
   const housePoint = { x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z };
   assert.deepEqual(housePoint, plotEntrance(site, plot));
   assert.notDeepEqual(housePoint, openLandPoint);
-  f.buttons[serviceRows.findIndex(b => b.id === 'bank')].onclick();
+  f.buttons.filter(button => button.text === 'Mark')[serviceRows.findIndex(b => b.id === 'bank')].onclick();
   assert.deepEqual({ x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z }, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
 });
 
