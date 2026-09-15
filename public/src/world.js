@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, PLOTS, WORLD_BOUNDS, plotFront, seeded } from '/shared/world.js';
+import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, PLOTS, WORLD_BOUNDS, plotFront, seeded, CAVE_AREAS, groundHeight, caveAreaAt } from '/shared/world.js';
 import { createPlotsWorld, mineralOutcropGeometry, mineralBedGeometry } from './plots-world.js';
 
 // Original procedural artwork. Everything is drawn from simple, authored geometry;
@@ -24,10 +24,11 @@ export function createWorld(scene) {
   };
   const boxG = new THREE.BoxGeometry(1,1,1), cylinderG = new THREE.CylinderGeometry(1,1,1,8), coneG = new THREE.ConeGeometry(1,1,7);
   const sphereG = new THREE.IcosahedronGeometry(1,0), dummy = new THREE.Object3D();
-  const batches = new Map();
+  const batches = new Map(),caveOccluders=[];let mountainG;
   function batch(geo,material,x,y,z,sx=1,sy=1,sz=1,rx=0,ry=0,rz=0) {
-    const key=geo.uuid+material.uuid;
-    if(!batches.has(key)) batches.set(key,{geo,material,transforms:[]});
+    const caveOccluder=geo===mountainG&&Math.abs(x)<55&&z<-140;
+    const key=geo.uuid+material.uuid+(caveOccluder?':cave':'');
+    if(!batches.has(key)) batches.set(key,{geo,material,transforms:[],caveOccluder});
     dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.set(rx,ry,rz);dummy.updateMatrix();
     batches.get(key).transforms.push(dummy.matrix.clone());
   }
@@ -63,7 +64,8 @@ export function createWorld(scene) {
     const n=rng(),c=color(n>.72?'#82975c':n>.34?'#728b50':'#657d49');c.multiplyScalar(.94+rng()*.12);gc.push(c.r,c.g,c.b);
   }
   groundG.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));groundG.computeVertexNormals();
-  const ground=mesh(groundG,mat('#ffffff',{vertexColors:true,flatShading:true}));ground.castShadow=false;
+  const carvedGround=carveGroundForCave(groundG);groundG.dispose();
+  const ground=mesh(carvedGround,mat('#ffffff',{vertexColors:true,flatShading:true}));ground.name='village-terrain';ground.castShadow=false;
 
   const lanes=[];
   function road(points,width=7,y=.014){
@@ -71,7 +73,7 @@ export function createWorld(scene) {
     const len=curve.getLength(),steps=Math.ceil(len*2),pos=[],uv=[],indices=[];
     for(let i=0;i<=steps;i++){
       const t=i/steps,p=curve.getPoint(t),tan=curve.getTangent(t),nx=tan.z,nz=-tan.x;
-      pos.push(p.x+nx*width/2,y,p.z+nz*width/2,p.x-nx*width/2,y,p.z-nz*width/2);uv.push(0,t*len/5,width/5,t*len/5);
+      pos.push(p.x+nx*width/2,y+groundHeight(p.x+nx*width/2,p.z+nz*width/2),p.z+nz*width/2,p.x-nx*width/2,y+groundHeight(p.x-nx*width/2,p.z-nz*width/2),p.z-nz*width/2);uv.push(0,t*len/5,width/5,t*len/5);
       if(i<steps){let j=i*2;indices.push(j,j+1,j+2,j+1,j+3,j+2);}
     }
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();
@@ -95,7 +97,7 @@ export function createWorld(scene) {
     for(const x of [39,61])road([{x:side*x,z:14},{x:side*x,z:-129.4}],3.4);
     road([{x:0,z:14},{x:side*39,z:14},{x:side*61,z:14}],3);
     road([{x:0,z:-60},{x:side*39,z:-60},{x:side*61,z:-60}],3);
-    road([{x:0,z:-129.4},{x:side*39,z:-129.4},{x:side*61,z:-129.4}],2.2);
+    road([{x:0,z:-113},{x:side*23,z:-113},{x:side*23,z:-123.5},{x:side*28,z:-127},{x:side*39,z:-127},{x:side*61,z:-129.4}],2.2);
   }
   road([{x:0,z:-30},{x:12,z:-30},{x:12,z:-60},{x:0,z:-60}],2.6);
   road([{x:0,z:-60},{x:0,z:-129.4}],3.6);
@@ -115,11 +117,11 @@ export function createWorld(scene) {
   const marketPaving=mesh(new THREE.CircleGeometry(8,20),roadMat,root,0,.019,-66);marketPaving.rotation.x=-Math.PI/2;marketPaving.castShadow=false;
   paving.updateMatrix();marketPaving.updateMatrix();
   for(const edge of createRoadEdging(lanes,[paving,marketPaving])){
-    box(edge.index%4?M.stone:M.moss,edge.x,.045,edge.z,.38,.13,.88,edge.yaw);
+    box(edge.index%4?M.stone:M.moss,edge.x,.045+groundHeight(edge.x,edge.z),edge.z,.38,.13,.88,edge.yaw);
   }
 
   // Mountain shoulders shelter the keep; silhouettes stay outside playable bounds.
-  const mountainG=new THREE.ConeGeometry(1,1,6);
+  mountainG=new THREE.ConeGeometry(1,1,6);
   for(let i=0;i<31;i++){
     const x=-175+i*12,z=-178-rng()*30,h=23+rng()*43;
     batch(mountainG,i%3?M.mountain:M.mountainLight,x,h/2-3,z,18+rng()*12,h,18+rng()*15,0,rng()*Math.PI,0);
@@ -419,22 +421,12 @@ export function createWorld(scene) {
     else if(n.type==='wheat')object=wheat(n.x,n.z,seed);
     else{
       object=mesh(mineralOutcropGeometry(n.type,seed),M.geology,root,n.x,0,n.z);
-      object.name=`${n.type}-exposed-bedrock`;
+      object.name=`${n.type}-${caveAreaAt(n.x,n.z)?'cave-vein':'exposed-bedrock'}`;
       object.userData.formation='layered-outcrop';
     }
-    object.userData.resourceId=n.id;resources.set(n.id,object);resourceEffects.register(n,object);return object;
+    object.position.y+=groundHeight(n.x,n.z);object.userData.resourceId=n.id;object.userData.resourceType=n.type;object.userData.resourceLocation={x:n.x,z:n.z};resources.set(n.id,object);resourceEffects.register(n,object);return object;
   }
-  // These soil and gravel aprons join the individual deposits into recognizable
-  // workings. They are below foot level and stay clear of every building/lane.
-  // The existing resource positions and IDs remain the interaction authority.
-  for(const [name,x,z,width,depth,seed] of [
-    ['Sanctuary quarry',31.45,-22.75,5.95,16.2,714],
-    ['Western iron cut',-25,-80.5,13.7,6.7,715],
-    ['Eastern coal bed',22.75,-82.5,11.2,6.7,716],
-    ['Outer mineral shelf',-49,96.5,21.7,6.9,717]
-  ]){
-    const bed=mesh(mineralBedGeometry(seed,width,depth),M.geology,root,x,0,z);bed.name=name;bed.castShadow=false;
-  }
+  // Public ore is exposed in the cave; private mine artwork stays with its plot.
   for(const n of RESOURCES)createResource(n);
   const publicResourceIds=new Set(RESOURCES.map(n=>n.id));
   // Small tilled patches beneath individual harvestable wheat stalks.
@@ -472,8 +464,8 @@ export function createWorld(scene) {
     beam(M.woodDark,[x,0,z],[x+.35,5,z],.42);beam(M.woodDark,[x+.2,2.5,z],[x-1.7,4.5,z+.4],.22);beam(M.woodDark,[x+.3,3.7,z],[x+1.7,5.1,z-.5],.17);
   }
   // Flush repeated architectural details into a small number of draw calls.
-  for(const {geo,material,transforms} of batches.values()){
-    const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=true;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);
+  for(const {geo,material,transforms,caveOccluder} of batches.values()){
+    const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=true;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);if(caveOccluder)caveOccluders.push(instance);
   }
   const details=createWorldDetails(lanes);root.add(details.root);
   const plotsWorld=createPlotsWorld(root);
@@ -494,6 +486,8 @@ export function createWorld(scene) {
       for(const n of [...entries,...plotEntries]){
         if(!publicResourceIds.has(n.id))dynamicIds.add(n.id);
         let object=resources.get(n.id);
+        const changed=object&&n.type&&(object.userData.resourceType!==n.type||Number.isFinite(n.x)&&Number.isFinite(n.z)&&(object.userData.resourceLocation?.x!==n.x||object.userData.resourceLocation?.z!==n.z));
+        if(changed){resourceEffects.remove(n.id);root.remove(object);object.traverse(child=>{if(child.isMesh)child.geometry.dispose();});resources.delete(n.id);object=null;}
         if(!object&&Number.isFinite(n.x)&&Number.isFinite(n.z)&&n.type)object=createResource(n);
         if(object)resourceEffects.observe(n,time,harvesters);
       }
@@ -510,7 +504,7 @@ export function createWorld(scene) {
     const target=nearby?1:0;
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;gateArtwork.update();
   }
-  return {root,resources,gate,landmarks:{gate:gateArtwork,well:wellArtwork},update,road:mainRoad,lanterns,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
+  return {root,resources,gate,ground,setCaveView(inside){for(const m of caveOccluders)m.visible=!inside;},landmarks:{gate:gateArtwork,well:wellArtwork},update,road:mainRoad,lanterns,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
 }
 
 // Build-time curb clipping uses the exact triangles of the rendered roads,
@@ -616,11 +610,11 @@ export function createResourceEffects(parent,{maxParticles=192,maxGhosts=16}={})
     for(let i=0;i<amount;i++){
       const slot=chips.slots[chips.cursor]??={};chips.cursor=(chips.cursor+1)%chips.slots.length;
       const angle=random()*Math.PI*2,speed=(depleted?1.4:.9)+random()*(depleted?2:1.3),leaf=wood&&impact&&i%3===0;
-      Object.assign(slot,{start:time,life:.42+random()*.42,x:origin.x+(random()-.5)*.3,y:origin.y+(impact?.12:wood?.8:wheat?.55:.28),z:origin.z+(random()-.5)*.3,vx:Math.cos(angle)*speed,vy:1.4+random()*1.5,vz:Math.sin(angle)*speed,size:(wheat?.035:wood?.045:.055)+random()*.06,stretch:leaf?2.1:wood?1.8:1.1,spin:random()*8,color:new THREE.Color(leaf?palette[2]:palette[i%2])});
+      Object.assign(slot,{start:time,life:.42+random()*.42,floor:origin.y+.035,x:origin.x+(random()-.5)*.3,y:origin.y+(impact?.12:wood?.8:wheat?.55:.28),z:origin.z+(random()-.5)*.3,vx:Math.cos(angle)*speed,vy:1.4+random()*1.5,vz:Math.sin(angle)*speed,size:(wheat?.035:wood?.045:.055)+random()*.06,stretch:leaf?2.1:wood?1.8:1.1,spin:random()*8,color:new THREE.Color(leaf?palette[2]:palette[i%2])});
     }
     if(!wheat)for(let i=0;i<(depleted?7:3);i++){
       const slot=dust.slots[dust.cursor]??={};dust.cursor=(dust.cursor+1)%dust.slots.length;
-      Object.assign(slot,{start:time,life:.45+random()*.42,x:origin.x+(random()-.5)*.45,y:origin.y+(impact?.08:wood?.72:.19),z:origin.z+(random()-.5)*.45,vx:(random()-.5)*.75,vy:.3+random()*.4,vz:(random()-.5)*.75,size:.12+random()*.11,stretch:1,spin:0,color:new THREE.Color(record.type==='coal'?'#7b8077':wood?'#b29c79':'#aba38a')});
+      Object.assign(slot,{start:time,life:.45+random()*.42,floor:origin.y+.035,x:origin.x+(random()-.5)*.45,y:origin.y+(impact?.08:wood?.72:.19),z:origin.z+(random()-.5)*.45,vx:(random()-.5)*.75,vy:.3+random()*.4,vz:(random()-.5)*.75,size:.12+random()*.11,stretch:1,spin:0,color:new THREE.Color(record.type==='coal'?'#7b8077':wood?'#b29c79':'#aba38a')});
     }
   }
   function ghost(record,time,fallDirection){
@@ -658,7 +652,7 @@ export function createResourceEffects(parent,{maxParticles=192,maxGhosts=16}={})
       if(!slot)continue;const age=(time-slot.start)/slot.life;if(age<0||age>=1)continue;
       const t=time-slot.start,fade=isDust?(.4+age*2.5)*Math.sin(Math.PI*age):(1-age)**.55;
       if(fade<.0001)continue;
-      dummy.position.set(slot.x+slot.vx*t,Math.max(.035,slot.y+slot.vy*t-(isDust?0:3.5)*t*t),slot.z+slot.vz*t);
+      dummy.position.set(slot.x+slot.vx*t,Math.max(slot.floor??.035,slot.y+slot.vy*t-(isDust?0:3.5)*t*t),slot.z+slot.vz*t);
       dummy.rotation.set(slot.spin*t,slot.spin*t*.7,slot.spin*t*.4);dummy.scale.set(slot.size*fade*slot.stretch,slot.size*fade,slot.size*fade*.7);dummy.updateMatrix();
       pool.mesh.setMatrixAt(active,dummy.matrix);pool.mesh.setColorAt(active,slot.color);active++;
     }
@@ -689,7 +683,7 @@ export function createResourceEffects(parent,{maxParticles=192,maxGhosts=16}={})
         const fall=clamp(t/.82),angle=(Math.PI/2-.04)*fall*fall;
         axis.set(g.direction.z,0,-g.direction.x);rotation.setFromAxisAngle(axis,angle);o.quaternion.premultiply(rotation);
         const settle=smooth(clamp((t-.75)/.25));o.scale.multiplyScalar(1-settle);o.position.y-=settle*.14;
-        if(t>.73&&!g.impacted){g.impacted=true;const reach=Math.min(5,g.record.object.userData.resourceHeight*.65||4);emit(g.record,time,true,true,{x:g.position.x+g.direction.x*reach,y:.03,z:g.position.z+g.direction.z*reach});}
+        if(t>.73&&!g.impacted){g.impacted=true;const reach=Math.min(5,g.record.object.userData.resourceHeight*.65||4);emit(g.record,time,true,true,{x:g.position.x+g.direction.x*reach,y:g.position.y+.03,z:g.position.z+g.direction.z*reach});}
       }else if(g.type==='wheat'){
         o.rotation.z+=t*.75;o.scale.y*=1-smooth(t);o.scale.x*=1-t*.5;o.scale.z*=1-t*.5;
       }else{
@@ -733,6 +727,7 @@ export function createWorldDetailLayout(lanes=[]){
     for(const depth of [half+.4,half+1.5,half+2.7])circle(b.x+Math.sin(yaw)*depth,b.z+Math.cos(yaw)*depth,2.25);
   }
   for(const wall of WALLS)rect(wall.x,wall.z,wall.w+.7,wall.d+.7);
+  for(const area of CAVE_AREAS)rect(area.x,area.z,area.w+3,area.d+2);
   for(const plot of PLOTS){rect(plot.x,plot.z,plot.w+1.5,plot.d+1.5);const front=plotFront(plot);circle(front.x,front.z,2.1);}
   for(const n of RESOURCES)circle(n.x,n.z,n.type==='timber'?1.25:n.type==='wheat'?.65:1.95);
   circle(8,-4,6.05);circle(0,-66,8.5);rect(0,18,21,7);
@@ -1040,4 +1035,37 @@ export function createWellArtwork(){
   b.merge(root);root.traverse(n=>{if(n.isMesh&&n.material===waterMaterial)n.castShadow=false;});
   root.userData.innerRadius=1.06;root.userData.outerRadius=1.59;root.userData.rimHeight=1.32;
   return {root,dispose(){b.dispose();root.clear();}};
+}
+
+// Subtract the exact cave rectangle union from the surface mesh. Clipping keeps
+// original elevation/color interpolation and prevents coarse-grid overcuts at
+// the mouth; no opaque triangle spans the descending playable floor.
+export function carveGroundForCave(geometry,areas=CAVE_AREAS){
+  const position=geometry.attributes.position,color=geometry.attributes.color,index=geometry.index;
+  const vertices=[],colors=[],hasColor=Boolean(color);
+  const read=i=>({p:[position.getX(i),position.getY(i),position.getZ(i)],c:hasColor?[color.getX(i),color.getY(i),color.getZ(i)]:[1,1,1]});
+  function split(polygon,axis,value,greater){
+    const inside=[],outside=[];
+    for(let i=0;i<polygon.length;i++){
+      const a=polygon[i],b=polygon[(i+1)%polygon.length],ai=greater?a.p[axis]>=value:a.p[axis]<=value,bi=greater?b.p[axis]>=value:b.p[axis]<=value;
+      (ai?inside:outside).push(a);
+      if(ai!==bi){const t=(value-a.p[axis])/(b.p[axis]-a.p[axis]),v={p:a.p.map((n,j)=>n+(b.p[j]-n)*t),c:a.c.map((n,j)=>n+(b.c[j]-n)*t)};inside.push(v);outside.push(v);}
+    }
+    return {inside,outside};
+  }
+  const count=index?.count??position.count;
+  for(let i=0;i<count;i+=3){
+    let polygons=[[read(index?index.getX(i):i),read(index?index.getX(i+1):i+1),read(index?index.getX(i+2):i+2)]];
+    for(const area of areas){
+      const left=area.x-area.w/2,right=area.x+area.w/2,low=area.z-area.d/2,high=area.z+area.d/2,next=[];
+      for(const polygon of polygons){
+        if(polygon.every(v=>v.p[0]<=left)||polygon.every(v=>v.p[0]>=right)||polygon.every(v=>v.p[2]<=low)||polygon.every(v=>v.p[2]>=high)){next.push(polygon);continue;}
+        let remainder=polygon;
+        for(const [axis,value,greater]of[[0,left,true],[0,right,false],[2,low,true],[2,high,false]]){if(remainder.length<3)break;const parts=split(remainder,axis,value,greater);if(parts.outside.length>=3)next.push(parts.outside);remainder=parts.inside;}
+      }
+      polygons=next;
+    }
+    for(const polygon of polygons)for(let j=1;j<polygon.length-1;j++)for(const v of[polygon[0],polygon[j],polygon[j+1]]){vertices.push(...v.p);colors.push(...v.c);}
+  }
+  const result=new THREE.BufferGeometry();result.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));result.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));result.computeVertexNormals();result.computeBoundingSphere();return result;
 }

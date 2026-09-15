@@ -1,3 +1,5 @@
+import { caveAreaAt } from '../../shared/caves.js';
+
 // Original, quiet procedural sounds. No downloads or continuously running
 // oscillators: short cached buffers share one master bus and a bounded voice pool.
 const TAU = Math.PI * 2, clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -8,6 +10,7 @@ const SOUND = Object.freeze({
   breeze: [2.7, .055], groan: [1.8, .14], emerge: [1.1, .13], split: [.55, .15], heal: [.65, .11]
 });
 const AMBIENT = new Set(['bird', 'cricket', 'breeze', 'groan']);
+const OUTDOOR = new Set(['bird', 'cricket', 'breeze']);
 const MAX_VOICES = 16, MAX_AMBIENT = 4;
 
 // Use the very same curved lanes as the rendered world. The spatial index is
@@ -29,6 +32,7 @@ export function createFootstepSurface(lanes = []) {
   }
   return point => {
     if(!point || !Number.isFinite(point.x) || !Number.isFinite(point.z))return 'grass';
+    if(caveAreaAt(point.x,point.z))return 'stone';
     if(Math.hypot(point.x-8,point.z+4)<=5.7 || Math.hypot(point.x,point.z+66)<=8)return 'stone';
     for(const {a,b,r} of cells.get(`${Math.floor(point.x/cellSize)},${Math.floor(point.z/cellSize)}`)||[]){
       const dx=b.x-a.x,dz=b.z-a.z,t=clamp(((point.x-a.x)*dx+(point.z-a.z)*dz)/(dx*dx+dz*dz||1),0,1);
@@ -89,7 +93,7 @@ export function createGameAudio(options = {}) {
   let context=null, master=null, compressor=null, disposed=false, unlocked=false, active=false;
   let surfaceAt=options.surfaceAt||createFootstepSurface(), listener=null, camera=null, now=0;
   let previous=null, snapshotRef=null, previousPosition=null, steps=0, nextBird=Infinity, nextCricket=Infinity, nextBreeze=Infinity, nextGroan=Infinity;
-  let bellNight=null;
+  let bellNight=null,underground=false;
   const buffers=new Map(), voices=new Set(), lastPlayed=new Map(), counts={};
   const contextFactory=options.contextFactory||(()=>{const Context=globalThis.AudioContext||globalThis.webkitAudioContext;return Context?new Context():null;});
   const random=typeof options.random==='function'?options.random:Math.random;
@@ -104,7 +108,7 @@ export function createGameAudio(options = {}) {
   function pause(){active=false;previous=null;snapshotRef=null;previousPosition=null;steps=0;stopAll();}
   function canPlay(){return !disposed&&!muted&&unlocked&&active&&!hidden()&&context?.state==='running';}
   function play(kind, detail={}){
-    if(!SOUND[kind] || !canPlay())return false;
+    if(!SOUND[kind] || !canPlay() || underground&&OUTDOOR.has(kind))return false;
     const cooldown=kind==='bell'?2:AMBIENT.has(kind)?.5:kind==='gate'?.18:.055;
     if(now-(lastPlayed.get(kind)??-Infinity)<cooldown)return false;
     const ambient=AMBIENT.has(kind);
@@ -130,7 +134,7 @@ export function createGameAudio(options = {}) {
       gain.gain.value=SOUND[kind][1]*attenuation*clamp(Number.isFinite(detail.strength)?detail.strength:1,0,1.4);
       source.connect(gain);
       if(context.createStereoPanner){panner=context.createStereoPanner();panner.pan.value=pan;gain.connect(panner);panner.connect(master);}else gain.connect(master);
-      voice={source,nodes:[source,gain,...(panner?[panner]:[])],ambient};voices.add(voice);
+      voice={source,nodes:[source,gain,...(panner?[panner]:[])],ambient,kind};voices.add(voice);
       source.onended=()=>release(voice);
       // The blade first winds up; the airy peak belongs to its cutting stroke.
       // This is an already-owned voice, so mute/pause stops the scheduled cue.
@@ -154,6 +158,13 @@ export function createGameAudio(options = {}) {
     const running=Boolean(state&&me&&frame.connected!==false&&state.status!=='fallen'&&state.clockRunning!==false&&age<=.65&&!hidden());
     listener=frame.position||me;camera=frame.camera;
     if(!running){pause();return;}
+    const inside=Boolean(listener&&caveAreaAt(listener.x,listener.z));
+    if(inside!==underground){
+      underground=inside;
+      if(inside)for(const voice of [...voices])if(OUTDOOR.has(voice.kind))release(voice,true);
+      // Outdoor ambience resumes on a fresh interval after leaving the cave.
+      nextBird=now+5+random()*6;nextCricket=now+2+random()*3;nextBreeze=now+4+random()*5;
+    }
     const wasActive=active;active=true;
     if(!wasActive){
       nextBird=now+5+random()*6;nextCricket=now+2+random()*3;nextBreeze=now+4+random()*5;nextGroan=now+3+random()*3;
@@ -206,16 +217,16 @@ export function createGameAudio(options = {}) {
         if(traveled<2){
           steps+=traveled;
           if(steps>=(me.mountedHorseId?2.3:1.5)){
-            let surface='grass';try{surface=surfaceAt(listener);}catch{}
+            let surface=underground?'stone':'grass';if(!underground)try{surface=surfaceAt(listener);}catch{}
             play(me.mountedHorseId?'hoof':surface==='stone'?'stepStone':'grass');steps=0;
           }
         }else steps=0;
       }else steps=0;
       previousPosition={x:listener.x,z:listener.z};
     }
-    if(state.phase==='day'&&now>=nextBird){play('bird',{pan:random()*1.4-.7});nextBird=now+10+random()*12;}
-    if(state.phase==='night'&&now>=nextCricket){play('cricket',{pan:random()*1.4-.7});nextCricket=now+6+random()*7;}
-    if(now>=nextBreeze){play('breeze',{pan:random()-.5});nextBreeze=now+13+random()*12;}
+    if(!underground&&state.phase==='day'&&now>=nextBird){play('bird',{pan:random()*1.4-.7});nextBird=now+10+random()*12;}
+    if(!underground&&state.phase==='night'&&now>=nextCricket){play('cricket',{pan:random()*1.4-.7});nextCricket=now+6+random()*7;}
+    if(!underground&&now>=nextBreeze){play('breeze',{pan:random()-.5});nextBreeze=now+13+random()*12;}
     if(state.phase==='night'&&now>=nextGroan){
       const nearby=(state.zombies||[]).filter(z=>z.hp>0&&listener&&Math.hypot(z.x-listener.x,z.z-listener.z)<42);
       if(nearby.length)play('groan',{position:nearby[Math.min(nearby.length-1,Math.floor(random()*nearby.length))]});

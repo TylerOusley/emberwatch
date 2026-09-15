@@ -69,3 +69,12 @@ test('church beds remain separate care interactions without opening commerce at 
   assert.equal(bed?.site.id, site.id); assert.equal(bed?.atBed, true);
   assert.equal(choosePlotInteraction({ x: site.x, z: site.z - 5 }, [site], [state]), null);
 });
+
+test('cave prompts show the shared rolled ore and do not offer mining through a rock corner', () => {
+  const node={id:'rolled',type:'iron',caveTier:'middle',x:4.5,z:-164};
+  const current=[{id:node.id,type:'coal',available:true,roll:3}];
+  assert.equal(nearestGatherable({x:3,z:-161.5},'pickaxe',[node],current),null,'close straight-line distance cannot cross solid cave rock');
+  const selected=nearestGatherable({x:6,z:-164},'pickaxe',[node],current);
+  assert.equal(selected.type,'coal');assert.equal(selected.roll,3);
+  assert.equal(nearestGatherable({x:6,z:-164},'pickaxe',[node],[{...current[0],available:false}]),null);
+});

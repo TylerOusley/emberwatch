@@ -1,16 +1,18 @@
 const RESOURCE_TOOLS = { axe: ['timber'], pickaxe: ['stone', 'iron', 'coal'], scythe: ['wheat'] };
 const SERVICES = new Set(['bank', 'shop', 'food', 'church', 'barracks', 'stable', 'merchant', 'keep']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+import { clearResourceSegment, resolveResource } from '../../shared/world.js';
 
 export function nearestGatherable(player, tool, nodes, states) {
   const type = RESOURCE_TOOLS[tool];
   if (!player || !type) return null;
-  const available = new Set(states.filter(s => s.available).map(s => s.id));
+  const available = new Map(states.filter(s => s.available).map(s => [s.id, s]));
   let target = null, nearest = 3.3;
-  for (const node of nodes) {
+  for (const metadata of nodes) {
+    const node = resolveResource(metadata, available.get(metadata.id));
     if (!type.includes(node.type) || !available.has(node.id)) continue;
     const gap = distance(player, node);
-    if (gap <= nearest) { nearest = gap; target = node; }
+    if (gap <= nearest && (!node.caveTier || clearResourceSegment(player, node))) { nearest = gap; target = node; }
   }
   return target;
 }

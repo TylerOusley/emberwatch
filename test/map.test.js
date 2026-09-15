@@ -20,7 +20,8 @@ test('all 48 deeds have clear footprints and a usable road-facing approach',()=>
 
 test('public resource gathering stays outside plot fences',()=>{
  for(const resource of RESOURCES)assert.ok(!PLOTS.some(plot=>Math.abs(resource.x-plot.x)<plot.w/2+2&&Math.abs(resource.z-plot.z)<plot.d/2+2),`${resource.id} intrudes on a deed`);
- assert.ok(RESOURCES.some(r=>r.type==='iron'&&r.z<18));assert.ok(RESOURCES.some(r=>r.type==='coal'&&r.z>18));
+ assert.equal(RESOURCES.filter(r=>['stone','iron','coal'].includes(r.type)).length,44);
+ assert.ok(RESOURCES.filter(r=>['stone','iron','coal'].includes(r.type)).every(r=>r.caveTier&&r.z< -118),'public minerals now live inside the mountain mine');
 });
 
 test('new and saved watch guards can follow their road out of the east-facing barracks',()=>{

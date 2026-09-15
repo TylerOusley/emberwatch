@@ -1,5 +1,19 @@
 # Emberwatch build validation
 
+## Build 12: descending caves and visual storefronts
+
+The complete `npm test` run passes **359/359 tests**. All **62** runtime JavaScript modules pass syntax/local import checks, all local HTML assets resolve, and **76 HTML IDs** are unique.
+
+The public mineral map moves to the Deepworks while retaining every original resource identity and non-mineral location. Upper stone is guaranteed; middle/deep rolls follow the documented pools. Save migration retains wallet/bank gold, private plots, storage, depletion and timers. Real HTTP-authenticated WebSocket clients using full and patch snapshots agree on mining, exhaustion and regrowth. Reconnect, offline pause and two SQLite restarts cannot reroll available minerals or duplicate rewards. Harvested inventory and sale prices follow the actual mineral, independent of what a slot rolls later. Workers complete physical journeys from the treasury through the mine and back to sell the correct cargo.
+
+Camera checks sweep yaw/pitch along each ramp and chamber transition, including interpolation through corners and entry from a high surface camera. The camera stays above floors and inside rock/ceiling headroom; a compressed view hides only the local dwarf until normal distance returns. Actors, horses, carts, rallies and harvest feedback use the shared ground height. Attack outlines and fills conform to ramp/landing seams across their complete triangles; committed centers/radii stay unchanged, terrain variants remain private, and outdoor attacks avoid terrain tessellation. Gathering prompts display the shared rolled type and reject a close node behind rock. The first-watch guide marks the mine entrance before leading to available stone underground. Existing plot approaches and neighborhood routes remain clear.
+
+Shop checks cover distinct art for material tiers, durability/effect descriptions, recipe shortages, exact purchase payloads, preserved inspection state, focus and quantity drafts, safe player names, shop entrances, and native keyboard/touch disclosures. Request-board cards preserve their existing partial delivery and doorway validation. The six illustrated interiors and item art are local SVG with no external assets or duplicate SVG IDs.
+
+The [cave preview](previews/cave.jpg) uses actual game geometry with offline lighting and was visually inspected. Its export contains 74,136 triangles including all 44 ore formations; the cave architecture uses 12 draw meshes and four pooled lantern lights without new shadow maps. Ceiling details remain attached above camera headroom. The [counter preview](previews/shop-counter.svg) composes the actual illustrations and UI fixture facts; it is an artwork/layout reference, not a browser screenshot. [Shop UI fixtures](previews/shop-ui.html) contain the real HTML/CSS for four service scenarios with disabled live actions. Interactive browser control was unavailable in this session. These geometry, DOM, audio, simulation and network checks do not establish production browser layout, perceived sound, sustained frame rate or long-run balance; those still need live playtesting.
+
+Crate credits, armor and the gold helmet remain documentation-only in [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md). No crate balances, opening actions or item grants are implemented in this update.
+
 ## Build 11: gate detail, well interior and physical request board
 
 The complete `npm test` run passes **320/320 tests**. All **57** client/shared/server JavaScript modules pass syntax and local import checks; all local HTML assets resolve and **76 HTML IDs** are unique. The B shortcut is removed from the client.

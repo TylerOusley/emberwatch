@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GUARD_ORDERS } from '../../shared/guard-orders.js';
-import { PLOTS } from '../../shared/world.js';
+import { PLOTS, groundHeight } from '../../shared/world.js';
 
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const usable = player => player?.online && !player.downed && player.hp > 0 && player.role === 'guard' && !player.mountedHorseId && !player.bedPlotId;
@@ -74,7 +74,7 @@ export function createGuardRallies(scene) {
         if (row.ownerId !== ownerId || ![row.rally?.x, row.rally?.z].every(Number.isFinite)) continue;
         const mode = Object.hasOwn(GUARD_ORDERS, row.effectiveMode) ? row.effectiveMode : 'defend', info = GUARD_ORDERS[mode];
         active.add(row.plotId); const marker = markerFor(row.plotId);
-        marker.group.position.set(row.rally.x, 0, row.rally.z); marker.group.userData.label = info.label;
+        marker.group.position.set(row.rally.x, groundHeight(row.rally.x, row.rally.z), row.rally.z); marker.group.userData.label = info.label;
         if (marker.mode !== mode) {
           marker.mode = mode; marker.material.color.setHex(info.color);
           const texture = labelTexture(info.label);

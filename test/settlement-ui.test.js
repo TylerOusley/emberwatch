@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSettlementUI } from '../public/src/settlement-ui.js';
-import { BUILDINGS, PLOTS, plotBedPoint } from '../shared/world.js';
+import { BUILDINGS, PLOTS, plotBedPoint, CAVE_ENTRANCE } from '../shared/world.js';
 import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { taxedSaleQuote, taxedPurchaseQuote, foodQuote } from '../shared/economy.js';
 import { NOTICEBOARD_POINT } from '../public/src/noticeboard.js';
@@ -10,11 +10,11 @@ import { NOTICEBOARD_POINT } from '../public/src/noticeboard.js';
 // WebGL. It is intentionally not a screenshot or browser rendering test.
 function fixture(t, options = {}) {
   const prior = globalThis.document;
-  let html = '', openCount = 0, nodes = [], buttons = [], activePanel = null;
+  let html = '', openCount = 0, nodes = [], buttons = [], details = [], summaries = [], activePanel = null;
   const fields = new Map(), sent = [];
   const player = { id: 'alice', name: 'Alice', role: 'guard', x: 0, z: 0, wallet: 2000, bank: 80, hp: 70, maxHp: 100, hunger: 50, inventory: { wheat: 10, timber: 0, stone: 0, iron: 0, coal: 0 }, durability: { sword: 100, axe: 75, pickaxe: 100, scythe: 100, hammer: 100 }, tiers: { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' } };
   const state = { players: [player], plots: [], guards: [], beds: [], stock: { wheat: 100, timber: 100, stone: 100, iron: 100, coal: 100 }, treasury: 2500, policies: { guardWage: 25, priestWage: 25, tradeTax: 10, landTax: 2, exportPriority: 'balanced' }, proposals: [], merchant: { present: true, stock: { iron: 5 }, prices: { iron: 9 } }, stable: { stock: 3 }, loan: { debt: 0, credit: 0, availablePool: 500 }, foodQuotes: Object.fromEntries(['food', 'good_food', 'best_food'].map(id => [id, foodQuote(100, id)])) };
-  const content = { contains: e => nodes.includes(e), querySelectorAll: query => query === '[data-settlement-button]' ? buttons : [] };
+  const content = { contains: e => nodes.includes(e), querySelectorAll: query => query === '[data-settlement-button]' ? buttons : query === '[data-shop-inspect]' ? details : [], querySelector: query => nodes.find(node => node.dataset?.shopFocus && query === `[data-shop-focus="${node.dataset.shopFocus}"]`) };
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = prior; });
@@ -22,18 +22,21 @@ function fixture(t, options = {}) {
     html = next; activePanel = panel; openCount++; fields.clear();
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
       const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
+      const focusKey = match[1].match(/data-shop-focus="([^"]+)"/)?.[1]; if (focusKey) { button.dataset.shopFocus = focusKey; button.focus = () => { document.activeElement = button; }; }
       const id = match[1].match(/\bid="([^"]+)"/)?.[1]; if (id) fields.set(id, button);
       return button;
     });
     for (const match of html.matchAll(/<(input|select)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) fields.set(match[3], { tagName: match[1].toUpperCase(), value: match[2].match(/\bvalue="([^"]*)"/)?.[1] || '', max: match[2].match(/\bmax="([^"]*)"/)?.[1] || '' });
     for (const match of html.matchAll(/<(p|span)\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/\1>/gs)) fields.set(match[2], { tagName: match[1].toUpperCase(), textContent: match[3] });
-    nodes = [...buttons, ...fields.values()];
+    details = [...html.matchAll(/<details\b([^>]*)>/g)].map(match => ({ tagName: 'DETAILS', dataset: { shopInspect: match[1].match(/data-shop-inspect="([^"]+)"/)[1] }, open: /\sopen(?:\s|$)/.test(match[1]) }));
+    summaries = [...html.matchAll(/<summary\b([^>]*)>/g)].map(match => ({ tagName: 'SUMMARY', dataset: { shopFocus: match[1].match(/data-shop-focus="([^"]+)"/)[1] }, focus() { document.activeElement = this; } }));
+    nodes = [...buttons, ...fields.values(), ...details, ...summaries];
   } });
   return { ui, player, state, sent, fields, visit(kind, id = null) {
     const point = kind === 'plot' || kind === 'church' && id && id !== 'church' ? plotEntrance(PLOTS.find(p => p.id === id), state.plots.find(p => p.id === id)) : buildingEntrance(BUILDINGS.find(b => b.id === kind));
     if (point) Object.assign(player, point);
     ui.show(kind, id);
-  }, get html() { return html; }, get openCount() { return openCount; }, get buttons() { return buttons; }, click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); button.onclick(); } };
+  }, get html() { return html; }, get openCount() { return openCount; }, get buttons() { return buttons; }, get details() { return details; }, get summaries() { return summaries; }, click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); button.onclick(); } };
 }
 
 test('market buttons send the tax-inclusive quotes displayed to the player', t => {
@@ -44,6 +47,51 @@ test('market buttons send the tax-inclusive quotes displayed to the player', t =
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'sell', resource: 'wheat', amount: 10, minTotal: sale });
   f.click(`Buy 10 · ${purchase}g`);
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyResource', resource: 'wheat', amount: 10, maxTotal: purchase });
+});
+
+test('illustrated storefronts keep price, gear effects and materials accessible without hover', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.visit('tools'); assert.match(f.html, /class="shop-interior-art"/); assert.match(f.html, /data-shop-theme="tools"/);
+  const starter = f.html.match(/<article[^>]*data-shop-item="wood_pickaxe"[\s\S]*?<\/article>/)?.[0];
+  assert.match(starter, /data-item="pickaxe"/); assert.match(starter, /1 resource \/ swing/); assert.match(starter, /100 uses/);
+  assert.match(starter, /<details[^>]*data-shop-inspect=/); assert.match(starter, /<summary[^>]*aria-label="Inspect Wooden pickaxe"/);
+  assert.match(starter, /Buy · 10g/); assert.match(f.html, /data-item="backpack"/);
+  f.state.plots = [{ id: site.id, ownerId: 'bob', ownerName: '<script>Owner</script>', building: 'tool_shop', hp: 350, maxHp: 350, storage: { stone: 10, timber: 5, iron: 0, coal: 0 } }];
+  f.visit('plot', site.id);
+  const stone = f.html.match(/<article[^>]*data-shop-item="stone_pickaxe"[\s\S]*?<\/article>/)?.[0], iron = f.html.match(/<article[^>]*data-shop-item="iron_pickaxe"[\s\S]*?<\/article>/)?.[0];
+  assert.match(stone, /2 resources \/ swing/); assert.match(stone, /150 uses/); assert.match(stone, /10 stone · 5 timber/); assert.match(stone, /data-item="stone"/); assert.match(stone, /Buy · 35g/);
+  assert.match(iron, /3 resources \/ swing/); assert.match(iron, /200 uses/); assert.match(iron, /data-available="false"/); assert.match(iron, /shop needs more materials/); assert.match(iron, /disabled/);
+  assert.doesNotMatch(f.html, /<script>Owner/);
+  f.state.plots[0].building = 'sword_shop'; f.state.plots[0].storage = { timber: 100, stone: 100, iron: 100, coal: 100 }; f.visit('plot', site.id);
+  assert.match(f.html, /data-shop-theme="weapons"/); assert.match(f.html, /20 base \/ hit/); assert.match(f.html, /Each swing uses one durability/);
+  f.state.plots[0].building = 'tinker_shop'; f.visit('plot', site.id);
+  for (const item of ['bow', 'arrows', 'cart']) assert.match(f.html, new RegExp(`data-item="${item}"`));
+  assert.match(f.html, /22 base \/ arrow/); assert.match(f.html, /12 arrows/); assert.match(f.html, /300 weight/);
+});
+
+test('native item inspection and keyboard focus survive refreshed stock, then clear between villages', t => {
+  const f = fixture(t); f.visit('tools');
+  const details = f.details.find(detail => detail.dataset.shopInspect === 'wood_pickaxe'), summary = f.summaries.find(summary => summary.dataset.shopFocus === 'wood_pickaxe');
+  details.open = true; details.ontoggle(); summary.focus();
+  f.player.wallet += 1; f.ui.refresh();
+  assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'wood_pickaxe').open, true);
+  assert.equal(document.activeElement, f.summaries.find(summary => summary.dataset.shopFocus === 'wood_pickaxe'));
+  const purchase = f.buttons.find(button => button.dataset.shopFocus === 'buy-pack_1-0'); purchase.focus(); f.player.wallet++; f.ui.refresh();
+  assert.equal(document.activeElement, f.buttons.find(button => button.dataset.shopFocus === 'buy-pack_1-0'), 'keyboard purchase focus also survives snapshots');
+  f.ui.clear(); f.visit('tools'); assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'wood_pickaxe').open, false);
+  Object.assign(f.player, { x: 0, z: 0 }); f.ui.refresh(); assert.match(f.html, /BUILDING ENTRANCE/); assert.doesNotMatch(f.html, /shop-interior-art|shop-item-grid/);
+});
+
+test('food, stable and traveling wares use illustrated cards while preserving current purchase limits', t => {
+  const f = fixture(t); f.visit('food'); assert.match(f.html, /data-shop-theme="food"/);
+  for (const id of ['food', 'good_food', 'best_food']) assert.match(f.html, new RegExp(`data-item="${id}"`));
+  const meal = f.state.foodQuotes.food; f.click(`Buy · ${meal.price}g`); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyFood', tier: 'food' });
+  f.state.stock.wheat = 0; f.ui.refresh(); assert.ok(f.buttons.filter(b => b.text.startsWith('Buy ·')).every(b => b.disabled));
+  f.visit('stable'); assert.match(f.html, /data-shop-theme="stable"/); assert.match(f.html, /data-item="horse"/); f.click('Buy a horse · 100g'); assert.equal(f.sent.at(-1).kind, 'buyHorse');
+  f.state.stable.stock = 0; f.ui.refresh(); assert.ok(f.buttons.find(b => b.text === 'Buy a horse · 100g').disabled);
+  f.visit('merchant'); assert.match(f.html, /data-shop-theme="merchant"/); assert.match(f.html, /data-item="iron"/); f.click('Buy one · 9g'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'merchant_buy', resource: 'iron', amount: 1 });
+  f.state.merchant.present = false; f.ui.refresh(); assert.doesNotMatch(f.html, /shop-interior-art|merchant_iron/);
+  f.ui.show('atlas'); f.click('Find mountain mine'); assert.deepEqual({ x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z }, { x: CAVE_ENTRANCE.x, z: CAVE_ENTRANCE.z }); assert.match(f.html, /stone on the upper level · mixed iron and coal below/);
 });
 
 test('treasury, public Watch and cannon entrances expose destination-specific requested delivery counters', t => {

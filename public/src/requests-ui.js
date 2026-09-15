@@ -2,6 +2,7 @@ import { requestAtDestination } from '../../shared/requests.js';
 import { BUILDINGS, PLOTS } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot } from '../../shared/access.js';
 import { NOTICEBOARD_POINT, canReadNoticeboard } from './noticeboard.js';
+import { itemArt } from './shop-display.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const title = value => String(value || '').replace(/^./, c => c.toUpperCase());
@@ -38,7 +39,8 @@ export function createRequestsUI({ getState, getMe, getActivePanel, openPanel, c
     return `<button class="secondary-button" type="button" data-request-button="${index}" ${disabled ? 'disabled' : ''}>${esc(text)}</button>`;
   }
   function row(request, index) {
-    let html = `<section class="building-card"><strong>${esc(title(request.resource))} → ${esc(request.destinationName)}</strong><p>${esc(request.reason)}</p>` +
+    const board = view.kind === 'board';
+    let html = `<section class="${board ? 'request-paper' : 'request-delivery-card'}"><span class="request-pin" aria-hidden="true"></span><div class="request-resource-art">${itemArt(request.resource)}</div><span class="request-wax-seal" aria-hidden="true"><svg viewBox="0 0 60 60"><path d="M30 3 37 7 45 7 49 15 56 20 54 30 57 39 48 45 44 53 35 53 28 58 20 53 11 50 9 42 3 34 7 25 6 17 15 12 21 5Z" fill="#8c382a"/><circle cx="30" cy="30" r="18" fill="none" stroke="#d1875e" stroke-width="2"/><path d="M30 17 40 22 39 35 30 44 21 35 20 22Z" fill="none" stroke="#e3b38b" stroke-width="2"/><path d="m30 24-4 7h5l-2 6 7-9h-6Z" fill="#e3b38b"/></svg></span><p class="request-paper-kicker">${board ? 'By order of the steward' : 'Funded delivery'}</p><strong>${esc(title(request.resource))} → ${esc(request.destinationName)}</strong><p>${esc(request.reason)}</p>` +
       `<div class="settlement-stats"><div><span>Still needed</span><strong>${request.remaining} ${esc(request.resource)}</strong></div><div><span>Payment</span><strong>${request.unitGold} gold each</strong></div><div><span>You carry</span><strong>${getMe()?.inventory?.[request.resource] || 0}</strong></div></div><p>Expires at dawn on day ${request.expiresDay}.</p>`;
     if (view.kind === 'board') return html + button('Mark delivery entrance', () => { if (requireAccess()) markAndClose(request.point); }) + '</section>';
     const maximum = limit(request), amount = drafts.get(request.id) ?? Math.min(maximum, 10);
@@ -62,9 +64,9 @@ export function createRequestsUI({ getState, getMe, getActivePanel, openPanel, c
     const history = board ? book.items.filter(r => r.status !== 'open').slice(-4).reverse() : [];
     handlers = []; deliveryButtons = new Map(); signature = currentSignature();
     const scroll = doc.getElementById('panel-dialog')?.scrollTop || 0;
-    const html = '<div class="settlement-panel"><p class="eyebrow">' + (board ? 'VILLAGE REQUEST BOARD' : 'REQUESTED DELIVERIES') + '</p><h2>' + (board ? 'Supplies for the next watch.' : esc(destination(view.id).name)) + '</h2>' +
+    const html = '<div class="settlement-panel ' + (board ? 'request-board-view' : 'request-counter-view') + '"><p class="eyebrow">' + (board ? 'VILLAGE REQUEST BOARD' : 'REQUESTED DELIVERIES') + '</p><h2>' + (board ? 'Supplies for the next watch.' : esc(destination(view.id).name)) + '</h2>' +
       (board ? '<p>The steward posts deliveries when village food, repairs, or defenses need supplies. Anyone can help. Mark a delivery entrance, close the board, and bring your supplies there.</p>' + `<p><strong>${book.reservedGold} gold reserved</strong> for open requests. At the destination, press E and choose “Requested deliveries” to receive the posted payment.</p>` : '<p>You are at this delivery entrance. These requests belong to this destination only. Payment comes from the funds reserved by the steward; loan repayments apply to earnings.</p>') +
-      (items.length ? items.map(row).join('') : `<p>${board ? 'No funded deliveries are needed right now. The steward checks shortages during the day while protecting essential funds.' : 'No funded deliveries are open for this destination. Check the village request board for other needs.'}</p>`) +
+      (items.length ? `<div class="${board ? 'request-papers' : 'request-delivery-list'}">${items.map(row).join('')}</div>` : `<p>${board ? 'No funded deliveries are needed right now. The steward checks shortages during the day while protecting essential funds.' : 'No funded deliveries are open for this destination. Check the village request board for other needs.'}</p>`) +
       '<p>Ordinary sales and donations still work. They can fill a shortage and close its request; use “Deliver supplies” at the requested destination to receive the posted payment. Removing stored supplies does not create a rewarded shortage.</p>' +
       (history.length ? '<h3>Recent requests</h3>' + history.map(r => `<div class="settlement-row"><div><strong>${esc(title(r.resource))} · ${esc(r.destinationName)}</strong><small>${esc(title(r.status))} · ${r.delivered} delivered · ${esc(r.reason)}</small></div></div>`).join('') : '') + '</div>';
     openPanel(html, 'requests');

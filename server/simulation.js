@@ -17,6 +17,7 @@ import { ensureEnemies, spawnWaveEnemy, splitEnemy, enemySnapshot, cancelZombieW
 import { ensureRequests, requestsTick, requestsSnapshot, requestsAction, requestsBeforeAction, requestsAfterAction } from './requests.js';
 import { ensureProgression, joinProgression, progressionNight, progressionTick, progressionDawn, progressionAction, recordProgressionAction, progressionSnapshot } from './progression.js';
 import { guardOrdersAction, guardOrdersSnapshot, guardDirective, guardOrderCanEngage } from './guard-orders.js';
+import { ensureCaves, regrowCaveResource, publicResourceSnapshot } from './caves.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -49,6 +50,7 @@ function ensureVillage(village) {
     for (const guard of village.guards ?? []) if (!guard.plotId && !guard.hungry && guard.hp > 0) guard.fedNight ??= village.day;
   }
   ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village); ensureWorkers(village); ensureEnemies(village); ensureRequests(village); ensureProgression(village);
+  ensureCaves(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
     player.inventory = { ...emptyInventory(), ...player.inventory };
@@ -154,7 +156,7 @@ export class Simulation {
       siegeNight: village.siegeNight,
       zombies: village.zombies.filter(z => z.hp > 0).map(enemySnapshot),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
-      resources: village.resources.map(({ id, available, remaining }) => ({ id, available, remaining })) };
+      resources: village.resources.map((state, index) => publicResourceSnapshot(state, RESOURCES[index])) };
   }
   notice(villageId, message) { this.notices.push({ villageId, message }); }
   action(villageId, playerId, action) {
@@ -442,7 +444,7 @@ export class Simulation {
       transportTick(this, village, dt);
       for (let i = 0; i < village.resources.length; i++) {
         const node = village.resources[i];
-        if (!node.available && village.clock >= node.regrowAt) Object.assign(node, makeResource(RESOURCES[i]));
+        if (!node.available && village.clock >= node.regrowAt && !regrowCaveResource(village, RESOURCES[i], node)) Object.assign(node, makeResource(RESOURCES[i]));
       }
       workersTick(this, village, dt);
       if (village.phase === 'night' && village.spawned < village.waveCount && village.clock >= village.nextSpawn) {

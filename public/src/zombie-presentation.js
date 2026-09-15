@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createCharacter } from './characters.js';
+import { CAVE_AREAS, CAVE_HEIGHTS, groundHeight } from '../../shared/world.js';
 import { ENEMY_TYPES, enemyKind, emergenceProgress } from '../../shared/enemies.js';
 
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
@@ -105,6 +106,8 @@ export function createZombiePresentation(initial={},seed=hash(initial.id)) {
   const warning=new THREE.Mesh(acquire('geo:slam-warning',()=>new THREE.RingGeometry(.978,1,48),leases),warningMat);warning.name='enemy-attack-warning';warning.rotation.x=-Math.PI/2;warning.position.y=.035;group.add(warning);
   const fillMat=new THREE.MeshBasicMaterial({color:0xea4638,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide});owned.add(fillMat);
   const warningFill=new THREE.Mesh(acquire('geo:grave-patch',()=>new THREE.CircleGeometry(1,24),leases),fillMat);warningFill.name='enemy-attack-footprint';warningFill.rotation.x=-Math.PI/2;warningFill.position.y=.030;group.add(warningFill);
+  const markerCenter={x:0,z:0,height:0};
+  const outlineTerrain={flat:warning.geometry,geometry:null,key:null},fillTerrain={flat:warningFill.geometry,geometry:null,key:null};
   const matrix=new THREE.Matrix4(),rotation=new THREE.Quaternion(),pos=new THREE.Vector3(),size=new THREE.Vector3(),euler=new THREE.Euler();
   const birthSeed=(seed%997)*.017;
   const solePoint=new THREE.Vector3();
@@ -115,8 +118,55 @@ export function createZombiePresentation(initial={},seed=hash(initial.id)) {
   }
   function markerPosition(entity,slam=false){
     const x=entity[slam?'lastSlamX':'windupX'],z=entity[slam?'lastSlamZ':'windupZ'];
-    const dx=Number.isFinite(x)?x-group.position.x:0,dz=Number.isFinite(z)?z-group.position.z:0,c=Math.cos(group.rotation.y),s=Math.sin(group.rotation.y);
-    warning.position.set(c*dx-s*dz,.035,s*dx+c*dz);
+    const targetX=Number.isFinite(x)?x:group.position.x,targetZ=Number.isFinite(z)?z:group.position.z;
+    const dx=targetX-group.position.x,dz=targetZ-group.position.z,c=Math.cos(group.rotation.y),s=Math.sin(group.rotation.y);
+    // The committed target can sit farther up/down a ramp than its attacker.
+    const floor=groundHeight(targetX,targetZ),height=floor-group.position.y;
+    markerCenter.x=targetX;markerCenter.z=targetZ;markerCenter.height=floor;
+    warning.position.set(c*dx-s*dz,height+.035,s*dx+c*dz);
+    // Keep the terrain samples in world compass directions even while the
+    // attacker's interpolated yaw changes around this committed footprint.
+    warning.rotation.z=-group.rotation.y;
+  }
+  function conformMarker(mesh,cache){
+    const radius=mesh.scale.x,{x,z,height}=markerCenter;
+    if(!(radius>0))return;
+    if(cache.key&&Math.abs(cache.key.x-x)<1e-6&&Math.abs(cache.key.z-z)<1e-6&&cache.key.radius===radius){mesh.geometry=cache.geometry||cache.flat;return;}
+    const source=cache.flat.attributes.position,nearCave=CAVE_AREAS.some(area=>Math.abs(x-area.x)<=area.w/2+radius&&Math.abs(z-area.z)<=area.d/2+radius);
+    let uneven=false;
+    if(nearCave)for(let i=0;i<source.count;i++)if(Math.abs(groundHeight(x+source.getX(i)*radius,z-source.getY(i)*radius)-height)>1e-5){uneven=true;break;}
+    cache.key={x,z,radius};
+    if(cache.geometry){owned.delete(cache.geometry);cache.geometry.dispose();cache.geometry=null;}
+    if(!uneven){mesh.geometry=cache.flat;return;}
+    const positions=[],uvs=[],indices=[],index=cache.flat.index,knots=CAVE_HEIGHTS.map(row=>(z-row.z)/radius).filter(y=>y>-1&&y<1).sort((a,b)=>a-b);
+    // Split triangles at the ramp/landing breaks before lifting them. Merely
+    // moving a circle's rim would leave its triangle interiors under a ramp.
+    function clipped(poly,line,below){
+      const out=[];
+      for(let i=0;i<poly.length;i++){
+        const a=poly[i],b=poly[(i+1)%poly.length],inside=below?a[1]<=line:a[1]>=line,next=below?b[1]<=line:b[1]>=line;
+        if(inside)out.push(a);
+        if(inside!==next){const t=(line-a[1])/(b[1]-a[1]);out.push([a[0]+(b[0]-a[0])*t,line]);}
+      }
+      return out;
+    }
+    for(let i=0;i<(index?index.count:source.count);i+=3){
+      let pieces=[[0,1,2].map(j=>{const n=index?index.getX(i+j):i+j;return [source.getX(n),source.getY(n)];})];
+      for(const line of knots){
+        const next=[];
+        for(const poly of pieces){
+          let low=Infinity,high=-Infinity;for(const point of poly){low=Math.min(low,point[1]);high=Math.max(high,point[1]);}
+          if(low<line-1e-9&&high>line+1e-9)next.push(clipped(poly,line,true),clipped(poly,line,false));else next.push(poly);
+        }pieces=next;
+      }
+      for(const poly of pieces){
+        const first=positions.length/3;
+        for(const [px,py]of poly){positions.push(px,py,(groundHeight(x+px*radius,z-py*radius)-height)/radius);uvs.push(px*.5+.5,py*.5+.5);}
+        for(let j=1;j<poly.length-1;j++)indices.push(first,first+j,first+j+1);
+      }
+    }
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
+    cache.geometry=geometry;owned.add(geometry);mesh.geometry=geometry;
   }
   function rememberRotation(joint,x=0,y=0,z=0){restored.push([joint,joint.rotation.x,joint.rotation.y,joint.rotation.z]);joint.rotation.x+=x;joint.rotation.y+=y;joint.rotation.z+=z;}
   function restore(){for(const [joint,x,y,z]of restored)joint.rotation.set(x,y,z);restored.length=0;}
@@ -180,17 +230,17 @@ export function createZombiePresentation(initial={},seed=hash(initial.id)) {
       rememberRotation(joints.body,(heavy?-.28:-.10)*p);rememberRotation(joints.head,.14*p);
       rememberRotation(joints.leftArm,(heavy?-2.05:-.36)*p);rememberRotation(joints.rightArm,(heavy?-2.15:-1.0)*p);
       rememberRotation(joints.leftFore,-.25*p);rememberRotation(joints.rightFore,-.22*p);
-      warning.visible=true;markerPosition(entity);warning.scale.setScalar(Number(entity.windupRadius)||1.45);
+      warning.visible=true;markerPosition(entity);warning.scale.setScalar(Number(entity.windupRadius)||1.45);conformMarker(warning,outlineTerrain);
       warningMat.opacity=.20+p*.28;warningMat.color.set(0xd14c40).lerp(new THREE.Color(0xff4436),p);
-      warningFill.visible=true;warningFill.position.copy(warning.position);warningFill.position.y=.030;warningFill.scale.copy(warning.scale);
+      warningFill.visible=true;warningFill.position.copy(warning.position);warningFill.position.y-=.005;warningFill.scale.copy(warning.scale);warningFill.rotation.copy(warning.rotation);conformMarker(warningFill,fillTerrain);
       fillMat.opacity=.045+.055*p+.008*Math.sin(p*TAU*2);
     }else if(alive&&!emerging&&Number.isFinite(entity.lastSlamAt)&&time>=entity.lastSlamAt&&time-entity.lastSlamAt<.48){
       const p=(time-entity.lastSlamAt)/.48,impact=1-ease(p),radius=Number(entity.lastSlamRadius)||Number(entity.windupRadius)||1.45;
       rememberRotation(joints.body,(heavy?.38:.18)*impact);rememberRotation(joints.leftArm,(heavy?-.85:-.45)*impact);rememberRotation(joints.rightArm,-.90*impact);
-      warning.visible=true;markerPosition(entity,true);warning.scale.setScalar(radius);warningMat.color.set(0xffb18d);warningMat.opacity=.40*(1-p);
+      warning.visible=true;markerPosition(entity,true);warning.scale.setScalar(radius);conformMarker(warning,outlineTerrain);warningMat.color.set(0xffb18d);warningMat.opacity=.40*(1-p);
       // The attack footprint stays at the exact server radius. Dust rises at
       // the confirmed contact, without falsely advertising a larger hit area.
-      effects.visible=true;effects.position.copy(warning.position);effects.position.y=0;soil.visible=false;patch.visible=false;
+      effects.visible=true;effects.position.copy(warning.position);effects.position.y-=.035;soil.visible=false;patch.visible=false;
       dustMat.opacity=(heavy?.42:.24)*(1-p);const vertices=dustGeo.attributes.position;
       for(let i=0;i<vertices.count;i++){const angle=i/vertices.count*TAU+birthSeed,r=radius*(.38+.50*p)*(1+(i%3)*.06);vertices.setXYZ(i,Math.cos(angle)*r,.07+p*(heavy?.95:.48)*(1+(i%4)*.2),Math.sin(angle)*r);}vertices.needsUpdate=true;
     }

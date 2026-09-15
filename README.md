@@ -2,15 +2,19 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 11.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 12.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
 
+Build 12 adds **the Deepworks**, a three-level mine entered from the northern village at the mountain base. All 44 public mineral nodes are inside it: 12 guaranteed-stone sites above, 16 mixed sites in the middle, and 16 deeper sites with more iron/coal. Deeper nodes roll a shared mineral type when they regrow after depletion. Exploration, camera height, horses, carts, workers, mining effects, footsteps and the minimap follow the cave's ramps. Owned private mines keep their existing behavior. [Cave geometry preview](docs/previews/cave.jpg).
+
+Shops now display illustrated tools, weapons, food, backpacks, horses and merchant supplies against themed interiors with shopkeepers. Hover, keyboard focus, or **Inspect item** reveals useful stats and durability; the displayed purchase still uses the shop's actual price, recipe and stock. The physical request board uses pinned parchment cards with resource art and delivery controls. [Counter artwork preview](docs/previews/shop-counter.svg) and [actual UI fixtures](docs/previews/shop-ui.html) are available for review; the artwork preview is not a browser screenshot.
+
 Build 11 refines the lifting gate with beveled timber, forged metal joints and moving chains, and fixes the well with thick inward-facing masonry. [Gate and well preview](docs/previews/gate-well.jpg). Read village requests by walking up to the treasury noticeboard and pressing **E**. The HUD/menu can mark the board on the map; requests for a particular delivery destination are available at that destination’s entrance.
 
-The proposed crates, functional armor and 100-night gold helmet are **not implemented**. Their prices, suggested items and open balance questions are recorded separately in [the crate proposal](docs/CRATE-PROPOSAL.md) for review.
+The proposed crates, functional armor and 100-night gold helmet are **not implemented**. Shared duplicate credits are accepted in the proposal; earned and credit-funded duplicate crates return credits usable across tiers, while bank-funded duplicates return 70% of their actual gold price. Credit prices, suggested items and open balance questions are recorded separately in [the crate proposal](docs/CRATE-PROPOSAL.md) for review.
 
 Build 10 adds six zombie types, graveyard emergence, sword cleave and dodgeable enemy attacks. Players and guards can strike multiple zombies in a forward arc; a short blade trail and swoosh follow the swing. Red ground circles mark enemy attacks before impact. The large Brood husk releases up to three weak Grave mites when killed, subject to the 120-enemy battlefield limit, and a Gravebreaker leads every fifth night. Archer towers now fire without ammunition, including existing empty towers; bows and cannons still need their normal supplies.
 
@@ -18,7 +22,7 @@ Read steward-funded deliveries at the board on the treasury wall. Press **R** to
 
 Grass clumps, ferns, wildflowers, shrubs, clover, fallen leaves and small patches of wall ivy give the village and woodland more detail. Plants sway in a breeze, with clear roads, doors, plots and gathering approaches. The sky now has drifting cloud layers, a sun that rises and sets, a visible moon and stars, and warm dawn/dusk lighting. It follows the village’s actual clock, including joining mid-cycle and pausing. Right-drag can look upward to follow the sky. [Sky cycle preview](docs/previews/sky-cycle.jpg).
 
-Natural mineral beds replace scattered boulders. Trees react and fall when exhausted; mineral deposits chip and crumble as they are mined. Horses have sculpted, articulated models and share the rendered rider transform while mounted. Sword grips follow the hand. Routine successful strikes, gathering and repairs no longer produce pop-ups; other notices sit in a corner. Downed players can rotate the camera while deciding whether to wait for a rescue.
+Mineral seams sit in the cave floor and walls, with loose fragments around each deposit. Trees react and fall when exhausted; mineral deposits chip and crumble as they are mined. Horses have sculpted, articulated models and share the rendered rider transform while mounted. Sword grips follow the hand. Routine successful strikes, gathering and repairs no longer produce pop-ups; other notices sit in a corner. Downed players can rotate the camera while deciding whether to wait for a rescue.
 
 Buildings now offer services at their front doors or shop counters. Player businesses use their actual building entrance; open plots, farms and mines use the frontage gate. The server checks the same access points for purchases and storage. Church care remains available beside the beds. Atlas markers lead to these entrance points. The visiting merchant appears at The Wayfarer with a covered carriage and two horses, and leaves when the visit ends.
 
@@ -32,7 +36,7 @@ Actual mesh previews: [sword sweep](docs/previews/sword-trails.jpg), [zombie var
 
 | Area | Playable behavior |
 | --- | --- |
-| Full map | Forty internal plots, eight exposed plots, connected neighborhood lanes, woodland, wheat fields, stone and ore gathering, permanent services, and the single gate/graveyard approach. The Watch faces the street and its guards leave from that entrance. |
+| Full map | Forty internal plots, eight exposed plots, connected neighborhood lanes, woodland, wheat fields, three connected cave levels for public stone and ore, permanent services, and the single gate/graveyard approach. The Watch faces the street and its guards leave from that entrance. |
 | Ownership | Up to five plots per resident, one building per plot, construction and conversion, stored supplies, visitor harvesting permissions, and an accumulated 80/20 harvest split. |
 | Player businesses | Tool shops, sword shops, and tinker shops craft from actual shop storage and pay their owner. Mines, tree farms, wheat farms, and houses provide owned land uses and storage. |
 | Progression | Wood/stone/iron equipment, iron and coal nodes, bows and arrows, tool durability, eight configurable hotbar slots, weighted carrying, and three food tiers. |
@@ -74,6 +78,7 @@ These are tunable implementation values, not a claim that the economy is already
 | Land tax | Default daily total is `2 × owned plots²` gold, prorated for active participation and rounded up. A council policy can change the base. Unpaid tax becomes in-run arrears; offline-only cycles do not accrue it. |
 | Carrying | Guards and priests start at 100 weight; villagers at 150. Oak & Iron backpacks add 100 / 250 / 400 capacity for 40 / 100 / 200 gold. Upgrading replaces the previous bag and charges the full listed price. Weight includes usable equipped tools. Timber weighs 2, stone/iron 3, wheat/food 1, coal 2, arrows 0.1, and a packed cart 12. |
 | Role bonuses | Guard: 40 shield, regenerating 4/second after six seconds without damage; Priest: 125 max HP; Villager: +50 carrying capacity. Role changes preserve health percentage and do not refill shields. |
+| Public mining | Upper: 12 stone sites. Middle: 16 sites rolling 40% stone / 30% iron / 30% coal. Deep: 16 sites rolling 20% stone / 40% iron / 40% coal. Eight successful swings deplete a mineral node; its existing regrowth timer then triggers a fresh shared roll. |
 | Tools | Wood / stone / iron yield 1 / 2 / 3 resources per successful swing with 100 / 150 / 200 durability. Swing speed and resource access are the same across tiers. Wooden replacements cost 10 gold and require no materials. |
 | Crafting | Stone/iron tools require a stocked player tool shop. All crafted sword tiers require materials; sword damage is 10 / 15 / 20 at the same attack speed. Tinker shops make bows, arrows, and carts. |
 | Repairs | Hammers restore up to 35 / 55 / 80 health. Gate repair consumes one village timber; keep and plot repair consume one timber and one stone. Valid repair swings earn one gold, capped at ten per cycle and paid at dawn. |
@@ -146,7 +151,7 @@ Sales use current stock prices, tax, the treasury’s emergency reserve and norm
 | F | Toggle fullscreen. |
 | Escape | Close the active panel or open the village menu. |
 
-Use an axe on trees, a pickaxe on stone/iron/coal, and a scythe on individual wheat stalks. Higher tier tools increase the resource count, not gathering speed. A matching resource takes priority over a nearby building menu. Equip a weapon or step away from the resource when you want the service instead.
+Use an axe on trees, a pickaxe on stone/iron/coal inside the northern mountain mine, and a scythe on individual wheat stalks. Open the atlas to mark the mine entrance; underground, follow the local cave map and lanterns to return. Higher tier tools increase the resource count, not gathering speed. A matching resource takes priority over a nearby building menu. Equip a weapon or step away from the resource when you want the service instead.
 
 Chat is village-only, limited to 240 characters and one message per second. Messages appear briefly above dwarfs; a typing indicator does not reveal unfinished draft text. Chat input suspends game controls. The latest thirty messages are held in server memory for reconnecting residents, without writing chat to saved games.
 

@@ -12,6 +12,18 @@ test('normal camera orbit still aims at the player', () => {
   assert.ok(Math.abs(Math.hypot(position.z - anchor.z, position.y - anchor.y) - 8.5) < 1e-10);
 });
 
+test('camera follows a descending floor without clamping an underground dwarf to surface height', () => {
+  for (const floor of [0, -3, -8, -14]) {
+    const position = {}, anchor = {}, lookAt = {};
+    placeOrbitCamera({ x: 0, y: floor, z: -180 }, 0, .39, 4.5, position, anchor, lookAt);
+    assert.equal(anchor.y, floor + 1.45);
+    assert.equal(lookAt.y, anchor.y);
+    assert.ok(position.y > floor + .5 && position.y < floor + 4);
+    placeOrbitCamera({ x: 0, y: floor, z: -180 }, 0, -.95, 4.5, position, anchor, lookAt);
+    assert.ok(position.y >= floor + .5);
+  }
+});
+
 test('looking up reveals the high sky without putting the camera underground', () => {
   const position = {}, anchor = {}, lookAt = {};
   for (let pitch = -.95; pitch <= .95; pitch += .025) {

@@ -81,14 +81,15 @@ test('opt-in state patches coexist with legacy snapshots, preserve private state
   first.durability.pickaxe = 100; // Equipment already obtained before this gather/snapshot scenario.
   modern.ws.send(JSON.stringify({ type: 'input', x: 0, z: 0, yaw: 0, tool: 'pickaxe' }));
   await waitFor(() => first.tool === 'pickaxe');
-  const originalIron = first.inventory.iron; village.clock += .7;
+  const actualMineral = village.resources.find(resource => resource.id === node.id).type;
+  const originalMineral = first.inventory[actualMineral]; village.clock += .7;
   modern.ws.send(JSON.stringify({ type: 'action', kind: 'gather', targetId: node.id }));
-  await waitFor(() => first.inventory.iron === originalIron + 1);
+  await waitFor(() => first.inventory[actualMineral] === originalMineral + 1);
   const [gatherPatch] = await broadcast(app, modern, legacy);
   assert.ok(gatherPatch.state.resources, 'resource depletion sends the changed resource state');
   assert.ok(gatherPatch.state.players, 'the harvester receives the authoritative inventory and durability update');
   assert.equal(gatherPatch.state.plots, undefined, 'gathering ore does not repeat all plot metadata');
-  assert.equal(modern.merged.players.find(player => player.id === first.id).inventory.iron, originalIron + 1);
+  assert.equal(modern.merged.players.find(player => player.id === first.id).inventory[actualMineral], originalMineral + 1);
   assert.equal(legacy.merged.players.find(player => player.id === first.id).inventory, undefined, 'a gather update cannot expose another dwarf inventory');
   assert.deepEqual(modern.merged, wire(app.simulation.snapshot(village, first.id)));
   assert.deepEqual(legacy.merged, wire(app.simulation.snapshot(village, second.id)));
@@ -98,7 +99,7 @@ test('opt-in state patches coexist with legacy snapshots, preserve private state
   const reconnected = await connect(base, firstSession, id, true); streams.push(reconnected);
   assert.equal(reconnected.frames[0].patch, false, 'a new socket never inherits the old socket patch baseline');
   assert.equal(reconnected.frames[0].state.plots.length, 48);
-  assert.equal(reconnected.merged.players.find(player => player.id === first.id).inventory.iron, originalIron + 1);
+  assert.equal(reconnected.merged.players.find(player => player.id === first.id).inventory[actualMineral], originalMineral + 1);
   assert.deepEqual(reconnected.merged, wire(app.simulation.snapshot(village, first.id)));
   t.diagnostic(`Wire bytes: idle ${idlePatch.bytes}/${idleFull.bytes}; movement ${movementPatch.bytes}/${movementFull.bytes} (patch/full).`);
 });

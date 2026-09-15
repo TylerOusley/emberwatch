@@ -4,6 +4,24 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
+## Build 12: the Deepworks and visual storefronts
+
+The public surface quarry and fixed iron/coal patches move into a mountain cave entered from inside the northern village at (0, -118). A continuous passage descends through upper, middle and deep chambers at 3, 8 and 14 meters below the surface. The 44 existing public mineral identities are preserved; individual stored depletion, accounts, plots and village economies migrate in place.
+
+| Depth | Sites | Mineral pool per regrowth |
+| --- | --- | --- |
+| Upper | 12 | Guaranteed stone |
+| Middle | 16 | 40% stone, 30% iron, 30% coal |
+| Deep | 16 | 20% stone, 40% iron, 40% coal |
+
+The server stores each village's roll seed and each node's current mineral and roll number. Only a depleted node finishing its regrowth timer rolls again; joining, pausing and restarting never reroll available resources. All residents see and harvest the same mineral. Wooden/stone/iron picks retain equal access and speed with 1/2/3 yield. Private player mines keep their existing rules. Hired workers seek the current rolled type and walk through the cave to deliver or sell it. Solid rock blocks both movement and harvesting.
+
+The cave has connected ramp geometry, supports, lanterns, inward-facing walls and rock ceilings. The camera and rendered actors/transport follow ground height; camera paths are clipped against rock, floor and ceiling headroom. Surface ambience gives way to stone footsteps underground. The minimap switches to a local cave plan and routes surface destinations through the entrance.
+
+Shops use illustrated item displays, themed interiors and shopkeepers. Hover/focus and a native Inspect item disclosure expose durability and item effects, with prices, exact stock and recipe checks preserved. The physical treasury board displays pinned parchment requests and illustrated resources. Shops still require their existing door access, and requesting a delivery payment still requires its destination entrance.
+
+The crate system remains proposal-only. The accepted shared-credit direction and proposed exchange rates are recorded in [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md). No crate currency, armor, starting kits or gold helmet is enabled by this build.
+
 ## Build 11: gate detail, solid well and physical noticeboard
 
 Build 11 improves gate and well artwork while preserving gate movement and gameplay. Players read village requests by approaching the treasury noticeboard and pressing E. The previous B shortcut is removed; menu/HUD navigation points to the physical board. Delivery destinations expose their own requested deliveries at their actual entrances. Public request data and authoritative payment checks remain unchanged.
@@ -67,7 +85,7 @@ The values below resolve earlier provisional details for this playtest and remai
 
 The intended style is a cohesive fantasy world with terrain detail, lighting, shadows, readable silhouettes, and convincing animation. Tyler clarified that characters should look natural, with sculpted faces, connected anatomy and fitted clothing; smoothing visibly assembled primitive shapes is insufficient. The current character redesign is documented in CHARACTERS.md for visual review. Third-person keyboard/mouse controls must feel smooth, and art improvements must preserve the game rules.
 
-The village sits against mountains with its keep to the north, permanent services near the center, and **one southern gate**. The internal plan allows forty plots, with eight optional exposed plots outside. Trees grow around the village; there is no dedicated public timber section. A public quarry and an internal wheat field keep essential gathering available.
+The village sits against mountains with its keep to the north, permanent services near the center, and **one southern gate**. The internal plan allows forty plots, with eight optional exposed plots outside. Trees grow around the village; there is no dedicated public timber section. The upper level of the northern mountain mine guarantees public stone, and an internal wheat field keeps food gathering available. Iron and coal occur randomly in the deeper mine levels.
 
 The outside landscape has additional woodland and wheat, rewarding a dangerous trip with more gathering opportunities. Higher reward comes from resource density and availability, preserving the fixed tool yields. Roads remain clear for defenders, carts, and rescues. Exterior plots flank the approach and can support defenses.
 

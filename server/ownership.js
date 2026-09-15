@@ -1,5 +1,5 @@
 import { canUseBuilding, canUsePlot } from '../shared/access.js';
-import { BUILDINGS, PLOTS, RESOURCES } from '../shared/world.js';
+import { BUILDINGS, PLOTS, RESOURCES, resolveResource, clearResourceSegment, plotSolids } from '../shared/world.js';
 import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, STORAGE_CAPACITY, inventoryWeight } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
 import { TOWER_STATS } from '../shared/defense.js';
@@ -91,10 +91,11 @@ export function ownershipAction(sim, village, player, action) {
   }
   if (action.kind === 'gather') {
     const privateNode = village.plotResources.find(node => node.id === action.targetId);
-    const node = privateNode ?? RESOURCES.find(node => node.id === action.targetId);
     const state = privateNode ?? village.resources.find(node => node.id === action.targetId);
+    const node = privateNode ?? resolveResource(RESOURCES.find(node => node.id === action.targetId), state);
     if (!node || !state || !state.available) throw new Error('That resource is regrowing.');
     if (distance(player, node) > 3.3) throw new Error('Move closer to gather.');
+    if (!clearResourceSegment(player, node, plotSolids(village.plots))) throw new Error('Move around the wall to reach this resource.');
     const tool = resourceTool[node.type];
     if (player.tool !== tool) throw new Error(`Equip your ${tool} first.`);
     if (!(player.durability[tool] > 0)) throw new Error('Your tool has broken. Buy a replacement.');

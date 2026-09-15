@@ -38,6 +38,7 @@ test('request board has reachable frontage, rejects reading through the wall, an
 test('board requires walking up, only marks deliveries, and releases the modal before travel', () => {
   const f = fixture(); f.ui.show(); assert.equal(f.renders, 0); assert.deepEqual(f.marks.at(-1), NOTICEBOARD_POINT); assert.equal(f.dialog.open, false);
   Object.assign(f.p, NOTICEBOARD_POINT); f.ui.show(); assert.match(f.html, /60 gold reserved/); assert.match(f.html, /12 wheat/); assert.match(f.html, /Requested deliveries/);
+  assert.match(f.html, /class="request-paper"/); assert.match(f.html, /class="request-wax-seal"/); assert.match(f.html, /data-item="wheat"/);
   assert.equal(f.inputs.length, 0); assert.equal(f.buttons[0].text, 'Mark delivery entrance');
   f.buttons[0].onclick(); assert.deepEqual(f.marks.at(-1), f.request.point); assert.equal(f.dialog.open, false); assert.equal(f.sent.length, 0);
   f.ui.show(); const renders = f.renders; f.p.x = 0; f.ui.update(); assert.equal(f.dialog.open, false); assert.equal(f.renders, renders, 'moving out of range closes instead of reopening a remote board');
