@@ -1,5 +1,9 @@
 # Emberwatch build validation
 
+## Increasing night-survival treasury grants
+
+The survival grant now uses `1,000 × completed night number`, calculated before advancing to the next day. All **19 existing backend and economy tests pass**, and the server passes its syntax check. A separate temporary-database check exercised real night-to-day ticks for completed nights 1, 2, 3 and 10, producing 1,000, 2,000, 3,000 and 10,000 gold. It also verified participant-count independence, unchanged player wallet/bank balances, no gold reward notices, preserved balances across SQLite restarts/rejoins, and no extra payment while the empty village remains paused. Merchant restocking, exports and wages were isolated from those grant assertions. Existing saves retain their current balances and receive the new formula only at future dawns.
+
 ## Build 06: visible backpacks, hired workers and fallen villages
 
 The combined `npm test` run passes **177/177 tests**. Coverage includes public backpack-tier replication over real WebSockets while inventories stay private, authenticated worker hiring, owner-only orders and cargo, visible pack geometry and lifecycle, worker UI payloads and preserved drafts, finite shared harvests, paid work time, full-storage handling, partial taxed sales, the treasury reserve, the normal debt-income path, and pauses for night, nearby enemies, absent employers and insufficient wages.

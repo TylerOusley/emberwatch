@@ -136,7 +136,7 @@ Guard credit includes meaningful assists and owned troop kills, with one credit 
 
 Village purchases use real public gold and real stocks. Scarcity raises resource prices and surplus lowers them, with minimum/maximum prices, stock reserves, and a buying/selling spread. Bulk quotes must account for changing stock levels. Resource trading must not generate items or funds that the seller does not possess.
 
-The treasury also receives transaction and land taxes, proceeds from steward-approved surplus exports, and a hidden survived-night grant. The initial grant formula is **50 + 20 per active player**, paid directly to the treasury without a player reward announcement. Empty villages earn nothing.
+The treasury also receives transaction and land taxes, proceeds from steward-approved surplus exports, and a hidden survived-night grant. The grant is **1,000 × the completed night number**: 1,000 after night 1, 2,000 after night 2, 3,000 after night 3, and so on. It is paid directly to the treasury without a player reward announcement and does not depend on player count. Existing runs use their current night number on the next dawn; earlier nights are not paid again. Empty villages remain paused and earn nothing.
 
 ## Votes and the steward
 
