@@ -48,6 +48,9 @@ test('HTTP authentication, real WebSocket multiplayer synchronization, and stale
   const { village: summary } = await response.json();
   const a = await joinSocket(base, alice, summary.id), b = await joinSocket(base, bob, summary.id, 'priest');
   const village = app.simulation.villages.get(summary.id), p = village.players[alice.playerId];
+  // This synchronization scenario represents a dwarf who has obtained an axe.
+  // New-arrival equipment and purchasing are covered by the starter tests.
+  p.durability.axe = 100;
   const oldX = p.x;
   a.ws.send(JSON.stringify({ type: 'input', x: 1, z: 0, yaw: Math.PI / 2, sprint: false, tool: 'axe' }));
   await waitFor(() => app.simulation.inputs.get(p.id));
@@ -95,7 +98,7 @@ test('repair validation, finite material consumption, and separate ten-gold dawn
   const { user } = await account(app, 'RepairDwarf');
   const { id } = app.simulation.create('Gatewatch', user);
   const p = app.simulation.join(id, user, 'guard'), village = app.simulation.villages.get(id);
-  p.tool = 'hammer'; p.x = 0; p.z = 15;
+  p.tool = 'hammer'; p.durability.hammer = 100; p.x = 0; p.z = 15;
   const funds = village.treasury, wood = village.stock.timber, hp = village.gate.hp;
   assert.throws(() => action(app, village, p, { kind: 'repair', targetId: 'gate' }), /fully repaired/);
   assert.equal(village.stock.timber, wood); assert.equal(village.treasury, funds); assert.equal(p.repairBonus, 0);
@@ -121,7 +124,7 @@ test('persistent protected savings, new process recovery, no offline advancement
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const { user, session } = await account(app, 'BankDwarf');
   const { id } = app.simulation.create('Saved Hearth', user), village = app.simulation.villages.get(id), p = app.simulation.join(id, user);
-  p.x = -18; p.z = -17.5;
+  p.x = -18; p.z = -17.5; p.wallet = 50; // A funded savings scenario, beyond the new-arrival allowance.
   action(app, village, p, { kind: 'deposit', amount: 30 });
   assert.equal(p.wallet, 20); assert.equal(app.store.account(p.id).bank, 30);
   assert.throws(() => action(app, village, p, { kind: 'withdraw', amount: 31 }), /Insufficient/);
@@ -149,16 +152,17 @@ test('gathering uses real nodes and tools; downed dwarfs wait until dawn and cho
   const node = RESOURCES.find(r => r.type === 'wheat');
   p.x = node.x; p.z = node.z; p.tool = 'pickaxe';
   assert.throws(() => action(app, village, p, { kind: 'gather', targetId: node.id }), /scythe/);
-  p.tool = 'scythe'; action(app, village, p, { kind: 'gather', targetId: node.id });
+  p.tool = 'scythe'; p.durability.scythe = 100; action(app, village, p, { kind: 'gather', targetId: node.id });
   assert.equal(p.inventory.wheat, 1); assert.equal(p.durability.scythe, 99);
   assert.throws(() => action(app, village, p, { kind: 'gather', targetId: node.id }), /regrowing/);
-  app.simulation.hurtPlayer(village, p, 100);
+  app.simulation.hurtPlayer(village, p, p.hp + (p.shield ?? 0));
   assert.throws(() => action(app, village, p, { kind: 'respawn' }), /next dawn/);
   assert.throws(() => action(app, village, p, { kind: 'gather', targetId: node.id }), /downed/);
   app.simulation.dawn(village);
   assert.equal(p.downed, true); assert.equal(p.respawnAvailable, true);
   action(app, village, p, { kind: 'respawn' });
-  assert.equal(p.hp, 100); assert.equal(p.inventory.wheat, 0); assert.equal(p.wallet, 37); assert.equal(p.durability.axe, 20);
+  assert.equal(p.hp, 100); assert.equal(p.inventory.wheat, 0); assert.equal(p.wallet, 7);
+  assert.equal(p.tool, ''); assert.ok(Object.values(p.durability).every(value => value === 0), 'morning respawn grants no replacement equipment');
 });
 
 test('priests can complete revivals across dawn; non-priests cannot revive', async t => {
@@ -167,7 +171,7 @@ test('priests can complete revivals across dawn; non-priests cannot revive', asy
   const { id } = app.simulation.create('Sanctuary', healer.user), v = app.simulation.villages.get(id);
   const priest = app.simulation.join(id, healer.user, 'priest'), guard = app.simulation.join(id, fighter.user, 'guard');
   priest.x = 0; priest.z = 0; guard.x = 1; guard.z = 0;
-  app.simulation.hurtPlayer(v, guard, 100);
+  app.simulation.hurtPlayer(v, guard, guard.hp + (guard.shield ?? 0));
   action(app, v, priest, { kind: 'heal', targetId: guard.id });
   app.simulation.dawn(v);
   for (let i = 0; i < 101; i++) app.simulation.tick(.05);
@@ -180,7 +184,7 @@ test('zombies follow the road, damage gate before keep, and defeat only occurs o
   const { app } = await fixture(t);
   const { user } = await account(app, 'WatcherDwarf');
   const { id } = app.simulation.create('Last Hearth', user), v = app.simulation.villages.get(id), p = app.simulation.join(id, user);
-  p.x = -10; p.z = -10; app.simulation.hurtPlayer(v, p, 100);
+  p.x = -10; p.z = -10; app.simulation.hurtPlayer(v, p, p.hp + (p.shield ?? 0));
   v.guards = []; app.simulation.startNight(v);
   assert.equal(v.status, 'active', 'all players downed does not end the run');
   for (let i = 0; i < 1300; i++) app.simulation.tick(.05);

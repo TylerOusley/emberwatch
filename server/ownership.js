@@ -1,10 +1,11 @@
-import { PLOTS, RESOURCES } from '../shared/world.js';
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, CARRY_CAPACITY, STORAGE_CAPACITY, inventoryWeight } from '../shared/content.js';
+import { BUILDINGS, PLOTS, RESOURCES } from '../shared/world.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, STORAGE_CAPACITY, inventoryWeight } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
+import { TOWER_STATS } from '../shared/defense.js';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-const kinds = new Set(['plot_buy', 'plot_build', 'plot_demolish', 'plot_access', 'plot_deposit', 'plot_withdraw', 'craft_buy', 'role_change', 'gather']);
+const kinds = new Set(['plot_buy', 'plot_build', 'plot_demolish', 'plot_access', 'plot_deposit', 'plot_withdraw', 'craft_buy', 'role_change', 'gather', 'buyBackpack']);
 const resourceTool = { timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', wheat: 'scythe' };
 const yieldRemainder = (plot, type) => Number.isInteger(plot.splitRemainders?.[type]) ? plot.splitRemainders[type] : 0;
 const maxHarvests = type => type === 'wheat' ? 1 : type === 'timber' ? 5 : 8;
@@ -20,7 +21,7 @@ const checkEmpty = plot => {
   if (plot.patients?.length) throw new Error('Wait until every church patient has left before removing this building.');
 };
 const checkCapacity = (player, id, count) => {
-  if (inventoryWeight(player) + (RESOURCE_WEIGHTS[id] ?? 1) * count > CARRY_CAPACITY + 1e-6) throw new Error('Your pack is full. Store goods on a plot or in a cart.');
+  if (inventoryWeight(player) + (RESOURCE_WEIGHTS[id] ?? 1) * count > carryCapacity(player) + 1e-6) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store goods on a plot or in a cart.');
 };
 const award = (sim, village, player, gold) => {
   if (typeof sim.awardIncome === 'function') sim.awardIncome(village, player, gold);
@@ -56,6 +57,7 @@ export function ensureOwnership(village) {
   const present = new Set(village.plotResources.map(node => node.plotId));
   for (const plot of village.plots) if (activeIds.has(plot.id) && !present.has(plot.id)) village.plotResources.push(...plotNodes(plot));
   for (const player of Object.values(village.players ?? {})) {
+    if (!Number.isInteger(player.backpackTier) || !BACKPACKS[player.backpackTier]) player.backpackTier = 0;
     player.tiers ??= {};
     for (const tool of Object.keys(TOOL_WEIGHTS)) if (tool !== 'bow' && !own(player.tiers, tool)) player.tiers[tool] = 'wood';
     player.inventory ??= {};
@@ -75,6 +77,17 @@ function removeBuilding(village, plot) {
 export function ownershipAction(sim, village, player, action) {
   if (!kinds.has(action.kind)) return null;
   ensureOwnership(village);
+  if (action.kind === 'buyBackpack') {
+    const shop = BUILDINGS.find(building => building.id === 'tools');
+    if (!shop || Math.hypot(Math.max(0, Math.abs(player.x - shop.x) - shop.w / 2), Math.max(0, Math.abs(player.z - shop.z) - shop.d / 2)) > 3.5) throw new Error('Visit Oak & Iron to buy a backpack.');
+    const pack = Number.isInteger(action.tier) ? BACKPACKS[action.tier] : null;
+    if (!pack || pack.tier < 1) throw new Error('Choose a simple, reinforced or expedition backpack.');
+    if (pack.tier <= player.backpackTier) throw new Error('You already have this backpack or a larger one equipped.');
+    if (!Number.isSafeInteger(village.treasury + pack.price)) throw new Error('The village treasury cannot accept this purchase.');
+    chargePurchase(sim, village, player, pack.price, { credit: true });
+    village.treasury += pack.price; player.backpackTier = pack.tier;
+    return `${pack.name} equipped. You can now carry ${carryCapacity(player)} weight.`;
+  }
   if (action.kind === 'gather') {
     const privateNode = village.plotResources.find(node => node.id === action.targetId);
     const node = privateNode ?? RESOURCES.find(node => node.id === action.targetId);
@@ -138,7 +151,7 @@ export function ownershipAction(sim, village, player, action) {
     if (!owner) throw new Error('The shop has no owner.');
     for (const [id, quantity] of Object.entries(recipe.cost)) if ((plot.storage[id] ?? 0) < quantity) throw new Error(`The shop needs more ${id} to craft this item.`);
     const addedWeight = recipe.tool ? (player.durability[recipe.tool] > 0 ? 0 : TOOL_WEIGHTS[recipe.tool]) : (RESOURCE_WEIGHTS[recipe.item] ?? 1) * recipe.amount;
-    if (inventoryWeight(player) + addedWeight > CARRY_CAPACITY + 1e-6) throw new Error('Your pack is full.');
+    if (inventoryWeight(player) + addedWeight > carryCapacity(player) + 1e-6) throw new Error('Your pack is full.');
     if (recipe.tool && player.durability[recipe.tool] > 0 && action.confirm !== true) throw new Error('Confirm replacing your current tool or weapon; its remaining durability will be lost.');
     const taxRate = Math.max(0, Math.min(100, village.policies?.tradeTax ?? 5));
     const tax = Math.floor(recipe.price * taxRate / 100);
@@ -203,6 +216,9 @@ export function ownershipAction(sim, village, player, action) {
   for (const { id, stored, carried } of deductions) { plot.storage[id] = (plot.storage[id] ?? 0) - stored; player.inventory[id] -= carried; }
   village.treasury += type.cost.gold;
   Object.assign(plot, { building: action.building, hp: type.maxHp, maxHp: type.maxHp, level: 1 });
+  // A new archer tower includes a small quiver. Repairs and reloads never grant
+  // free ammunition, and saved towers keep their existing finite stock.
+  for (const [id, amount] of Object.entries(TOWER_STATS[action.building]?.starterAmmo ?? {})) plot.storage[id] = (plot.storage[id] ?? 0) + amount;
   village.plotResources.push(...plotNodes(plot));
   return `${type.name} constructed. ${['mine', 'wheat_farm', 'tree_farm'].includes(action.building) ? 'Your private resources are ready to harvest.' : 'Open this plot to use its services.'}`;
 }
@@ -219,6 +235,7 @@ export function ownershipSnapshot(village, viewerId) {
   return {
     plots: village.plots.map(plot => ({ ...metadata(plot.id), ...plot, ownerName: village.players[plot.ownerId]?.name ?? null })),
     plotResources: village.plotResources.map(({ id, type, x, z, plotId, available, remaining, seed }) => ({ id, type, x, z, plotId, available, remaining, seed })),
-    carryCapacity: CARRY_CAPACITY, carryWeight: inventoryWeight(village.players[viewerId] ?? {})
+    backpackTier: village.players[viewerId]?.backpackTier ?? 0,
+    carryCapacity: carryCapacity(village.players[viewerId]), carryWeight: inventoryWeight(village.players[viewerId] ?? {})
   };
 }

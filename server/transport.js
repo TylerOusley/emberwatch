@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, canStand, moveWithCollision, plotSolids } from '../shared/world.js';
-import { CARRY_CAPACITY, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
+import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
 import { TRANSPORT, LOANS } from '../shared/transport.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -144,7 +144,7 @@ export function transportAction(sim, village, player, action) {
   const depositing = action.kind === 'cartDeposit', source = depositing ? player.inventory : cart.storage, destination = depositing ? cart.storage : player.inventory;
   if ((source[resource] ?? 0) < amount) throw new Error('There are not enough items to move.');
   const weight = amount * RESOURCE_WEIGHTS[resource];
-  if (depositing ? inventoryWeight(cart.storage) + weight > TRANSPORT.cartCapacity : inventoryWeight(player) + weight > CARRY_CAPACITY) throw new Error(depositing ? 'The cart cannot carry that much cargo.' : 'Your pack cannot carry that much cargo.');
+  if (depositing ? inventoryWeight(cart.storage) + weight > TRANSPORT.cartCapacity : inventoryWeight(player) + weight > carryCapacity(player)) throw new Error(depositing ? 'The cart cannot carry that much cargo.' : 'Your pack cannot carry that much cargo.');
   source[resource] -= amount; destination[resource] = (destination[resource] ?? 0) + amount;
   return `${amount} ${resource} ${depositing ? 'loaded into' : 'taken from'} your cart.`;
 }

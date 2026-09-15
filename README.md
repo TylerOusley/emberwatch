@@ -2,11 +2,19 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — integrated playtest build 04.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 05.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The requested systems now have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-## Build 04
+## Build 05: playtest improvements
+
+Natural mineral beds replace scattered boulders. Trees react and fall when exhausted; mineral deposits chip and crumble as they are mined. Horses have sculpted, articulated models and share the rendered rider transform while mounted. Sword grips follow the hand. Routine successful strikes, gathering and repairs no longer produce pop-ups; other notices sit in a corner. Downed players can rotate the camera while deciding whether to wait for a rescue.
+
+Oak & Iron sells backpack upgrades. New residents enter each run empty-handed with 10 gold, enough for one wooden tool; reconnecting preserves their existing gear and money. The treasury accepts a typed resource quantity with the exact tax and total shown before purchase or sale. Guard shields, priest health and villager carrying bonuses distinguish the three jobs. Fallen recruited troops return after 30 active seconds when their barracks has wheat. New archer towers include 20 arrows and report why they are firing or idle.
+
+Actual mesh previews: [horse](docs/previews/horse.jpg), [mineral beds](docs/previews/mineral-beds.jpg), [sword grip](docs/previews/sword-grip.jpg). These show the game geometry under preview lighting; they are not live gameplay captures.
+
+## Integrated map and systems
 
 | Area | Playable behavior |
 | --- | --- |
@@ -36,7 +44,7 @@ Create an account, create or join a village, and select Guard, Priest, or Villag
 
 ## Starting a village
 
-A village starts with 2,500 treasury gold, 60 timber, 40 stone, 40 wheat, and two public watch guards with 12 wheat in their barracks. A new account receives 50 wallet gold once and wooden starter equipment. Join a village, gather and trade supplies, buy a plot, and establish the businesses and defenses the residents need.
+A village starts with 2,500 treasury gold, 60 timber, 40 stone, 40 wheat, and two public watch guards with 12 wheat in their barracks. A new resident receives 10 wallet gold once per village run, with no tools, weapons, food or backpack. Rejoining never grants more. Visit Oak & Iron to choose the first wooden tool; existing residents retain their earned inventory and wallet. Join a village, gather and trade supplies, buy a plot, and establish the businesses and defenses the residents need.
 
 Each account has one active village. Its resident place, plots and stored property remain reserved while offline. Villages hold eight saved residents, including offline members; a single player can start alone. When nobody is online, the simulation pauses. Eight-minute days alternate with four-minute nights, and zombie difficulty grows every five nights. The keep’s destruction ends the run.
 
@@ -50,7 +58,8 @@ These are tunable implementation values, not a claim that the economy is already
 | --- | --- |
 | Land | Five plots maximum per resident, including exterior plots; successive deeds cost 100 / 200 / 350 / 550 / 800 gold. |
 | Land tax | Default daily total is `2 × owned plots²` gold, prorated for active participation and rounded up. A council policy can change the base. Unpaid tax becomes in-run arrears; offline-only cycles do not accrue it. |
-| Carrying | 100 weight, including usable equipped tools. Timber weighs 2, stone/iron 3, wheat/food 1, coal 2, arrows 0.1, and a packed cart 12. |
+| Carrying | Guards and priests start at 100 weight; villagers at 150. Oak & Iron backpacks add 100 / 250 / 400 capacity for 40 / 100 / 200 gold. Upgrading replaces the previous bag and charges the full listed price. Weight includes usable equipped tools. Timber weighs 2, stone/iron 3, wheat/food 1, coal 2, arrows 0.1, and a packed cart 12. |
+| Role bonuses | Guard: 40 shield, regenerating 4/second after six seconds without damage; Priest: 125 max HP; Villager: +50 carrying capacity. Role changes preserve health percentage and do not refill shields. |
 | Tools | Wood / stone / iron yield 1 / 2 / 3 resources per successful swing with 100 / 150 / 200 durability. Swing speed and resource access are the same across tiers. Wooden replacements cost 10 gold and require no materials. |
 | Crafting | Stone/iron tools require a stocked player tool shop. All crafted sword tiers require materials; sword damage is 10 / 15 / 20 at the same attack speed. Tinker shops make bows, arrows, and carts. |
 | Repairs | Hammers restore up to 35 / 55 / 80 health. Gate repair consumes one village timber; keep and plot repair consume one timber and one stone. Valid repair swings earn one gold, capped at ten per cycle and paid at dawn. |
@@ -59,8 +68,8 @@ These are tunable implementation values, not a claim that the economy is already
 | Job performance | Guards receive kill or meaningful-assist credit, including owned defenders while the owner is online. Priests receive one gold per 50 meaningful HP healed and five per eligible revival, within the cycle cap. |
 | Field care | Priest healing channels for two seconds and restores 30 HP. Revival channels for five seconds and restores 45 HP. |
 | Church beds | Two beds, upgradeable to four. Healing costs eight gold for ten seconds; revival costs twenty gold for twenty seconds and returns the dwarf at 45 HP. |
-| Barracks | At most two per Guard, three living troops each. Recruitment costs 35 gold plus five timber and two iron in barracks storage. Each troop consumes one wheat per night; unfed troops deal 25% less damage. |
-| Towers | Archer shots consume one stored arrow; cannon shots consume one stored stone and one coal. Defenses need ammunition, repairs, and paid upgrades. |
+| Barracks | At most two per Guard, three recruited slots each, counting living and pending replacements. Recruitment costs 35 gold plus five timber and two iron in barracks storage. Each troop consumes one wheat per night; unfed troops deal 25% less damage. A fallen recruited guard returns after 30 active seconds for one stored wheat, which covers that night’s ration. Empty wheat storage delays replacement. The public Watch follows the same replacement rule. |
+| Towers | Newly constructed archer towers include 20 arrows; existing depleted towers require restocking. Archer shots consume one stored arrow; cannon shots consume one stored stone and one coal. Defenses need ammunition, repairs, and paid upgrades. |
 | Horses | Stable capacity three. When empty, the steward can buy horses from the visiting merchant for 50 gold each; residents pay 100 gold. One owned horse per resident in the run. |
 | Carts | One deployed cart per resident; 300 cargo weight in owner-controlled storage. Attach it to your horse for hauling. |
 | Loans | At most 200 outstanding debt per account, a 500-gold lending pool per run, and a 1,000-gold treasury floor for new loans. Credit can fund approved purchases; it cannot be banked or withdrawn. Twenty percent of cumulative earnings repays debt, up to the remaining balance. |
@@ -69,13 +78,13 @@ Horses and deployed carts remain in the current village when their owner disconn
 
 ## Trading and village decisions
 
-At the treasury, resource prices rise with scarcity and fall with surplus. Each bundle is priced unit by unit. The server checks the quoted maximum purchase price or minimum sale payment before transferring anything; insufficient stock, money, or capacity rejects the whole trade. Purchases from players preserve 500 treasury gold for essentials. The starting trade tax is 5%; buying and selling use a two-gold unit spread before tax.
+At the treasury, resource prices rise with scarcity and fall with surplus. Type a whole quantity to trade a custom bundle, up to the stock, inventory, weight and funds available (10,000 units per request maximum). Each bundle is priced unit by unit. The server checks the quoted maximum purchase price or minimum sale payment before transferring anything; insufficient stock, money, or capacity rejects the whole trade. Purchases from players preserve 500 treasury gold for essentials. The starting trade tax is 5%; buying and selling use a two-gold unit spread before tax.
 
 The traveling merchant visits on day 3 and every second morning after that, staying for the day. Residents can buy limited specialist supplies of iron, coal, and arrows. The steward never imports wheat, timber, or stone; it may export a measured surplus after reserving food and repair supplies. An empty stable may be restocked when affordable. Night-survival grants go directly to the treasury rather than the player reward feed.
 
 Residents can propose wages, taxes, and export policy at the treasury or keep. A majority of the residents active when the vote opens sends the proposal to the steward. Its rules examine demand, wages plus service income, reserves, repairs and affordability; it explains an approval or veto. Approved changes are reviewed again at the next dawn before taking effect. A vote without a majority keeps the current policy. The steward is deterministic game logic and needs no external AI service.
 
-Bank savings are personal and separate from village funds. Loans create restricted purchase credit, not wallet gold. Credit is valid for land, construction, purchases from another player’s equipment shop, and horses. It cannot finance buying from your own shop, ordinary transfers, or depositing money into savings. Debt and unused credit persist across runs; no one’s private savings fund public loans. Voluntary repayment uses wallet gold at the treasury.
+Bank savings are personal and separate from village funds. Loans create restricted purchase credit, not wallet gold. Credit is valid for land, construction, purchases from another player’s equipment shop, wooden tools, backpacks, and horses. It cannot finance buying from your own shop, ordinary transfers, or depositing money into savings. Debt and unused credit persist across runs; no one’s private savings fund public loans. Voluntary repayment uses wallet gold at the treasury.
 
 ## Controls
 
@@ -83,7 +92,7 @@ Bank savings are personal and separate from village funds. Loans create restrict
 | --- | --- |
 | W / A / S / D | Walk, or ride while mounted. |
 | Shift | Sprint while hunger allows. |
-| Hold right mouse and move | Turn the third-person camera. |
+| Hold right mouse and move | Turn the third-person camera, including while downed. |
 | Left mouse | Use the selected weapon, tool, food, or blessing. |
 | 1–8 / mouse wheel | Select a configured hotbar slot. |
 | E | Gather a matching nearby resource or interact with a service, plot, horse, cart, or downed companion. |
@@ -105,7 +114,7 @@ Chat is village-only, limited to 240 characters and one message per second. Mess
 2. Trade supplies, buy land, and build a stocked tool shop. Have the other account buy a stone or iron tool and verify its yield, durability, storage cost and payment.
 3. Build a production plot, allow visitors, and gather enough resources to observe the accumulated owner share. Load stores or a cart when your pack fills.
 4. Recruit and feed barracks troops; stock a tower with ammunition. Defend the single gate, repair damage, and inspect combined wages and bonuses at dawn.
-5. Carry a downed dwarf to a church bed or revive them in the field. Dawn enables manual respawn without interrupting a rescue; choosing respawn loses carried inventory and 25% of wallet gold.
+5. Carry a downed dwarf to a church bed or revive them in the field. Dawn enables manual respawn without interrupting a rescue; choosing respawn loses all carried inventory, tools, weapons, the backpack and 25% of wallet gold. Respawn grants no free replacement gear; bank savings or approved purchase credit can fund a new tool.
 6. Try a policy proposal and inspect the steward’s reason. On a merchant morning, check surplus exports and stable stock, then ride and haul a cart.
 7. Deposit wallet gold, use approved purchase credit, and verify that debt, unused credit and protected savings survive a server restart. Check that all-offline villages remain paused.
 

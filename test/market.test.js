@@ -7,7 +7,7 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
 import { BUILDINGS } from '../shared/world.js';
-import { saleQuote, saleUnitPrice, TREASURY_RESERVE } from '../shared/market.js';
+import { saleQuote, saleUnitPrice, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
 
 const treasury = BUILDINGS.find(b => b.id === 'bank');
@@ -73,7 +73,7 @@ test('resource scarcity raises prices, and bulk quotes include crossed stock tie
 test('quote helper rejects unsupported resources and unsafe or non-whole quantities', () => {
   for (const resource of ['food', '__proto__', 'constructor', null, {}]) assert.throws(() => saleQuote(resource, 10, 1), /Choose/);
   for (const stock of [-1, .5, NaN, Infinity, '25']) assert.throws(() => saleQuote('wheat', stock, 1), /stock/);
-  for (const amount of [-1, 0, .5, 61, Infinity, '2']) assert.throws(() => saleQuote('wheat', 10, amount), /whole amount/);
+  for (const amount of [-1, 0, .5, MAX_TRADE_AMOUNT + 1, Infinity, '2']) assert.throws(() => saleQuote('wheat', 10, amount), /whole amount/);
   assert.throws(() => saleQuote('wheat', Number.MAX_SAFE_INTEGER, 1), /stock is full/);
 });
 
@@ -84,7 +84,7 @@ test('market rejects invalid, remote, downed, unaffordable and stale sales atomi
   const valid = { kind: 'sell', resource: 'wheat', amount: 1, minTotal: 4 };
   const reject = (patch, pattern) => rejectedUnchanged(app, village, player, { ...valid, ...patch }, pattern);
   for (const resource of ['food', 'gold', '__proto__']) reject({ resource }, /Choose/);
-  for (const amount of [-1, 0, 1.5, 61, '1']) reject({ amount }, /whole amount/);
+  for (const amount of [-1, 0, 1.5, MAX_TRADE_AMOUNT + 1, '1']) reject({ amount }, /whole amount/);
   for (const minTotal of [-1, 0, 1.5, '4', Infinity]) reject({ minTotal }, /whole-gold/);
   reject({ amount: 4 }, /not have enough wheat/);
   reject({ minTotal: 5 }, /price changed/);
@@ -141,7 +141,7 @@ test('two real WebSocket sellers cannot both receive an out-of-date scarce-stock
   assert.match(response(loser).message, /price changed/);
   assert.equal(village.stock.wheat, 25); assert.equal(village.treasury, 2496);
   assert.deepEqual(Object.values(village.players).map(p => p.inventory.wheat).sort(), [0, 1]);
-  assert.deepEqual(Object.values(village.players).map(p => p.wallet).sort(), [50, 54]);
+  assert.deepEqual(Object.values(village.players).map(p => p.wallet).sort((a, b) => a - b), [10, 14]);
   app.broadcast();
   const updated = await waitFor(() => loser.queue.find(m => m.type === 'state' && m.state.stock.wheat === 25));
   loser.queue.length = 0;
@@ -150,7 +150,7 @@ test('two real WebSocket sellers cannot both receive an out-of-date scarce-stock
   assert.equal(response(loser).type, 'notice', 'a failed quote does not consume the action cooldown');
   assert.equal(village.stock.wheat, 26); assert.equal(village.treasury, 2493);
   assert.deepEqual(Object.values(village.players).map(p => p.inventory.wheat), [0, 0]);
-  assert.deepEqual(Object.values(village.players).map(p => p.wallet).sort(), [53, 54]);
+  assert.deepEqual(Object.values(village.players).map(p => p.wallet).sort((a, b) => a - b), [13, 14]);
   a.ws.close(); b.ws.close();
   await waitFor(() => Object.values(village.players).every(p => !p.online));
 });
@@ -164,14 +164,14 @@ test('accepted sales recover with consistent inventory, stock and gold after SQL
   assert.equal(gross, 185); assert.equal(tax, 9); assert.equal(quote, 176);
   app.simulation.action(village.id, player.id, { kind: 'sell', resource: 'timber', amount: 60, minTotal: quote });
   const saved = app.store.loadVillages().find(v => v.id === village.id);
-  assert.equal(saved.stock.timber, 155); assert.equal(saved.players[player.id].wallet, 226);
+  assert.equal(saved.stock.timber, 155); assert.equal(saved.players[player.id].wallet, 186);
   assert.equal(saved.players[player.id].inventory.timber, 0); assert.equal(saved.treasury, 2324);
   await app.close();
   context.app = createApp({ dataDir: context.dataDir, autoTick: false });
   const recovered = context.app.simulation.villages.get(village.id);
   assert.equal(recovered.stock.timber, 155); assert.equal(recovered.treasury, 2324);
   assert.equal(recovered.players[player.id].inventory.timber, 0);
-  assert.equal(recovered.players[player.id].wallet, 226);
+  assert.equal(recovered.players[player.id].wallet, 186);
   assert.equal(recovered.players[player.id].online, false);
   assert.equal(context.app.store.account(player.id).bank, 17);
 });

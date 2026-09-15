@@ -1,7 +1,19 @@
 // Shared, inspectable balance values. Prices and recipes are validated again by the server.
+import { ROLE_STATS } from './roles.js';
 export const MAX_PLOTS = 5;
 export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800]);
 export const CARRY_CAPACITY = 100;
+export const BACKPACKS = Object.freeze([
+  Object.freeze({ tier: 0, name: 'Pockets', capacity: CARRY_CAPACITY, price: 0 }),
+  Object.freeze({ tier: 1, name: 'Simple backpack', capacity: 200, price: 40 }),
+  Object.freeze({ tier: 2, name: 'Reinforced backpack', capacity: 350, price: 100 }),
+  Object.freeze({ tier: 3, name: 'Expedition backpack', capacity: 500, price: 200 })
+]);
+// Equipped capacity comes from the saved tier, never a capacity sent by a client.
+export function carryCapacity(player = {}) {
+  const equipmentCapacity = (Number.isInteger(player.backpackTier) ? BACKPACKS[player.backpackTier] : null)?.capacity ?? CARRY_CAPACITY;
+  return equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0);
+}
 export const STORAGE_CAPACITY = 1500;
 export const TOOL_TIERS = Object.freeze({
   wood: { name: 'Wooden', yield: 1, durability: 100, swordDamage: 10, repair: 35 },

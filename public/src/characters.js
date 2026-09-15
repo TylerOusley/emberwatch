@@ -148,7 +148,7 @@ function makeTool(id, tier=1) {
   const wood = material(0x946038), grain=material(0xc69459), grip=material(0x49372c);
   const head = tier >= 3 ? material(0xadc2c6,.7,.35) : tier === 2 ? material(0x8b9695,.08,.95) : material(0xc99963);
   if (id === 'sword') {
-    mesh(g,'cylinder',grip,0,0,0,.045,.22,.045);
+    mesh(g,'cylinder',grip,0,0,0,.029,.22,.029);
     mesh(g,'round',grain,0,-.15,0,.065,.065,.06);
     mesh(g,'box',wood,0,.13,0,.32,.07,.09);
     mesh(g,'sword',head,0,.17,-.018);
@@ -255,9 +255,17 @@ export function createCharacter(kind='villager', seed=1) {
     if(heldTool) { rig.hand.remove(heldTool); heldTool.traverse(n=>{if(n.isMesh && owned.has(n.geometry)){owned.delete(n.geometry);n.geometry.dispose();}}); }
     toolId=id; toolTier=tier;
     heldTool=makeTool(id,tier);
-    // Keep held equipment clear of the forearm and visibly outside the silhouette.
-    heldTool.position.set(-.025,-.045,.07);
-    heldTool.rotation.set(.65,0,id==='sword'?.40:id==='staff'||id==='heal'?.16:.28);
+    heldTool.name=`held-${id || 'empty'}`;
+    if(id==='sword') {
+      // The sculpted fingers curl around a transverse grip. Put the hilt
+      // through that opening, with the pommel past the little finger and the
+      // crossguard beyond the thumb, instead of piercing the palm lengthwise.
+      heldTool.position.set(0,-.104,.050);
+      heldTool.rotation.set(0,0,-Math.PI/2);
+    } else {
+      heldTool.position.set(-.025,-.045,.07);
+      heldTool.rotation.set(.65,0,id==='staff'||id==='heal'?.16:.28);
+    }
     rig.hand.add(heldTool);
     mergeRigid(heldTool,owned);
   }
@@ -339,7 +347,11 @@ export function createCharacter(kind='villager', seed=1) {
       poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65-.9*carryAmount-.65*mountAmount)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
       poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
       poseJoint(rig.rightFore,(-.14+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
-      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5],a[6],settle);
+      // Turn the sword hand along the forearm so the blade leads forward in
+      // a low guard. This rotation moves the skinned fingers with the hilt;
+      // a tool-only tilt would leave the handle outside the closed grip.
+      const swordTwist=toolId==='sword'?-Math.PI/2:0;
+      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+swordTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
     }
   }
   function dispose() {

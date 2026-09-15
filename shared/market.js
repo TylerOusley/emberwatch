@@ -11,6 +11,7 @@ export const RESOURCE_MARKET = Object.freeze({
 
 // Resource purchases stop at this reserve; other village expenses still use it.
 export const TREASURY_RESERVE = 500;
+export const MAX_TRADE_AMOUNT = 10000;
 const PRICE_BANDS = [
   { below: 25, wheat: 4, timber: 5, stone: 5, iron: 7, coal: 5 },
   { below: 100, wheat: 3, timber: 4, stone: 4, iron: 6, coal: 4 },
@@ -30,10 +31,10 @@ export function saleUnitPrice(resource, stock) {
   return PRICE_BANDS.find(band => stock < band.below)[resource];
 }
 
-/** Whole-gold total for 1–60 units. Throws on invalid resource, stock or amount. */
+/** Whole-gold total for a bounded bulk trade. Invalid quotes never enter a loop. */
 export function saleQuote(resource, stock, amount) {
   validateStock(resource, stock);
-  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 60) throw new Error('Sell a whole amount from 1 to 60.');
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > MAX_TRADE_AMOUNT) throw new Error(`Sell a whole amount from 1 to ${MAX_TRADE_AMOUNT}.`);
   if (!Number.isSafeInteger(stock + amount)) throw new Error('Village stock is full.');
   let total = 0;
   for (let i = 0; i < amount; i++) total += saleUnitPrice(resource, stock + i);
@@ -43,7 +44,7 @@ export function saleQuote(resource, stock, amount) {
 /** Purchase the last unit at its pre-deposit bid plus a two-gold spread. */
 export function purchaseQuote(resource, stock, amount) {
   validateStock(resource, stock);
-  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 60) throw new Error('Buy a whole amount from 1 to 60.');
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > MAX_TRADE_AMOUNT) throw new Error(`Buy a whole amount from 1 to ${MAX_TRADE_AMOUNT}.`);
   if (amount > stock) throw new Error('The village does not have enough of that resource.');
   let total = 0;
   for (let i = 0; i < amount; i++) total += saleUnitPrice(resource, stock - i - 1) + 2;

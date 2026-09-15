@@ -4,7 +4,7 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
-## Build 04: full map and integrated systems
+## Build 05: feedback refinements
 
 Build 04 implements the forty internal and eight exposed plots, ownership and construction, private harvesting, stocked crafting shops, upgraded equipment, the treasury market and policies, merchant trade, owned defenses, church care, and horses/carts with protected loans. The Watch now faces the street; its guard exit and road agree with that entrance. Existing villages and account savings migrate without resetting the run.
 
@@ -12,23 +12,25 @@ This is the first integrated playtest implementation of the accepted plan. “Im
 
 Builds 01–03 established the original village art, third-person multiplayer, authoritative gathering/combat, priest revival, protected banking, stock-priced selling, a persistent hunger meter, village chat with overhead bubbles, and clearer quarry access. Those features remain in this expansion.
 
+Build 05 adds the accepted feedback: empty-handed starts with one tool’s purchase price, backpacks, role traits, custom treasury quantities, wheat-funded replacement guards, clear tower ammunition status, death-camera control, corrected sword grip, sculpted horses with aligned riders, natural mineral beds and harvest effects. Successful harvest/attack/repair notices are suppressed and other notices move to the corner.
+
 ### Current implementation choices
 
 The values below resolve earlier provisional details for this playtest and remain tunable. The accepted relationships in the following sections still apply.
 
-| Area | Build 04 choice |
+| Area | Current choice |
 | --- | --- |
 | Land | Forty plots inside and eight outside; five total deeds per resident. Successive plot prices are 100, 200, 350, 550 and 800 gold. Each plot holds one structure or resource land use. |
 | Tax scaling | Starting daily land tax is `2 × number of owned plots²`, prorated by active cycle participation and rounded up. The policy sets the base multiplier. No participation means no new land tax; unpaid tax becomes in-run arrears. |
-| Carrying and storage | Player capacity is 100 weight including equipped tools with durability remaining; building stores hold 1,500 weight. A deployed cart holds 300 weight. Inventory transfers are checked before mutation. |
-| Troops | Recruitment is 35 gold plus five timber and two iron from that barracks. Two barracks per Guard, three living troops each. Troops consume one wheat per night, including replacement deployments. |
+| Carrying and storage | Guard/Priest capacity is 100 and Villager capacity is 150, including equipped tools with durability remaining. Backpack upgrades add 100/250/400 for 40/100/200 gold at Oak & Iron; building stores hold 1,500 weight. A deployed cart holds 300 weight. Inventory transfers are checked before mutation. |
+| Troops | Recruitment is 35 gold plus five timber and two iron from that barracks. Two barracks per Guard, three recruited slots each, including pending replacements. Troops consume one wheat per night. Fallen recruited troops respawn after 30 active seconds if the barracks has one wheat; that wheat covers the current night. Replacements preserve recruitment investment and wait when wheat is absent. |
 | Church care | Player-owned churches begin with two beds and upgrade to four. Bed healing is eight gold for ten seconds; revival is twenty gold for twenty seconds, returning at 45 HP. Cancelled or interrupted paid treatment refunds its payer. The permanent Sanctuary guides residents to priest care and owned churches. |
-| Defense | Archer towers spend one arrow per shot; cannon shots spend one stone and one coal. Paid level-two upgrades and shared-stock hammer repairs keep defenses useful. |
+| Defense | New archer towers include 20 arrows; existing empty towers must be restocked. Archer towers spend one arrow per shot; cannon shots spend one stone and one coal. Paid level-two upgrades and shared-stock hammer repairs keep defenses useful. |
 | Food | Three inventory items restore 25, 60 and 100 hunger and use two, four and six wheat. Prices follow wheat scarcity plus a preparation fee. |
 | Horses and carts | The public stable stores up to three sale horses. The steward can restock an empty stable at 50 gold per horse during a merchant visit; players pay 100. Each resident can own one horse and deploy one cart in the run. Cart contents are owner-controlled; blocked carts detach without deleting cargo. |
 | Protected credit | Maximum outstanding debt is 200 gold per account; the village lends at most 500 gold per run and retains 1,000 treasury gold before a new loan. Borrowing creates approved purchase credit rather than wallet gold. |
 | Repayment | Up to 20% of cumulative earnings repays debt; fractional accounting handles small payments fairly. Remaining debt and unused credit persist across runs. Private savings are never used automatically. |
-| Purchases on credit | Land, construction, a different player's equipment shop, and horses may use credit after wallet gold. Buying from your own shop, banking, ordinary supplies and treatment require wallet gold. |
+| Purchases on credit | Land, construction, a different player's equipment shop, starter wooden tools, backpacks, and horses may use credit after wallet gold. Buying from your own shop, banking, ordinary supplies and treatment require wallet gold. |
 | Wage tracking | Each active tick accrues the wage for the job actually held, divided by the full day/night duration. Dawn pays the funded whole-gold amount plus accrued performance and repair bonuses; changing jobs cannot reprice earlier participation. |
 | Council and steward | Starting trade tax is 5%; Guard and Priest wage policies start at 25. Wages, trade tax, land-tax base and export priority can be proposed. A deterministic steward examines need and reserves and explains its decision; approved changes are rechecked at dawn. |
 | Merchant | Visits begin on day 3, then every other morning for the day. Limited iron, coal and arrows are available to residents. The steward exports only a safe surplus of wheat, timber and stone and never imports those basics. |
@@ -99,11 +101,15 @@ Private resource plots improve supply density, growth, and convenience. Owners c
 
 Sword shops craft wooden, stone, and iron swords on purchase from real stored resources. Every sword tier requires materials. Higher tiers deal more damage at the same attack speed and reach; 10/15/20 damage is a starting example. Weapon durability is not yet a settled rule and must not be inferred from gathering-tool durability.
 
+## Class traits
+
+Guard has 100 HP and a 40-point shield that absorbs hits first. After six seconds without damage it recovers four points per second; it does not regenerate while downed or offline. Priest has 125 HP. Villager has 100 HP and 50 extra carrying capacity, added to every backpack tier. These are initial balance values. Changing roles preserves health percentage and cannot refill a guard shield; changing to a lower capacity preserves the cargo but prevents further loading until space is made.
+
 ## Defenders, barracks, and towers
 
-Every role may own and use basic swords and bows. Everyone starts with a basic sword. Guard specialization provides the exclusive buildings and combat role, without preventing villagers and priests from defending the gate.
+Every role may own and use basic swords and bows. New residents start each village run with no items and 10 gold, enough for one wooden tool at Oak & Iron. An account can reside in only one active village; reconnecting grants nothing. Existing residents retain their inventories. Guard specialization provides the exclusive buildings and combat role, without preventing villagers and priests from defending the gate.
 
-A guard may own at most two barracks. Each supports three living troops, for six per owner. Troops and upgrades have finite costs; current recruitment and upgrade recipes are in `shared/defense.js`.
+A guard may own at most two barracks. Each supports three recruited slots including pending replacements, for six per owner. Fallen troops return after 30 active seconds when the originating barracks has one wheat. Destroyed or converted barracks cannot replace troops. Troops and upgrades have finite costs; current recruitment and upgrade recipes are in `shared/defense.js`.
 
 Each living deployed troop consumes **one wheat per night from its own barracks stock**. A replacement deployed that night also needs one wheat. Partial supply feeds a corresponding number of soldiers; unfed soldiers deal 25% less damage. Delivering wheat during the night can feed an unfed soldier without charging a fed soldier twice. Other residents may donate supplies. Owner withdrawals require permission.
 
@@ -159,7 +165,7 @@ Priests can revive downed players in the field. Other players can carry a downed
 
 A downed player has **no respawn option until the next dawn**. Dawn enables a button; it never respawns the player automatically. The player may continue waiting for a priest or bed, and a treatment already underway can finish normally. A completed revival removes the respawn option.
 
-Manual respawn loses all carried/equipped inventory and 25% of wallet gold. The player's bank balance, purchased land, buildings, and goods stored elsewhere remain intact while the run continues. Debt persists. The initial recovery-kit proposal is an unsellable basic sword and one limited-durability wooden gathering tool. Revival preserves belongings apart from any treatment fee.
+Manual respawn loses all carried/equipped inventory and 25% of wallet gold. The player's bank balance, purchased land, buildings, and goods stored elsewhere remain intact while the run continues. Debt persists. No recovery kit is granted. Equipped backpacks are lost too. A resident can recover a wooden tool using remaining wallet gold, bank savings, or approved purchase credit. Revival preserves belongings apart from any treatment fee.
 
 ## Personal banking and loans
 
@@ -172,7 +178,7 @@ Loans use a limited lending pool and approved purchases rather than unrestricted
 1. **Foundation, implemented:** original village identity, movement, public multiplayer, authoritative gathering/combat/repairs, chat, pause/resume, accounts and saved villages.
 2. **Village economy, implemented:** resource buying/selling, treasury reserves, role-tracked wages and bonuses, food tiers, transaction/land taxes, merchant exports and steward-reviewed voting.
 3. **Ownership and crafting, implemented:** full plot map, purchases/conversions, storage, visitor harvesting shares, stocked tool/sword/tinker shops and equipment tiers.
-4. **Care and defenses, implemented:** owned barracks and food, recruitment, towers and ammunition, upgrades, damage/repair, carrying and church-bed treatment, manual dawn respawn and recovery kit.
+4. **Care and defenses, implemented:** owned barracks and food, recruitment, towers and ammunition, upgrades, damage/repair, carrying and church-bed treatment, manual dawn respawn with inventory and wallet penalties.
 5. **Transport and credit, implemented:** horses, carts, weight limits, restricted loans, durable debt, and repayments from earnings.
 6. **Playtest and refine:** verify every service and route visually in live multiplayer, tune survival/economy progression and solo play, refine models/animations, test eight-player performance and reconnects over long runs, and improve accessibility and operations. More jobs, gold ore, additional enemy varieties and expansion ideas remain later content decisions.
 

@@ -1,4 +1,5 @@
 import { saleQuote, purchaseQuote } from './market.js';
+export { MAX_TRADE_AMOUNT } from './market.js';
 
 export const POLICIES = Object.freeze({
   guardWage: Object.freeze({ label: 'Guard daily wage', initial: 25, min: 10, max: 60, step: 5 }),

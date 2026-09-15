@@ -34,9 +34,48 @@ function towerCanHit(sim, village, plot, target) {
   return !sim.clearAttack || sim.clearAttack(village, structureEdge(plot, target), target, false);
 }
 
+function towerTargets(sim, village, plot) {
+  const site = siteFor(plot), range = TOWER_STATS[plot.building].range;
+  const inRange = village.zombies.filter(z => z.hp > 0 && distance(site, z) <= range);
+  const target = inRange.filter(z => !(village.gate.hp > 0 && site.z < 18 && z.z > 20) && towerCanHit(sim, village, plot, z)).sort((a, b) => distance(site, a) - distance(site, b))[0];
+  return { target, inRange: inRange.length };
+}
+
+function towerStatus(sim, village, plot) {
+  const stats = TOWER_STATS[plot.building];
+  const shotsRemaining = Math.max(0, Math.min(...Object.entries(stats.ammo).map(([id, cost]) => Math.floor((plot.storage[id] ?? 0) / cost))));
+  let status;
+  if (!usable(plot)) status = 'destroyed';
+  else if (!shotsRemaining) status = 'empty';
+  else if (plot.lastShot?.until > village.clock) status = 'firing';
+  else {
+    const { target, inRange } = towerTargets(sim, village, plot);
+    status = target ? 'ready' : inRange ? 'blocked' : village.zombies.some(z => z.hp > 0) ? 'out_of_range' : 'ready';
+  }
+  return { plotId: plot.id, status, range: stats.range, shotsRemaining, ammo: stats.ammo };
+}
+
 export function ensureCare(village) {
   village.guards ??= [];
   village.barracks ??= { wheat: 0 };
+  // Earlier saves could contain several dead recruits in the same paid slot.
+  // Keep living troops first, then the newest casualty per slot. Migration is
+  // idempotent and never fills slots that the owner has not recruited.
+  if (village.guardRosterVersion !== 1) {
+    const keep = new Set(village.guards.filter(g => !g.plotId));
+    for (const plot of village.plots ?? []) {
+      if (plot.building !== 'barracks') continue;
+      const troops = village.guards.filter(g => g.plotId === plot.id);
+      const slots = new Set();
+      for (const guard of [...troops.filter(g => g.hp > 0), ...troops.filter(g => g.hp <= 0).reverse()]) {
+        const slot = Number.isInteger(guard.slot) ? guard.slot : [0, 1, 2].find(i => !slots.has(i));
+        if (slot === undefined || slots.has(slot) || slot < 0 || slot >= RECRUIT.capacity) continue;
+        guard.slot = slot; slots.add(slot); keep.add(guard);
+      }
+    }
+    village.guards = village.guards.filter(g => keep.has(g));
+    village.guardRosterVersion = 1;
+  }
   for (const plot of village.plots ?? []) {
     plot.storage ??= {};
     if (plot.building === 'church') plot.patients ??= [];
@@ -103,6 +142,35 @@ function barracksStock(village, guard) {
   if (!guard.plotId) return village.barracks;
   const plot = (village.plots ?? []).find(p => p.id === guard.plotId && p.building === 'barracks' && p.ownerId === guard.ownerId && p.hp > 0);
   return plot?.storage;
+}
+
+function troopSpawn(village, guard) {
+  if (!guard.plotId) {
+    const slot = guard.id === 'watch-1' ? 1 : 0;
+    return { x: world.GUARD_ROAD[0].x, z: world.GUARD_ROAD[0].z + (slot - .5) * 1.4, yaw: Math.PI / 2, hp: 160, maxHp: 160, damage: 14 };
+  }
+  const plot = village.plots.find(p => p.id === guard.plotId), door = entrance(plot), yaw = siteFor(plot).yaw ?? 0;
+  const hp = plot.level >= 2 ? 220 : 160;
+  return { x: door.x + Math.cos(yaw) * (guard.slot - 1) * .9, z: door.z - Math.sin(yaw) * (guard.slot - 1) * .9, yaw, hp, maxHp: hp, damage: plot.level >= 2 ? 18 : 14 };
+}
+
+function tickGuardReplacements(sim, village) {
+  const before = village.guards.length;
+  village.guards = village.guards.filter(guard => !guard.plotId || Boolean(barracksStock(village, guard)));
+  let changed = before !== village.guards.length;
+  for (let i = 0; i < village.guards.length; i++) {
+    const guard = village.guards[i];
+    if (guard.hp > 0) continue;
+    if (!Number.isFinite(guard.respawnAt)) { guard.respawnAt = village.clock + RECRUIT.respawnSeconds; changed = true; }
+    const stock = barracksStock(village, guard);
+    if (village.clock < guard.respawnAt || (stock?.wheat ?? 0) < RECRUIT.respawnWheat) continue;
+    stock.wheat -= RECRUIT.respawnWheat;
+    // Retain the paid slot and identity, but create a fresh entity so cached
+    // navigation routes from the casualty cannot pull the replacement astray.
+    village.guards[i] = { ...guard, ...troopSpawn(village, guard), anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false, fedNight: village.day, respawnAt: null };
+    changed = true;
+  }
+  if (changed) sim.store?.saveVillage(village);
 }
 
 function feed(village, guard) {
@@ -186,16 +254,16 @@ export function careAction(sim, village, player, action) {
   if (action.kind === 'recruitGuard') {
     const plot = getPlot(village, player, action.plotId, ['barracks'], true);
     if (player.role !== 'guard') throw new Error('Only guards may command barracks troops.');
-    const living = village.guards.filter(g => g.plotId === plot.id && g.hp > 0);
-    if (living.length >= RECRUIT.capacity) throw new Error('This barracks already has three living troops.');
+    const roster = village.guards.filter(g => g.plotId === plot.id);
+    if (roster.length >= RECRUIT.capacity) throw new Error('This barracks already has three recruited troops, including replacements. Stock wheat to replace fallen guards.');
     payBuildingCost(village, player, plot, RECRUIT);
     const door = entrance(plot), hp = plot.level >= 2 ? 220 : 160;
-    const slot = [0, 1, 2].find(i => !living.some(g => g.slot === i));
+    const slot = [0, 1, 2].find(i => !roster.some(g => g.slot === i));
     const yaw = siteFor(plot).yaw ?? 0;
     // Separate doorside spawns and defense posts prevent identical recruits
     // from remaining perfectly overlapped during their road-following march.
     const postAt = index => ({ x: (index % 6 - 2.5) * 1.2, z: 29 + Math.floor(index / 6) * 1.6 });
-    const postIndex = Array.from({ length: 64 }, (_, i) => i).find(i => !village.guards.some(g => g.hp > 0 && (g.postIndex === i || distance(postAt(i), g.post ?? { x: g.id.endsWith('0') ? -2 : 2, z: 35 }) < 1.1))) ?? village.guards.length;
+    const postIndex = Array.from({ length: 64 }, (_, i) => i).find(i => !village.guards.some(g => g.postIndex === i || distance(postAt(i), g.post ?? { x: g.id.endsWith('0') ? -2 : 2, z: 35 }) < 1.1)) ?? village.guards.length;
     const guard = { id: `troop-${randomUUID()}`, ownerId: player.id, plotId: plot.id, slot, x: door.x + Math.cos(yaw) * (slot - 1) * .9, z: door.z - Math.sin(yaw) * (slot - 1) * .9, yaw, hp, maxHp: hp, damage: plot.level >= 2 ? 18 : 14, anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false, fedNight: null, postIndex, post: postAt(postIndex) };
     village.guards.push(guard); feed(village, guard);
     return 'A guard has been recruited and is following the road to the gate.';
@@ -235,7 +303,7 @@ export function careTick(sim, village, dt) {
     }
     if (p.carriedBy && village.players[p.carriedBy]?.carryingId !== p.id) p.carriedBy = null;
   }
-  village.guards = village.guards.filter(guard => !guard.plotId || Boolean(barracksStock(village, guard)));
+  tickGuardReplacements(sim, village);
   for (const guard of village.guards) feed(village, guard);
   for (const plot of village.plots ?? []) {
     for (const patient of [...(plot.patients ?? [])]) {
@@ -264,9 +332,9 @@ export function careTick(sim, village, dt) {
     }
     if (!usable(plot) || !isDefense(plot)) continue;
     plot.shotCooldown = Math.max(0, (plot.shotCooldown ?? 0) - dt);
-    const stats = TOWER_STATS[plot.building], site = siteFor(plot);
+    const stats = TOWER_STATS[plot.building];
     if (plot.shotCooldown > 0 || !hasStock(plot.storage, stats.ammo)) continue;
-    const target = village.zombies.filter(z => z.hp > 0 && distance(site, z) <= stats.range && !(village.gate.hp > 0 && site.z < 18 && z.z > 20) && towerCanHit(sim, village, plot, z)).sort((a, b) => distance(site, a) - distance(site, b))[0];
+    const { target } = towerTargets(sim, village, plot);
     if (!target) continue;
     spendStock(plot.storage, stats.ammo);
     plot.shotCooldown = stats.cooldown;
@@ -302,8 +370,10 @@ export function tickDefenseAttack(sim, village, zombie, dt) {
   return true;
 }
 
-export function careSnapshot(village) {
+export function careSnapshot(village, _viewerId, sim = {}) {
   return {
+    defenseStatus: (village.plots ?? []).filter(plot => isDefense(plot)).map(plot => towerStatus(sim, village, plot)),
+    guardReplacements: village.guards.filter(g => g.hp <= 0 && barracksStock(village, g)).map(g => ({ guardId: g.id, plotId: g.plotId ?? null, ownerId: g.ownerId ?? null, remaining: Math.max(0, Math.ceil((g.respawnAt ?? village.clock + RECRUIT.respawnSeconds) - village.clock)), waitingForWheat: (barracksStock(village, g)?.wheat ?? 0) < RECRUIT.respawnWheat })),
     beds: (village.plots ?? []).filter(plot => usable(plot) && plot.building === 'church').map(plot => ({ plotId: plot.id, capacity: bedCapacity(plot), patients: (plot.patients ?? []).map(p => ({ playerId: p.playerId, remaining: Math.max(0, Math.ceil(p.until - village.clock)), revive: p.revive, bedIndex: p.bedIndex })) })),
     carrying: Object.values(village.players).filter(p => p.carryingId).map(p => ({ playerId: p.id, targetId: p.carryingId }))
   };

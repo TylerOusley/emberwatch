@@ -3,17 +3,18 @@ import { CONFIG, ROAD, GUARD_ROAD, RESOURCES, BUILDINGS, SOLIDS, canStand, moveW
 import { ensureOwnership, ownershipAction, ownershipTick, ownershipSnapshot } from './ownership.js';
 import { ensureEconomy, economyAction, economyDawn, economySnapshot } from './economy.js';
 import { ensureCare, careAction, careTick, careNight, careSnapshot, guardPathFor, tickDefenseAttack, cancelCarry, cancelTreatment } from './care-defense.js';
-import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer } from './transport.js';
+import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer, chargePurchase } from './transport.js';
 import { TRANSPORT } from '../shared/transport.js';
 import { stepNpcNavigation } from './navigation.js';
-import { TOOL_TIERS, TOOL_WEIGHTS, CARRY_CAPACITY, inventoryWeight } from '../shared/content.js';
+import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight } from '../shared/content.js';
 
-const TOOL_IDS = new Set(['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'heal', 'bow']);
+import { ensureRoleStats, tickRoleStats, absorbDamage } from './roles.js';
+import { STARTER_GOLD, FOOD_IDS, canEquip } from '../shared/equipment.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, cart: 0 });
-const durability = () => ({ sword: 100, axe: 100, pickaxe: 100, scythe: 100, hammer: 100 });
+const durability = () => ({ sword: 0, axe: 0, pickaxe: 0, scythe: 0, hammer: 0, bow: 0 });
 const makeResource = resource => ({ id: resource.id, available: true, remaining: resource.type === 'wheat' ? 1 : resource.type === 'timber' ? 5 : 8, regrowAt: 0 });
 const building = id => BUILDINGS.find(b => b.id === id);
 const nearBuilding = (player, id, range = 3.5) => {
@@ -42,7 +43,10 @@ function ensureVillage(village) {
   }
   ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village);
   for (const player of Object.values(village.players)) {
+    ensureRoleStats(player, { clock: village.clock });
     player.inventory = { ...emptyInventory(), ...player.inventory };
+    player.durability = { ...durability(), ...player.durability };
+    if (!canEquip(player, player.tool) && !(player.tool === 'food' && FOOD_IDS.some(id => canEquip(player, id)))) player.tool = '';
     player.wageAccrued ??= 0;
     // Older builds only tracked participation; preserve that earned fraction once.
     if (player.wageVersion !== 1) {
@@ -98,7 +102,8 @@ export class Simulation {
     if (!player && Object.keys(village.players).length >= 8) throw new Error('All eight resident places are reserved, including offline residents.');
     this.store.transaction(() => {
       if (!player) {
-        player = { id: account.id, name: account.name, role, x: (Object.keys(village.players).length % 3 - 1) * 1.5, z: 4, yaw: Math.PI, hp: 100, maxHp: 100, online: true, downed: false, respawnAvailable: false, tool: 'sword', anim: 'idle', inventory: emptyInventory(), wallet: this.store.initialWallet(account.id), durability: durability(), repairBonus: 0, jobBonus: 0, healingProgress: 0, revivedThisNight: [], participated: 0, lastAction: -100, animationUntil: 0, healing: null, hunger: 100 };
+        player = { id: account.id, name: account.name, role, x: (Object.keys(village.players).length % 3 - 1) * 1.5, z: 4, yaw: Math.PI, hp: 100, maxHp: 100, online: true, downed: false, respawnAvailable: false, tool: '', anim: 'idle', inventory: emptyInventory(), wallet: this.store.initialWallet(account.id, village.id), durability: durability(), backpackTier: 0, repairBonus: 0, jobBonus: 0, healingProgress: 0, revivedThisNight: [], participated: 0, lastAction: -100, animationUntil: 0, healing: null, hunger: 100 };
+        ensureRoleStats(player, { fresh: true, clock: village.clock });
         village.players[account.id] = player;
       }
       player.online = true;
@@ -125,14 +130,14 @@ export class Simulation {
     if (![input.x, input.z, input.yaw].every(Number.isFinite) || Math.abs(input.x) > 100 || Math.abs(input.z) > 100 || Math.abs(input.yaw) > 1e6) throw new Error('Invalid movement.');
     const length = Math.hypot(input.x, input.z);
     this.inputs.set(playerId, { x: length > 1 ? input.x / length : input.x, z: length > 1 ? input.z / length : input.z, yaw: input.yaw, sprint: input.sprint === true, received: performance.now() });
-    if (TOOL_IDS.has(input.tool) && (input.tool !== 'bow' || player.durability.bow > 0)) player.tool = input.tool;
+    if (canEquip(player, input.tool) || input.tool === 'food' && FOOD_IDS.some(id => canEquip(player, id))) player.tool = input.tool;
   }
   snapshot(village, viewerId) {
     return { id: village.id, name: village.name, clock: village.clock, day: village.day, phase: village.phase, phaseRemaining: Math.ceil(village.phaseRemaining), gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
-      ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId), ...transportSnapshot(village, viewerId, this.store),
+      ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         tiers: p.tiers, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
-        ...(p.id === viewerId ? { inventory: p.inventory, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
+        ...(p.id === viewerId ? { inventory: p.inventory, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), backpackTier: p.backpackTier, carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
       zombies: village.zombies.filter(z => z.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim }) => ({ id, x, z, yaw, hp, maxHp, anim })),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
       resources: village.resources.map(({ id, available, remaining }) => ({ id, available, remaining })) };
@@ -161,6 +166,7 @@ export class Simulation {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
+        if (kind === 'role_change') { ensureRoleStats(player, { clock: village.clock }); if (!canEquip(player, player.tool)) player.tool = ''; }
         player.lastAction = village.clock;
         this.store.saveVillage(village);
         return result;
@@ -169,7 +175,7 @@ export class Simulation {
     const tool = player.tool;
     const use = required => {
       if (tool !== required) throw new Error(`Equip your ${required} first.`);
-      if (player.durability[required] <= 0) throw new Error('Your tool has broken. Buy a replacement at Oak & Iron.');
+      if (!(player.durability[required] > 0)) throw new Error('Your tool has broken. Buy a replacement at Oak & Iron.');
     };
     let message;
     if (kind === 'attack') {
@@ -210,10 +216,11 @@ export class Simulation {
     } else if (kind === 'respawn') {
       if (!player.downed || !player.respawnAvailable) throw new Error('Respawning unlocks at the next dawn.');
       cancelCarry(village, player); cancelTreatment(village, player);
-      player.inventory = emptyInventory(); player.wallet = Math.floor(player.wallet * .75); player.durability = { sword: 100, axe: 20, pickaxe: 0, scythe: 0, hammer: 0 };
+      player.inventory = emptyInventory(); player.wallet = Math.floor(player.wallet * .75); player.durability = durability(); player.backpackTier = 0;
       player.tiers = { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' };
-      Object.assign(player, { downed: false, respawnAvailable: false, hp: 100, hunger: 100, x: 0, z: 4, yaw: Math.PI, tool: 'sword', anim: 'idle', healing: null });
-      message = 'You returned with an emergency sword and axe. Your carried inventory and 25% of wallet gold were lost.';
+      Object.assign(player, { downed: false, respawnAvailable: false, hp: 100, hunger: 100, x: 0, z: 4, yaw: Math.PI, tool: '', anim: 'idle', healing: null });
+      ensureRoleStats(player, { fresh: true, clock: village.clock });
+      message = 'You returned empty-handed. Your carried inventory, equipment, backpack and 25% of wallet gold were lost. Your bank savings are safe.';
     } else if (kind === 'deposit' || kind === 'withdraw') {
       if (!nearBuilding(player, 'bank')) throw new Error('Visit the Village Treasury to use your savings.');
       if (!Number.isSafeInteger(action.amount) || action.amount < 1 || action.amount > 1000000) throw new Error('Enter a whole gold amount.');
@@ -238,11 +245,11 @@ export class Simulation {
     } else if (kind === 'buyTool') {
       if (!nearBuilding(player, 'tools')) throw new Error('Visit Oak & Iron to buy wooden tools.');
       if (!['axe', 'pickaxe', 'scythe', 'hammer'].includes(action.tool)) throw new Error('Choose a wooden gathering tool or hammer.');
-      if (player.wallet < 10) throw new Error('A replacement wooden tool costs 10 gold.');
       if (player.durability[action.tool] > 0) throw new Error('Your current tool still has durability remaining.');
-      if (inventoryWeight(player) + TOOL_WEIGHTS[action.tool] > CARRY_CAPACITY) throw new Error('Make room in your pack before buying another tool.');
-      player.wallet -= 10; village.treasury += 10; player.durability[action.tool] = 100;
+      if (inventoryWeight(player) + TOOL_WEIGHTS[action.tool] > carryCapacity(player)) throw new Error('Make room in your pack before buying another tool.');
+      chargePurchase(this, village, player, STARTER_GOLD, { credit: true }); village.treasury += STARTER_GOLD; player.durability[action.tool] = 100;
       player.tiers[action.tool] = 'wood';
+      if (!player.tool || !canEquip(player, player.tool)) player.tool = action.tool;
       message = `Purchased a wooden ${action.tool}.`;
     } else if (kind === 'startNight') {
       if (!this.devTools) throw new Error('Testing controls are disabled.');
@@ -305,7 +312,7 @@ export class Simulation {
     }
   }
   hurtPlayer(village, player, damage) {
-    player.hp = Math.max(0, player.hp - damage);
+    player.hp = Math.max(0, player.hp - absorbDamage(village, player, damage));
     if (player.hp <= 0) { cancelCarry(village, player); cancelTreatment(village, player); dismountPlayer(village, player); player.downed = true; player.respawnAvailable = false; player.anim = 'downed'; player.healing = null; this.inputs.delete(player.id); }
   }
   startNight(village) {
@@ -344,6 +351,7 @@ export class Simulation {
       ownershipTick(this, village, dt);
       for (const player of Object.values(village.players)) {
         if (!player.online) continue;
+        tickRoleStats(village, player, dt);
         player.participated += dt;
         if (village.phase === 'night' && !village.nightParticipants.includes(player.id)) village.nightParticipants.push(player.id);
         const wage = player.role === 'guard' ? village.policies.guardWage : player.role === 'priest' ? village.policies.priestWage : 0;
@@ -358,7 +366,7 @@ export class Simulation {
           player.healing = null;
           let speed = player.mountedHorseId ? TRANSPORT.horseSpeed : input.sprint && player.hunger > 0 ? CONFIG.sprintSpeed : CONFIG.speed;
           if (player.carryingId) speed = CONFIG.speed * .55;
-          if (inventoryWeight(player) > CARRY_CAPACITY) speed *= .65;
+          if (inventoryWeight(player) > carryCapacity(player)) speed *= .65;
           moveWithCollision(player, input.x * speed * dt, input.z * speed * dt, player.mountedHorseId ? .8 : CONFIG.playerRadius, solids);
           if (village.clock > player.animationUntil) player.anim = input.sprint ? 'run' : 'walk';
         } else if (player.bedPlotId) player.anim = 'downed';
