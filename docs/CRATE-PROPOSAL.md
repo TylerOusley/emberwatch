@@ -1,6 +1,6 @@
 # Emberwatch crate and Hundredth Watch helmet proposal
 
-Design record and remaining proposals for Tyler's review during Build 13 planning. **Crates, crate credits, crate equipment, starting kits, the new crate milestones and the Hundredth Watch helmet are not implemented.** Approval of these design choices does not start implementation; the milestone basis and the new item details below still need a decision before an explicit build instruction.
+Design record and remaining proposals for Tyler's review. **Crate opening, credits, equipment bonuses, starting-kit grants, new crate milestones and the Hundredth Watch helmet reward mechanics are not implemented.** Tyler authorized preparing the item artwork, which is available in the [art collection and fitting gallery](CRATE-ART.md). Gameplay still awaits the remaining design decisions and an explicit implementation instruction.
 
 ## Accepted prices, original item pool and duplicate-credit rule
 
@@ -41,7 +41,7 @@ Milestone grants need their own permanent unique claims. The lifetime-versus-sin
 
 ## Accepted original item pool
 
-The following sixteen items form the accepted starting pool: four distinct items per tier, with a transparent **25% chance per item**. Higher tiers contain their own listed items rather than rolling low-tier filler. Effects below are initial, tunable balance settings. The two additions in the next section are proposals; adding them would change the Rare and Legendary pools and requires an explicit odds update.
+The following sixteen items form the accepted starting pool: four distinct items per tier, with a transparent **25% chance per item**. Higher tiers contain their own listed items rather than rolling low-tier filler. Effects below are initial, tunable balance settings. The three additional item designs below would change the Rare and Legendary pools and require an explicit odds update.
 
 | Crate | Item | Slot | Initial effect |
 | --- | --- | --- | --- |
@@ -66,7 +66,7 @@ One head, body, feet, utility and starting-kit slot keeps choices readable. Equi
 
 Starting kits deliberately grant a small initial supply. Tool swing speed and wood/stone/iron yields remain 1/2/3 as requested earlier, and upgraded replacement tools still come from stocked player shops. Kit equipment has ordinary durability; no infinite weapons, wheat or ammunition.
 
-## Proposed additions — not yet approved or implemented
+## Additional item designs — not implemented
 
 ### Legendary: Phoenix Ember
 
@@ -97,22 +97,32 @@ Implementation must persist the charge grant, ownership, run reservation, succes
 | Coal | 2 | 1.6 |
 | Timber, wheat, food, tools and other items | Existing weight | Unchanged |
 
-The Mining Pack occupies the same single utility slot as Forager's pouch, Miner's buckle and Deep-delver's belt. Those utility benefits cannot stack. Normal purchased backpack upgrades and role capacity remain compatible and keep their existing capacity values; the Mining Pack adds no separate capacity bonus or second backpack tier. A visible mining attachment could distinguish it on the worn backpack instead of placing two full backpacks on the character.
+The Mining Pack occupies the same single utility slot as the Lumber Pack, Forager's pouch, Miner's buckle and Deep-delver's belt. Those utility benefits cannot stack. Normal purchased backpack upgrades and role capacity remain compatible and keep their existing capacity values; the Mining Pack adds no separate capacity bonus or second backpack tier. A visible mining attachment could distinguish it on the worn backpack instead of placing two full backpacks on the character.
 
 The reduction applies only to minerals actually carried by that player. Village stock, shop/plot storage, worker cargo and carts retain normal weights and capacities. Transferring an item must recalculate weight for its destination. Sum the fractional weights before checking capacity rather than rounding each item down. Unequipping the utility must preserve cargo and apply the existing overweight behavior until space is freed; it cannot delete or duplicate resources. Mining yield, durability, node type, gathering speed, resource prices and gold are unchanged.
 
 This would be a permanent utility unlock, so its repeats would use the already accepted funding-source-specific 70% duplicate rule.
+
+### Rare: Lumber Pack
+
+**Requested addition:** Tyler wants a matching pack that reduces wood weight. **Recommended balance: Rare; utility slot; 20% less carried timber weight.** Timber is the game's wood resource, so one timber would weigh **1.6 instead of 2** while this pack is equipped. Stone, iron, coal, wheat, tools, food and other items keep their normal weight.
+
+The Lumber Pack shares the single utility slot with the Mining Pack and other utility equipment. Players choose a mining or lumber gathering bonus; they cannot equip both packs at once. Purchased backpack capacity upgrades and the villager carrying bonus still apply normally. A leather log sling and small timber bundle could visually distinguish the Lumber Pack attachment.
+
+Only timber carried by the equipped player receives the reduction. Plot storage, village stock, worker cargo and carts retain normal weight rules. Sum fractional weights before checking capacity, recalculate at the destination when transferring items, and preserve cargo with the existing overweight behavior if the pack is unequipped. The pack does not increase chopping yield, speed or tool durability.
+
+Like the Mining Pack, this would be a permanent utility unlock with the accepted funding-source-specific 70% duplicate return. Its Rare placement, 20% value and appearance are proposed balance/art details; the requested wood-weight item remains design-only until crate implementation begins.
 
 ### Proposed odds if these additions are accepted
 
 | Tier | Accepted pool today | Proposed expanded pool | Proposed chance per item |
 | --- | --- | --- | ---: |
 | Basic | Four listed items | Unchanged | 25% |
-| Rare | Four listed items | Add Mining Pack; five total | 20% |
+| Rare | Four listed items | Add Mining Pack and Lumber Pack; six total | 1/6 (approximately 16.67%) |
 | Epic | Four listed items | Unchanged | 25% |
 | Legendary | Four listed items | Add Phoenix Ember; five total | 20% |
 
-The fifth items and the **20% Rare/Legendary odds are proposals**. The accepted original four-item pools remain at 25% each until these changes are approved. If the consumable exception is chosen, show each Legendary outcome's ownership and refund behavior separately before purchase.
+The expanded pools and their odds remain proposals: **six equally likely Rare items at 1/6 each**, and **five equally likely Legendary items at 20% each**. The accepted original four-item pools remain at 25% each until the expanded odds are finalized. If the consumable exception is chosen, show each Legendary outcome's ownership and refund behavior separately before purchase.
 
 ## Hundredth Watch reward
 
@@ -142,14 +152,14 @@ The server should select and save the result once before the animation begins. R
 
 ## Accepted and outstanding decisions
 
-Already accepted: credit prices **100 / 1,000 / 5,000 / 10,000**, one shared permanent credit balance, **70% source-appropriate duplicate returns**, and the original four-item pool in each tier at 25% per item. Crate systems remain unimplemented.
+Already accepted: credit prices **100 / 1,000 / 5,000 / 10,000**, one shared permanent credit balance, **70% source-appropriate duplicate returns**, and the original four-item pool in each tier at 25% per item. Tyler also requested a Lumber Pack that reduces wood weight, alongside the Mining Pack. Crate systems remain unimplemented.
 
 Still to settle:
 
 1. Use personal lifetime credited nights, or the numbered nights within one village, for the crate schedule and Hundredth Watch helmet? Existing honors use personal lifetime credited nights, but that does not automatically decide the crate rule.
 2. Add Phoenix Ember as the recommended true consumable, or as a permanent starting-kit unlock? For the consumable, approve its repeat-drop exception, one equipped use per run, unused-charge reservation rule, 40% revival health and optional three-second protection.
-3. Add the Rare Mining Pack with the proposed 20% mineral-only carried-weight reduction and single utility slot?
-4. If both additions are accepted, change the Rare and Legendary pools to five equally likely items at 20% each; Basic and Epic remain four items at 25% each.
+3. Finalize the Mining Pack and requested Lumber Pack as Rare utilities, each with a 20% reduction for its specified carried resources and only one utility equipped at a time?
+4. With all three additions, use six equally likely Rare items at 1/6 each and five equally likely Legendary items at 20% each; Basic and Epic remain four items at 25% each.
 5. Confirm equipment-slot, 25% armor-cap, loadout and manual-respawn behavior before implementing stat-bearing rewards.
 6. Keep the helmet's Last Stand ability, choose another function, or make it visual only.
 

@@ -1,0 +1,1152 @@
+{
+  "version": 1,
+  "artworkOnly": true,
+  "itemCount": 20,
+  "crateItemCount": 19,
+  "milestoneItemCount": 1,
+  "generator": "scripts/export-crate-assets.mjs",
+  "format": "glTF 2.0 binary",
+  "coordinates": {
+    "units": "metres",
+    "up": "+Y",
+    "front": "+Z",
+    "space": "dwarf rest anchors; standalone kits centered locally"
+  },
+  "defaults": {
+    "tool": "pickaxe",
+    "backpackTier": 0,
+    "reducedMotion": true
+  },
+  "validation": "All GLBs checked structurally and loaded through GLTFLoader; mesh counts, triangle counts, bounds and bump material counts verified.",
+  "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips.",
+  "totalBytes": 12781672,
+  "totalTriangles": 429172,
+  "items": [
+    {
+      "id": "padded_cap",
+      "name": "Padded cap",
+      "tier": "basic",
+      "slot": "head",
+      "wearable": true,
+      "path": "/assets/crate-items/padded_cap.glb",
+      "byteLength": 434592,
+      "bounds": {
+        "min": [
+          -0.274495,
+          1.734094,
+          -0.27673
+        ],
+        "max": [
+          0.274527,
+          2.134284,
+          0.197583
+        ],
+        "size": [
+          0.549022,
+          0.400189,
+          0.474312
+        ],
+        "center": [
+          0.000016,
+          1.934189,
+          -0.039574
+        ]
+      },
+      "triangles": 13240,
+      "meshes": 4,
+      "materials": 4,
+      "vertices": 7920,
+      "sourceVertices": 39720,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": "head",
+          "anchor": [
+            0,
+            1.8,
+            0.01
+          ],
+          "hideNames": [
+            "swept grooved scalp hair",
+            "forged helmet and cheek protection",
+            "rolled helmet edge",
+            "draped linen hood",
+            "cloth opening seam",
+            "soft stitched leather cap"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "stout_leather_boots",
+      "name": "Stout leather boots",
+      "tier": "basic",
+      "slot": "feet",
+      "wearable": true,
+      "path": "/assets/crate-items/stout_leather_boots.glb",
+      "byteLength": 847792,
+      "bounds": {
+        "min": [
+          -0.372977,
+          0.018,
+          -0.158971
+        ],
+        "max": [
+          0.372977,
+          0.487,
+          0.3545
+        ],
+        "size": [
+          0.745953,
+          0.469,
+          0.513471
+        ],
+        "center": [
+          0,
+          0.2525,
+          0.097765
+        ]
+      },
+      "triangles": 25576,
+      "meshes": 12,
+      "materials": 3,
+      "vertices": 15182,
+      "sourceVertices": 76728,
+      "embeddedImages": 1,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "leftFoot",
+          "anchor": [
+            0.21,
+            0.17,
+            0.015
+          ],
+          "hideNames": []
+        },
+        {
+          "bone": "leftShin",
+          "anchor": [
+            0.21,
+            0.42,
+            0
+          ],
+          "hideNames": []
+        },
+        {
+          "bone": "rightFoot",
+          "anchor": [
+            -0.21,
+            0.17,
+            0.015
+          ],
+          "hideNames": []
+        },
+        {
+          "bone": "rightShin",
+          "anchor": [
+            -0.21,
+            0.42,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "foragers_pouch",
+      "name": "Forager’s pouch",
+      "tier": "basic",
+      "slot": "utility",
+      "wearable": true,
+      "path": "/assets/crate-items/foragers_pouch.glb",
+      "byteLength": 165796,
+      "bounds": {
+        "min": [
+          0.168308,
+          0.6265,
+          0.276784
+        ],
+        "max": [
+          0.39183,
+          1.004384,
+          0.471182
+        ],
+        "size": [
+          0.223522,
+          0.377884,
+          0.194398
+        ],
+        "center": [
+          0.280069,
+          0.815442,
+          0.373983
+        ]
+      },
+      "triangles": 5310,
+      "meshes": 6,
+      "materials": 6,
+      "vertices": 3495,
+      "sourceVertices": 15930,
+      "embeddedImages": 2,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "hearth_ration_kit",
+      "name": "Hearth ration kit",
+      "tier": "basic",
+      "slot": "kit",
+      "wearable": false,
+      "path": "/assets/crate-items/hearth_ration_kit.glb",
+      "byteLength": 326040,
+      "bounds": {
+        "min": [
+          -0.55,
+          -0.220176,
+          -0.394125
+        ],
+        "max": [
+          0.55,
+          0.220176,
+          0.394125
+        ],
+        "size": [
+          1.1,
+          0.440352,
+          0.78825
+        ],
+        "center": [
+          0,
+          0,
+          0
+        ]
+      },
+      "triangles": 16140,
+      "meshes": 7,
+      "materials": 7,
+      "vertices": 9150,
+      "sourceVertices": 48420,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": null,
+          "anchor": [
+            0,
+            0,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "iron_coif",
+      "name": "Iron coif",
+      "tier": "rare",
+      "slot": "head",
+      "wearable": true,
+      "path": "/assets/crate-items/iron_coif.glb",
+      "byteLength": 1592456,
+      "bounds": {
+        "min": [
+          -0.295862,
+          1.51549,
+          -0.292614
+        ],
+        "max": [
+          0.29569,
+          2.129,
+          0.205234
+        ],
+        "size": [
+          0.591552,
+          0.61351,
+          0.497848
+        ],
+        "center": [
+          -0.000086,
+          1.822245,
+          -0.04369
+        ]
+      },
+      "triangles": 42808,
+      "meshes": 5,
+      "materials": 5,
+      "vertices": 30168,
+      "sourceVertices": 128424,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": "head",
+          "anchor": [
+            0,
+            1.8,
+            0.01
+          ],
+          "hideNames": [
+            "swept grooved scalp hair",
+            "forged helmet and cheek protection",
+            "rolled helmet edge",
+            "draped linen hood",
+            "cloth opening seam",
+            "soft stitched leather cap"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "riveted_vest",
+      "name": "Riveted vest",
+      "tier": "rare",
+      "slot": "body",
+      "wearable": true,
+      "path": "/assets/crate-items/riveted_vest.glb",
+      "byteLength": 625920,
+      "bounds": {
+        "min": [
+          -0.444058,
+          0.834,
+          -0.330931
+        ],
+        "max": [
+          0.444058,
+          1.546473,
+          0.366988
+        ],
+        "size": [
+          0.888116,
+          0.712473,
+          0.697918
+        ],
+        "center": [
+          0,
+          1.190236,
+          0.018029
+        ]
+      },
+      "triangles": 18236,
+      "meshes": 5,
+      "materials": 5,
+      "vertices": 11367,
+      "sourceVertices": 54708,
+      "embeddedImages": 1,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "miners_buckle",
+      "name": "Miner’s buckle",
+      "tier": "rare",
+      "slot": "utility",
+      "wearable": true,
+      "path": "/assets/crate-items/miners_buckle.glb",
+      "byteLength": 250528,
+      "bounds": {
+        "min": [
+          -0.419583,
+          0.857601,
+          -0.306
+        ],
+        "max": [
+          0.419391,
+          1.021,
+          0.369503
+        ],
+        "size": [
+          0.838974,
+          0.163399,
+          0.675503
+        ],
+        "center": [
+          -0.000096,
+          0.9393,
+          0.031751
+        ]
+      },
+      "triangles": 7528,
+      "meshes": 6,
+      "materials": 6,
+      "vertices": 5957,
+      "sourceVertices": 22584,
+      "embeddedImages": 1,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "tradesmans_kit",
+      "name": "Tradesman’s kit",
+      "tier": "rare",
+      "slot": "kit",
+      "wearable": false,
+      "path": "/assets/crate-items/tradesmans_kit.glb",
+      "byteLength": 584784,
+      "bounds": {
+        "min": [
+          -0.389638,
+          -0.55,
+          -0.236597
+        ],
+        "max": [
+          0.389638,
+          0.55,
+          0.236597
+        ],
+        "size": [
+          0.779277,
+          1.1,
+          0.473195
+        ],
+        "center": [
+          0,
+          0,
+          0
+        ]
+      },
+      "triangles": 27364,
+      "meshes": 12,
+      "materials": 12,
+      "vertices": 16852,
+      "sourceVertices": 82092,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": null,
+          "anchor": [
+            0,
+            0,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "mining_pack",
+      "name": "Mining Pack",
+      "tier": "rare",
+      "slot": "utility",
+      "wearable": true,
+      "path": "/assets/crate-items/mining_pack.glb",
+      "byteLength": 844652,
+      "bounds": {
+        "min": [
+          -0.405263,
+          0.756,
+          -0.785863
+        ],
+        "max": [
+          0.405263,
+          1.548228,
+          0.332373
+        ],
+        "size": [
+          0.810525,
+          0.792228,
+          1.118236
+        ],
+        "center": [
+          0,
+          1.152114,
+          -0.226745
+        ]
+      },
+      "triangles": 28690,
+      "meshes": 8,
+      "materials": 8,
+      "vertices": 20250,
+      "sourceVertices": 86070,
+      "embeddedImages": 2,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": [
+            "worn-backpack"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "lumber_pack",
+      "name": "Lumber Pack",
+      "tier": "rare",
+      "slot": "utility",
+      "wearable": true,
+      "path": "/assets/crate-items/lumber_pack.glb",
+      "byteLength": 1134116,
+      "bounds": {
+        "min": [
+          -0.405263,
+          0.710185,
+          -0.724567
+        ],
+        "max": [
+          0.405263,
+          1.548228,
+          0.332373
+        ],
+        "size": [
+          0.810525,
+          0.838042,
+          1.05694
+        ],
+        "center": [
+          0,
+          1.129207,
+          -0.196097
+        ]
+      },
+      "triangles": 38520,
+      "meshes": 9,
+      "materials": 9,
+      "vertices": 27413,
+      "sourceVertices": 115560,
+      "embeddedImages": 2,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": [
+            "worn-backpack"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "tempered_cuirass",
+      "name": "Tempered cuirass",
+      "tier": "epic",
+      "slot": "body",
+      "wearable": true,
+      "path": "/assets/crate-items/tempered_cuirass.glb",
+      "byteLength": 647032,
+      "bounds": {
+        "min": [
+          -0.446493,
+          0.782,
+          -0.330931
+        ],
+        "max": [
+          0.446493,
+          1.546473,
+          0.3955
+        ],
+        "size": [
+          0.892986,
+          0.764473,
+          0.726431
+        ],
+        "center": [
+          0,
+          1.164236,
+          0.032285
+        ]
+      },
+      "triangles": 20188,
+      "meshes": 3,
+      "materials": 3,
+      "vertices": 11841,
+      "sourceVertices": 60564,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "runed_helm",
+      "name": "Runed helm",
+      "tier": "epic",
+      "slot": "head",
+      "wearable": true,
+      "path": "/assets/crate-items/runed_helm.glb",
+      "byteLength": 460632,
+      "bounds": {
+        "min": [
+          -0.292006,
+          1.710008,
+          -0.288192
+        ],
+        "max": [
+          0.292028,
+          2.156,
+          0.214121
+        ],
+        "size": [
+          0.584034,
+          0.445992,
+          0.502313
+        ],
+        "center": [
+          0.000011,
+          1.933004,
+          -0.037035
+        ]
+      },
+      "triangles": 14304,
+      "meshes": 5,
+      "materials": 5,
+      "vertices": 8328,
+      "sourceVertices": 42912,
+      "embeddedImages": 0,
+      "extensionsUsed": [
+        "KHR_materials_emissive_strength"
+      ],
+      "attachments": [
+        {
+          "bone": "head",
+          "anchor": [
+            0,
+            1.8,
+            0.01
+          ],
+          "hideNames": [
+            "swept grooved scalp hair",
+            "forged helmet and cheek protection",
+            "rolled helmet edge",
+            "draped linen hood",
+            "cloth opening seam",
+            "soft stitched leather cap"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "deep_delvers_belt",
+      "name": "Deep-delver’s belt",
+      "tier": "epic",
+      "slot": "utility",
+      "wearable": true,
+      "path": "/assets/crate-items/deep_delvers_belt.glb",
+      "byteLength": 632288,
+      "bounds": {
+        "min": [
+          -0.433586,
+          0.6605,
+          -0.319
+        ],
+        "max": [
+          0.43339,
+          1.018236,
+          0.382223
+        ],
+        "size": [
+          0.866977,
+          0.357736,
+          0.701223
+        ],
+        "center": [
+          -0.000098,
+          0.839368,
+          0.031611
+        ]
+      },
+      "triangles": 20696,
+      "meshes": 7,
+      "materials": 7,
+      "vertices": 15376,
+      "sourceVertices": 62088,
+      "embeddedImages": 1,
+      "extensionsUsed": [
+        "KHR_texture_transform",
+        "EXT_materials_bump"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "prospectors_kit",
+      "name": "Prospector’s kit",
+      "tier": "epic",
+      "slot": "kit",
+      "wearable": false,
+      "path": "/assets/crate-items/prospectors_kit.glb",
+      "byteLength": 566652,
+      "bounds": {
+        "min": [
+          -0.389638,
+          -0.55,
+          -0.236597
+        ],
+        "max": [
+          0.389638,
+          0.55,
+          0.236597
+        ],
+        "size": [
+          0.779277,
+          1.1,
+          0.473195
+        ],
+        "center": [
+          0,
+          0,
+          0
+        ]
+      },
+      "triangles": 26116,
+      "meshes": 13,
+      "materials": 13,
+      "vertices": 16374,
+      "sourceVertices": 78348,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": null,
+          "anchor": [
+            0,
+            0,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "runeforged_cuirass",
+      "name": "Runeforged cuirass",
+      "tier": "legendary",
+      "slot": "body",
+      "wearable": true,
+      "path": "/assets/crate-items/runeforged_cuirass.glb",
+      "byteLength": 684604,
+      "bounds": {
+        "min": [
+          -0.446493,
+          0.782,
+          -0.330931
+        ],
+        "max": [
+          0.446493,
+          1.546473,
+          0.40587
+        ],
+        "size": [
+          0.892986,
+          0.764473,
+          0.7368
+        ],
+        "center": [
+          0,
+          1.164236,
+          0.03747
+        ]
+      },
+      "triangles": 21228,
+      "meshes": 4,
+      "materials": 4,
+      "vertices": 12518,
+      "sourceVertices": 63684,
+      "embeddedImages": 0,
+      "extensionsUsed": [
+        "KHR_materials_emissive_strength"
+      ],
+      "attachments": [
+        {
+          "bone": "body",
+          "anchor": [
+            0,
+            1.04,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "dawnsteel_helm",
+      "name": "Dawnsteel helm",
+      "tier": "legendary",
+      "slot": "head",
+      "wearable": true,
+      "path": "/assets/crate-items/dawnsteel_helm.glb",
+      "byteLength": 558400,
+      "bounds": {
+        "min": [
+          -0.337034,
+          1.711046,
+          -0.289108
+        ],
+        "max": [
+          0.337318,
+          2.18,
+          0.214946
+        ],
+        "size": [
+          0.674351,
+          0.468954,
+          0.504055
+        ],
+        "center": [
+          0.000142,
+          1.945523,
+          -0.037081
+        ]
+      },
+      "triangles": 17360,
+      "meshes": 5,
+      "materials": 5,
+      "vertices": 10132,
+      "sourceVertices": 52080,
+      "embeddedImages": 0,
+      "extensionsUsed": [
+        "KHR_materials_clearcoat"
+      ],
+      "attachments": [
+        {
+          "bone": "head",
+          "anchor": [
+            0,
+            1.8,
+            0.01
+          ],
+          "hideNames": [
+            "swept grooved scalp hair",
+            "forged helmet and cheek protection",
+            "rolled helmet edge",
+            "draped linen hood",
+            "cloth opening seam",
+            "soft stitched leather cap"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "guardians_boots",
+      "name": "Guardian’s boots",
+      "tier": "legendary",
+      "slot": "feet",
+      "wearable": true,
+      "path": "/assets/crate-items/guardians_boots.glb",
+      "byteLength": 667600,
+      "bounds": {
+        "min": [
+          -0.372977,
+          0.018,
+          -0.158971
+        ],
+        "max": [
+          0.372977,
+          0.487,
+          0.353977
+        ],
+        "size": [
+          0.745953,
+          0.469,
+          0.512947
+        ],
+        "center": [
+          0,
+          0.2525,
+          0.097503
+        ]
+      },
+      "triangles": 20856,
+      "meshes": 12,
+      "materials": 4,
+      "vertices": 11920,
+      "sourceVertices": 62568,
+      "embeddedImages": 0,
+      "extensionsUsed": [
+        "KHR_materials_emissive_strength"
+      ],
+      "attachments": [
+        {
+          "bone": "leftFoot",
+          "anchor": [
+            0.21,
+            0.17,
+            0.015
+          ],
+          "hideNames": []
+        },
+        {
+          "bone": "leftShin",
+          "anchor": [
+            0.21,
+            0.42,
+            0
+          ],
+          "hideNames": []
+        },
+        {
+          "bone": "rightFoot",
+          "anchor": [
+            -0.21,
+            0.17,
+            0.015
+          ],
+          "hideNames": []
+        },
+        {
+          "bone": "rightShin",
+          "anchor": [
+            -0.21,
+            0.42,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "master_expedition_kit",
+      "name": "Master expedition kit",
+      "tier": "legendary",
+      "slot": "kit",
+      "wearable": false,
+      "path": "/assets/crate-items/master_expedition_kit.glb",
+      "byteLength": 633336,
+      "bounds": {
+        "min": [
+          -0.389638,
+          -0.55,
+          -0.236597
+        ],
+        "max": [
+          0.389638,
+          0.55,
+          0.236597
+        ],
+        "size": [
+          0.779277,
+          1.1,
+          0.473195
+        ],
+        "center": [
+          0,
+          0,
+          0
+        ]
+      },
+      "triangles": 29404,
+      "meshes": 14,
+      "materials": 14,
+      "vertices": 18282,
+      "sourceVertices": 88212,
+      "embeddedImages": 0,
+      "extensionsUsed": [],
+      "attachments": [
+        {
+          "bone": null,
+          "anchor": [
+            0,
+            0,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "phoenix_ember",
+      "name": "Phoenix Ember",
+      "tier": "legendary",
+      "slot": "consumable",
+      "wearable": false,
+      "path": "/assets/crate-items/phoenix_ember.glb",
+      "byteLength": 425512,
+      "bounds": {
+        "min": [
+          -0.498334,
+          -0.51,
+          -0.286984
+        ],
+        "max": [
+          0.498334,
+          0.51,
+          0.286984
+        ],
+        "size": [
+          0.996668,
+          1.02,
+          0.573968
+        ],
+        "center": [
+          0,
+          0,
+          0
+        ]
+      },
+      "triangles": 14180,
+      "meshes": 6,
+      "materials": 6,
+      "vertices": 13851,
+      "sourceVertices": 42540,
+      "embeddedImages": 0,
+      "extensionsUsed": [
+        "KHR_materials_emissive_strength"
+      ],
+      "attachments": [
+        {
+          "bone": null,
+          "anchor": [
+            0,
+            0,
+            0
+          ],
+          "hideNames": []
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    },
+    {
+      "id": "sunforged_viking_helm",
+      "name": "Sunforged Viking Helm",
+      "tier": "milestone",
+      "slot": "head",
+      "wearable": true,
+      "path": "/assets/crate-items/sunforged_viking_helm.glb",
+      "byteLength": 698940,
+      "bounds": {
+        "min": [
+          -0.291948,
+          1.680478,
+          -0.28903
+        ],
+        "max": [
+          0.291941,
+          2.179,
+          0.312198
+        ],
+        "size": [
+          0.583888,
+          0.498522,
+          0.601228
+        ],
+        "center": [
+          -0.000003,
+          1.929739,
+          0.011584
+        ]
+      },
+      "triangles": 21428,
+      "meshes": 5,
+      "materials": 5,
+      "vertices": 12769,
+      "sourceVertices": 64284,
+      "embeddedImages": 0,
+      "extensionsUsed": [
+        "KHR_materials_clearcoat"
+      ],
+      "attachments": [
+        {
+          "bone": "head",
+          "anchor": [
+            0,
+            1.8,
+            0.01
+          ],
+          "hideNames": [
+            "swept grooved scalp hair",
+            "forged helmet and cheek protection",
+            "rolled helmet edge",
+            "draped linen hood",
+            "cloth opening seam",
+            "soft stitched leather cap"
+          ]
+        }
+      ],
+      "animationNote": "Procedural sparkle, ember drift and glow modulation remain in the JavaScript factories. GLBs contain static authored geometry/materials at rest, with reduced-motion effects and no animation clips."
+    }
+  ]
+}
