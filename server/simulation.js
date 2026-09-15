@@ -21,6 +21,7 @@ import { ensureCaves, regrowCaveResource, publicResourceSnapshot } from './caves
 import { ensureTrading, tradingAction, tradingTick, tradingSnapshot, cancelPlayerTrades } from './trading.js';
 import { joinCrates, crateAction, crateSnapshot, forfeitCrates, refreshCrateMilestones } from './crates.js';
 import { ensureCrateEffects, crateProtectionActive, breakCrateProtection, crateEnemyDamage, crateAfterEnemyHit, crateRespawnEffects } from './crate-effects.js';
+import { TEST_GOLD } from './admin.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 // Form transfers and release actions are immediately validated transactions;
 // they should not inherit the swing delay used for tools and combat.
@@ -165,7 +166,7 @@ export class Simulation {
       ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId), ...crateSnapshot(this, village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
-        ...(p.id === viewerId ? { inventory: p.inventory, boundInventory: p.boundInventory ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
+        ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
       siegeNight: village.siegeNight,
       zombies: village.zombies.filter(z => z.hp > 0).map(enemySnapshot),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
@@ -193,6 +194,15 @@ export class Simulation {
     if (village.status !== 'active') throw new Error('The keep has fallen. This run has ended.');
     const kind = action.kind;
     if (typeof kind !== 'string') throw new Error('Invalid action.');
+    if (kind === 'admin_refill_gold') {
+      // Only the authenticated player can refill their own fixed test balances.
+      // The enclosing action transaction saves bank and wallet together.
+      if (!this.store.isTestAdmin?.(player.id)) throw new Error('This account does not have testing controls.');
+      if (!Number.isSafeInteger(player.wallet) || player.wallet < 0) throw new Error('Invalid wallet balance.');
+      const { bank } = this.store.refillTestBank(player.id);
+      player.wallet = Math.max(player.wallet, TEST_GOLD);
+      return `Test gold ready: ${player.wallet.toLocaleString('en-US')} in your wallet and ${bank.toLocaleString('en-US')} in your bank.`;
+    }
     if (player.downed && !['respawn', 'churchLeave', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
     if (!IMMEDIATE_ACTIONS.has(kind) && village.clock - player.lastAction < .55) throw new Error('Wait for your next action.');
     if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive'].includes(kind)) throw new Error('Leave your church bed before taking another action.');

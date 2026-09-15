@@ -26,7 +26,7 @@ async function readJson(req) {
 }
 
 export function createApp(options = {}) {
-  const store = new Store(options.dataDir ?? process.env.DATA_DIR ?? resolve(ROOT, 'data'));
+  const store = new Store(options.dataDir ?? process.env.DATA_DIR ?? resolve(ROOT, 'data'), { testAdminAccountIds: options.testAdminAccountIds });
   const simulation = new Simulation(store, { ...options, devTools: options.devTools ?? process.env.ALLOW_DEV_TOOLS === 'true' });
   const chat = new VillageChat(options.chatClock);
   const sockets = new Map();
