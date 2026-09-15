@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTradingUI } from '../public/src/trading-ui.js';
-import { emptyTradeOffer } from '../shared/trading.js';
+import { emptyTradeOffer, TRADE_ITEMS } from '../shared/trading.js';
 
 function fixture() {
   let html = '', panel = null, buttons = [], inputs = [], renders = 0;
@@ -76,4 +76,28 @@ test('closed panels stay closed, completion notifies once, and ended trades drop
   f.ui.show(); assert.match(f.html, /Trade complete/); const trade = f.start(); trade.id = 'trade-2'; f.ui.update();
   assert.equal(f.inputs.find(input => input.dataset.tradeInput === 'timber').value, '0');
   f.me.downed = true; f.ui.update(); f.click('Cancel trade'); assert.equal(f.sent.at(-1).kind, 'trade_cancel');
+});
+
+test('trade Max excludes bound kit food and a changed binding invalidates a saved offer', () => {
+  const f = fixture(); f.me.inventory.food = 5; f.me.boundInventory = { food: 3 }; const trade = f.start();
+  assert.match(f.html, /2 transferable · 3 kit-bound \(eat only\) · 5 carried total/);
+  f.type('food', '3'); f.click('Update offer'); assert.equal(f.sent.length, 0);
+  f.buttons.filter(button => button.text === 'Max')[Object.keys(TRADE_ITEMS).indexOf('food')].onclick();
+  assert.equal(f.inputs.find(input => input.dataset.tradeInput === 'food').value, '2');
+  f.click('Update offer'); assert.equal(f.sent.at(-1).offer.resources.food, 2);
+  trade.offers.alice = structuredClone(f.sent.at(-1).offer); trade.version++; f.ui.update();
+  const oldConfirm = f.buttons.find(button => button.text === 'Confirm this exchange');
+  f.me.boundInventory.food = 5; oldConfirm.onclick();
+  assert.equal(f.sent.length, 1, 'a changed binding cannot be confirmed through a stale control');
+  assert.match(f.html, /0 transferable · 5 kit-bound/);
+  assert.equal(f.buttons.find(button => button.text === 'Confirm this exchange').disabled, true);
+});
+
+test('trade carrying preview applies resource discounts and rerenders when deployed gear changes', () => {
+  const f = fixture(); f.me.role = 'guard'; f.me.inventory = { coal: 60 }; f.me.crateEquipment = { utility: 'mining_pack' };
+  const trade = f.start(); trade.offers.bob.resources.coal = 2; trade.version++; f.ui.update();
+  assert.match(f.html, /99.2 \/ 100/); assert.doesNotMatch(f.html, /make room before confirming/);
+  const before = f.renders; f.me.crateEquipment = { utility: 'deep_delvers_belt' }; f.ui.update();
+  assert.equal(f.renders, before + 1); assert.match(f.html, /124 \/ 140/);
+  f.me.crateEquipment = {}; f.ui.update(); assert.match(f.html, /124 \/ 100/); assert.match(f.html, /make room before confirming/);
 });

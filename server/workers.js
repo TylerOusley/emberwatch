@@ -1,7 +1,7 @@
 import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
-import { RESOURCE_WEIGHTS, inventoryWeight, carryCapacity } from '../shared/content.js';
+import { RESOURCE_WEIGHTS, inventoryWeight, carryCapacity, resourceWeight } from '../shared/content.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
 import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../shared/workers.js';
@@ -135,10 +135,10 @@ export function workersAction(sim, v, p, action) {
     let room = Math.max(0, carryCapacity(p) - inventoryWeight(p)), count = 0;
     const transfers = [];
     for (const id of WORKER_RESOURCES) {
-      const amount = Math.min(w.cargo[id], Math.floor((room + 1e-6) / RESOURCE_WEIGHTS[id]));
+      const amount = Math.min(w.cargo[id], Math.floor((room + 1e-6) / resourceWeight(p, id)));
       if (!amount) continue;
       if (!whole(p.inventory[id] ?? 0) || !whole((p.inventory[id] ?? 0) + amount)) throw new Error('Your pack cannot accept this cargo.');
-      transfers.push([id, amount]); room -= amount * RESOURCE_WEIGHTS[id]; count += amount;
+      transfers.push([id, amount]); room -= amount * resourceWeight(p, id); count += amount;
     }
     if (!count) throw new Error('Your pack is full. Store or sell some goods first.');
     for (const [id, amount] of transfers) { p.inventory[id] = (p.inventory[id] ?? 0) + amount; w.cargo[id] -= amount; }

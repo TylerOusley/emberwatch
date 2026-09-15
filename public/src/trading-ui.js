@@ -1,5 +1,5 @@
 import { TRADE_ITEMS, TRADE_RULES, emptyTradeOffer, normalizeTradeOffer, canTrade, withinTradeRange } from '../../shared/trading.js';
-import { carryCapacity, inventoryWeight } from '../../shared/content.js';
+import { carryCapacity, inventoryWeight, transferableCount, boundInventoryCount } from '../../shared/content.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
@@ -13,8 +13,8 @@ export function createTradingUI({ getState, getMe, getActivePanel, openPanel, se
   const active = () => getActivePanel() === 'trading';
   const ready = () => getState()?.status === 'active' && canTrade(getMe());
   const nearby = () => (getState()?.players ?? []).filter(player => player.id !== getMe()?.id && canTrade(player) && withinTradeRange(getMe(), player)).sort((a, b) => a.name.localeCompare(b.name));
-  const available = id => Math.min(TRADE_RULES.maxAmount, count(id === 'gold' ? getMe()?.wallet : getMe()?.inventory?.[id]));
-  const currentSignature = () => JSON.stringify([getState()?.trading, ready(), getMe()?.inventory, getMe()?.wallet, getMe()?.backpackTier, getMe()?.role, nearby().map(p => [p.id, p.name])]);
+  const available = id => Math.min(TRADE_RULES.maxAmount, id === 'gold' ? count(getMe()?.wallet) : transferableCount(getMe(), id));
+  const currentSignature = () => JSON.stringify([getState()?.trading, ready(), getMe()?.inventory, getMe()?.boundInventory, getMe()?.crateEquipment, getMe()?.durability, getMe()?.wallet, getMe()?.backpackTier, getMe()?.role, nearby().map(p => [p.id, p.name])]);
   function resetDraft(trade) {
     draftTradeId = trade?.id ?? null;
     const own = trade?.offers[getMe()?.id] ?? emptyTradeOffer();
@@ -54,9 +54,9 @@ export function createTradingUI({ getState, getMe, getActivePanel, openPanel, se
     const buttons = content()?.querySelectorAll('[data-trade-button]') ?? [], trade = tradeNow();
     const enabled = ready() && trade?.status === 'active';
     if (buttons[controls.save]) buttons[controls.save].disabled = !enabled || !draftValid() || !dirty();
-    if (buttons[controls.confirm]) buttons[controls.confirm].disabled = !enabled || dirty() || !hasOffer(trade) || !!trade?.confirmations[getMe()?.id];
+    if (buttons[controls.confirm]) buttons[controls.confirm].disabled = !enabled || !draftValid() || dirty() || !hasOffer(trade) || !!trade?.confirmations[getMe()?.id];
     const status = doc.getElementById('trade-draft-status');
-    if (status) status.textContent = dirty() ? (draftValid() ? 'You have unsaved changes. Update your offer before confirming.' : 'Enter whole amounts up to what you carry.') : 'Your displayed offer is saved.';
+    if (status) status.textContent = !draftValid() ? 'Enter whole amounts up to your transferable supplies. Kit-bound food stays with you.' : dirty() ? 'You have unsaved changes. Update your offer before confirming.' : 'Your displayed offer is saved.';
   }
   function summary(offer) {
     const rows = Object.entries(offer.resources).filter(([, amount]) => amount > 0).map(([id, amount]) => `<div class="panel-row"><span>${esc(TRADE_ITEMS[id])}</span><strong>${pretty(amount)}</strong></div>`);
@@ -93,12 +93,13 @@ export function createTradingUI({ getState, getMe, getActivePanel, openPanel, se
         html += `<p>Your pack after this trade: <strong>${nextWeight} / ${carryCapacity(me)}</strong> weight${nextWeight > carryCapacity(me) ? ' — make room before confirming.' : '.'}</p><p aria-live="polite">You: <strong>${trade.confirmations[me.id] ? 'Confirmed' : 'Reviewing'}</strong> · ${esc(partnerName)}: <strong>${trade.confirmations[partner.id] ? 'Confirmed' : 'Reviewing'}</strong></p>`;
         html += '<div class="panel-actions">' + button(trade.confirmations[me.id] ? 'Waiting for partner' : 'Confirm this exchange', () => {
           if (tradeNow()?.version !== version) { toast('The offer changed. Review the latest terms first.'); render(); return; }
+          if (!draftValid()) { toast('Your transferable supplies changed. Update your offer before confirming.'); render(); return; }
           if (dirty()) { toast('Update your offer before confirming.'); return; }
           emit('trade_confirm', { tradeId: trade.id, version }, trade);
-        }, false, 'confirm') + button('Cancel trade', () => emit('trade_cancel', { tradeId: trade.id }, trade)) + '</div><h3>Edit your offer</h3><p>Type an amount or use Max. Choose Update offer to share changes.</p>';
-        for (const [id, label] of [...Object.entries(TRADE_ITEMS), ['gold', 'Wallet gold']]) html += `<div class="settlement-row"><div><label for="trade-input-${id}"><strong>${label}</strong></label><small>You carry ${pretty(available(id))}</small></div><div class="transfer-form"><input id="trade-input-${id}" data-trade-input="${id}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="7" value="${esc(drafts.get(id))}" aria-label="${label} offered">${button('Max', () => { drafts.set(id, String(available(id))); const input = doc.getElementById(`trade-input-${id}`); if (input) input.value = drafts.get(id); refreshButtons(); })}</div></div>`;
+        }, false, 'confirm') + button('Cancel trade', () => emit('trade_cancel', { tradeId: trade.id }, trade)) + '</div><h3>Edit your offer</h3><p>Type an amount or use Max. Choose Update offer to share changes. Kit-bound food is for eating and cannot be traded.</p>';
+        for (const [id, label] of [...Object.entries(TRADE_ITEMS), ['gold', 'Wallet gold']]) html += `<div class="settlement-row"><div><label for="trade-input-${id}"><strong>${label}</strong></label><small>${pretty(available(id))} ${id === 'gold' ? 'wallet gold available' : 'transferable'}${boundInventoryCount(me, id) ? ` · ${pretty(boundInventoryCount(me, id))} kit-bound (eat only) · ${pretty(me.inventory?.[id])} carried total` : ''}</small></div><div class="transfer-form"><input id="trade-input-${id}" data-trade-input="${id}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="7" value="${esc(drafts.get(id))}" aria-label="${label} offered">${button('Max', () => { drafts.set(id, String(available(id))); const input = doc.getElementById(`trade-input-${id}`); if (input) input.value = drafts.get(id); refreshButtons(); })}</div></div>`;
         html += '<p id="trade-draft-status" role="status"></p><div class="panel-actions">' + button('Update offer', () => {
-          if (!draftValid()) { toast('Enter whole amounts up to what you carry.'); return; }
+          if (!draftValid()) { toast('Enter whole amounts up to your transferable supplies. Kit-bound food stays with you.'); return; }
           emit('trade_offer', { tradeId: trade.id, offer: draftOffer() }, trade);
         }, false, 'save') + button('Discard edits', () => { resetDraft(tradeNow()); render(); }) + '</div>';
       }

@@ -24,7 +24,7 @@ const rows=[
   ['guardians_boots',"Guardian’s boots",'legendary','feet','5% less incoming enemy damage.','Articulated metal protection over fitted leather boots.'],
   ['master_expedition_kit','Master expedition kit','legendary','kit','Start with one chosen iron gathering tool and two feasts.','A master-crafted expedition bundle with polished iron fittings.'],
   ['phoenix_ember','Phoenix Ember','legendary','consumable','One self-revival preserving your inventory and wallet.','A warm living ember held within sweeping phoenix wings.'],
-  ['sunforged_viking_helm','Sunforged Viking Helm','milestone','head','Proposed day-100 trophy: 6% damage reduction and Last Stand.','Reflective gold, engraved bands, a Viking nose guard and fine sparkles.'],
+  ['sunforged_viking_helm','Sunforged Viking Helm','milestone','head','Earned after 100 credited nights: 6% damage reduction and Last Stand, a 20% ward for 10 seconds when a surviving hit leaves you below 25% health, once per night.','Reflective gold, engraved bands, a Viking nose guard and fine sparkles.'],
 ];
 export const CRATE_ITEMS=Object.freeze(rows.map(([id,name,tier,slot,description,design])=>Object.freeze({id,name,tier,slot,description,design,wearable:['head','body','feet','utility'].includes(slot)})));
 export function crateItem(id){return CRATE_ITEMS.find(item=>item.id===id)||null;}

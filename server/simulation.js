@@ -7,7 +7,7 @@ import { ensureTransport, transportAction, transportTick, transportSnapshot, rep
 import { ensureWorkers, workersAction, workersTick, workersSnapshot } from './workers.js';
 import { TRANSPORT } from '../shared/transport.js';
 import { stepNpcNavigation } from './navigation.js';
-import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight } from '../shared/content.js';
+import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight, acquiredToolDurability, normalizeToolDurability, transferableCount } from '../shared/content.js';
 
 import { ensureRoleStats, tickRoleStats, absorbDamage } from './roles.js';
 import { STARTER_GOLD, FOOD_IDS, canEquip } from '../shared/equipment.js';
@@ -19,10 +19,12 @@ import { ensureProgression, joinProgression, progressionNight, progressionTick, 
 import { guardOrdersAction, guardOrdersSnapshot, guardDirective, guardOrderCanEngage } from './guard-orders.js';
 import { ensureCaves, regrowCaveResource, publicResourceSnapshot } from './caves.js';
 import { ensureTrading, tradingAction, tradingTick, tradingSnapshot, cancelPlayerTrades } from './trading.js';
+import { joinCrates, crateAction, crateSnapshot, forfeitCrates, refreshCrateMilestones } from './crates.js';
+import { ensureCrateEffects, crateProtectionActive, breakCrateProtection, crateEnemyDamage, crateAfterEnemyHit, crateRespawnEffects } from './crate-effects.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 // Form transfers and release actions are immediately validated transactions;
 // they should not inherit the swing delay used for tools and combat.
-const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel']);
+const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, cart: 0 });
@@ -58,8 +60,10 @@ function ensureVillage(village) {
   ensureTrading(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
+    ensureCrateEffects(village, player);
     player.inventory = { ...emptyInventory(), ...player.inventory };
     player.durability = { ...durability(), ...player.durability };
+    normalizeToolDurability(player);
     if (!canEquip(player, player.tool) && !(player.tool === 'food' && FOOD_IDS.some(id => canEquip(player, id)))) player.tool = '';
     player.wageAccrued ??= 0;
     // Older builds only tracked participation; preserve that earned fraction once.
@@ -115,7 +119,8 @@ export class Simulation {
     if ([...this.villages.values()].some(v => v.id !== villageId && v.status === 'active' && v.players[account.id])) throw new Error('You already have a reserved place in another active village.');
     let player = village.players[account.id];
     if (!player && Object.keys(village.players).length >= 8) throw new Error('All eight resident places are reserved, including offline residents.');
-    this.store.transaction(() => {
+    const fresh = !player, checkpoint = structuredClone(village);
+    try { this.store.transaction(() => {
       if (!player) {
         player = { id: account.id, name: account.name, role, x: (Object.keys(village.players).length % 3 - 1) * 1.5, z: 4, yaw: Math.PI, hp: 100, maxHp: 100, online: true, downed: false, respawnAvailable: false, tool: '', anim: 'idle', inventory: emptyInventory(), wallet: this.store.initialWallet(account.id, village.id), durability: durability(), backpackTier: 0, repairBonus: 0, jobBonus: 0, healingProgress: 0, revivedThisNight: [], participated: 0, lastAction: -100, animationUntil: 0, healing: null, hunger: 100 };
         ensureRoleStats(player, { fresh: true, clock: village.clock });
@@ -124,10 +129,11 @@ export class Simulation {
       player.online = true;
       ensureVillage(village);
       joinProgression(this, village, player);
+      joinCrates(this, village, player, { fresh });
       this.relocateBlocked(village);
       this.inputs.delete(player.id);
       this.store.saveVillage(village);
-    });
+    }); } catch (error) { restoreState(village, checkpoint); throw error; }
     return player;
   }
   disconnect(villageId, playerId) {
@@ -156,10 +162,10 @@ export class Simulation {
       clockRunning: village.status === 'active' && Object.values(village.players).some(p => p.online),
       gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
-      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId),
+      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId), ...crateSnapshot(this, village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
-        tiers: p.tiers, backpackTier: p.backpackTier, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
-        ...(p.id === viewerId ? { inventory: p.inventory, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
+        tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
+        ...(p.id === viewerId ? { inventory: p.inventory, boundInventory: p.boundInventory ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
       siegeNight: village.siegeNight,
       zombies: village.zombies.filter(z => z.hp > 0).map(enemySnapshot),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
@@ -187,13 +193,13 @@ export class Simulation {
     if (village.status !== 'active') throw new Error('The keep has fallen. This run has ended.');
     const kind = action.kind;
     if (typeof kind !== 'string') throw new Error('Invalid action.');
-    if (player.downed && !['respawn', 'churchLeave', 'guide_visibility', 'trade_cancel'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
+    if (player.downed && !['respawn', 'churchLeave', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
     if (!IMMEDIATE_ACTIONS.has(kind) && village.clock - player.lastAction < .55) throw new Error('Wait for your next action.');
-    if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility', 'trade_cancel'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
+    if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
     if (player.carryingId && ['attack', 'gather', 'repair', 'repairPlot', 'heal', 'mountHorse'].includes(kind)) throw new Error('Put your companion down before using tools or weapons.');
-    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility', 'trade_cancel'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
+    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
     if (!['heal', 'guide_visibility'].includes(kind)) player.healing = null;
-    for (const handler of [tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
+    for (const handler of [crateAction, tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
@@ -216,6 +222,7 @@ export class Simulation {
         if (!(player.durability.bow > 0)) throw new Error('Buy a bow at a tinker shop first.');
         if (!(player.inventory.arrows > 0)) throw new Error('You need arrows to fire your bow.');
       } else use('sword');
+      breakCrateProtection(player);
       const inReach = village.zombies.filter(z => z.hp > 0 && (ranged ? distance(player, z) <= 24 : inMeleeArc(player, z, MELEE.playerRange)) && this.clearAttack(village, player, z, ranged)).sort((a, b) => distance(player, a) - distance(player, b));
       const targets = ranged ? inReach.slice(0, 1) : inReach;
       player.anim = 'attack'; player.animationUntil = village.clock + .45;
@@ -251,8 +258,11 @@ export class Simulation {
       message = target.downed ? 'Hold still for 5 seconds to revive your companion.' : 'Hold still to heal your companion.';
     } else if (kind === 'respawn') {
       if (!player.downed || !player.respawnAvailable) throw new Error('Respawning unlocks at the next dawn.');
+      forfeitCrates(this, village, player);
+      crateRespawnEffects(player);
       cancelCarry(village, player); cancelTreatment(village, player);
       player.inventory = emptyInventory(); player.wallet = Math.floor(player.wallet * .75); player.durability = durability(); player.backpackTier = 0;
+      player.boundInventory = {}; player.maxDurability = {};
       player.tiers = { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' };
       Object.assign(player, { downed: false, respawnAvailable: false, hp: 100, hunger: 100, x: 0, z: 4, yaw: Math.PI, tool: '', anim: 'idle', healing: null });
       ensureRoleStats(player, { fresh: true, clock: village.clock });
@@ -262,15 +272,16 @@ export class Simulation {
     } else if (kind === 'donate') {
       if (action.targetId === 'barracks') {
         if (!canUseBuilding(player, building('barracks'))) throw new Error('Bring wheat to The Watch to feed the guards.');
-        if (!player.inventory.wheat) throw new Error('Gather some wheat for the barracks first.');
-        village.barracks.wheat += player.inventory.wheat;
-        message = `${player.inventory.wheat} wheat delivered to the barracks.`;
-        player.inventory.wheat = 0;
+        const amount = transferableCount(player, 'wheat');
+        if (!amount) throw new Error('Gather some wheat for the barracks first.');
+        village.barracks.wheat += amount;
+        message = `${amount} wheat delivered to the barracks.`;
+        player.inventory.wheat -= amount;
       } else {
         if (!canUseBuilding(player, building('market'))) throw new Error('Bring your materials to the Resource Exchange.');
-        const total = player.inventory.timber + player.inventory.stone + player.inventory.wheat;
+        const total = ['timber', 'stone', 'wheat'].reduce((sum, id) => sum + transferableCount(player, id), 0);
         if (!total) throw new Error('You have no materials to donate.');
-        for (const id of ['timber', 'stone', 'wheat']) { village.stock[id] += player.inventory[id]; player.inventory[id] = 0; }
+        for (const id of ['timber', 'stone', 'wheat']) { const amount = transferableCount(player, id); village.stock[id] += amount; player.inventory[id] -= amount; }
         message = `${total} materials donated to village supplies.`;
       }
     } else if (kind === 'buyTool') {
@@ -278,7 +289,10 @@ export class Simulation {
       if (!['axe', 'pickaxe', 'scythe', 'hammer'].includes(action.tool)) throw new Error('Choose a wooden gathering tool or hammer.');
       if (player.durability[action.tool] > 0) throw new Error('Your current tool still has durability remaining.');
       if (inventoryWeight(player) + TOOL_WEIGHTS[action.tool] > carryCapacity(player)) throw new Error('Make room in your pack before buying another tool.');
-      chargePurchase(this, village, player, STARTER_GOLD, { credit: true }); village.treasury += STARTER_GOLD; player.durability[action.tool] = 100;
+      chargePurchase(this, village, player, STARTER_GOLD, { credit: true }); village.treasury += STARTER_GOLD;
+      player.durability[action.tool] = acquiredToolDurability(player, action.tool, 'wood');
+      player.maxDurability ??= {}; player.maxDurability[action.tool] = player.durability[action.tool];
+      if (player.boundKitTools) delete player.boundKitTools[action.tool];
       player.tiers[action.tool] = 'wood';
       if (!player.tool || !canEquip(player, player.tool)) player.tool = action.tool;
       message = `Purchased a wooden ${action.tool}.`;
@@ -351,7 +365,10 @@ export class Simulation {
   cancelZombieWindup(zombie) { cancelZombieWindup(zombie); }
   attackZombieStructure(village, zombie, structure, targetId, targetKind) { return attackZombieStructure(village, zombie, structure, targetId, targetKind); }
   hurtPlayer(village, player, damage) {
-    player.hp = Math.max(0, player.hp - absorbDamage(village, player, damage));
+    if (crateProtectionActive(village, player)) return;
+    const previousHp = player.hp;
+    player.hp = Math.max(0, player.hp - crateEnemyDamage(village, player, absorbDamage(village, player, damage)));
+    crateAfterEnemyHit(village, player, previousHp);
     if (player.hp <= 0) { cancelCarry(village, player); cancelTreatment(village, player); dismountPlayer(village, player); player.downed = true; player.respawnAvailable = false; player.anim = 'downed'; player.healing = null; this.inputs.delete(player.id); }
   }
   startNight(village) {
@@ -378,6 +395,7 @@ export class Simulation {
   payDawn(village, { earlyClear = false } = {}) {
     const survived = village.day;
     progressionDawn(this, village, survived, { earlyClear });
+    for (const player of Object.values(village.players)) refreshCrateMilestones(this, player.id);
     village.phase = 'day'; village.phaseRemaining = this.daySeconds; village.day++; village.warningSent = false; village.siegeNight = false;
     village.spawned = 0; village.waveCount = 0; village.nextSpawn = 0;
     village.treasury += 1000 * survived;

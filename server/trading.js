@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { carryCapacity, inventoryWeight } from '../shared/content.js';
+import { carryCapacity, inventoryWeight, transferableCount, boundInventoryCount } from '../shared/content.js';
 import { TRADE_ITEMS, TRADE_RULES, emptyTradeOffer, normalizeTradeOffer, canTrade, withinTradeRange } from '../shared/trading.js';
 
 export function ensureTrading(village) {
@@ -41,7 +41,10 @@ function walletGold(player) {
 }
 function validateStock(player, offer) {
   if (offer.gold > walletGold(player)) throw new Error(`${player.name} no longer has enough wallet gold for this offer.`);
-  for (const [id, amount] of Object.entries(offer.resources)) if (amount > inventoryCount(player, id)) throw new Error(`${player.name} no longer has enough ${TRADE_ITEMS[id].toLowerCase()} for this offer.`);
+  for (const [id, amount] of Object.entries(offer.resources)) {
+    inventoryCount(player, id);
+    if (amount > transferableCount(player, id)) throw new Error(`${player.name} no longer has enough ${TRADE_ITEMS[id].toLowerCase()} for this offer.${boundInventoryCount(player, id) ? ' Kit supplies stay with their owner.' : ''}`);
+  }
 }
 function exchangeQuote(village, trade) {
   return trade.playerIds.map((id, index) => {

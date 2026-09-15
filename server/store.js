@@ -5,6 +5,7 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHash, ran
 import { promisify } from 'node:util';
 import { STARTER_GOLD } from '../shared/equipment.js';
 import { freshProgression, normalizeProgression } from '../shared/progression.js';
+import { emptyLoadout } from '../shared/crates.js';
 const scrypt = promisify(scryptCallback);
 const digest = token => createHash('sha256').update(token).digest('hex');
 
@@ -19,6 +20,13 @@ export class Store {
       CREATE TABLE IF NOT EXISTS starter_grants(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),PRIMARY KEY(account_id,village_id));
       CREATE TABLE IF NOT EXISTS account_progression(account_id TEXT PRIMARY KEY REFERENCES accounts(id),state TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS watch_achievements(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL,night INTEGER NOT NULL,PRIMARY KEY(account_id,village_id,night));`);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS crate_accounts(account_id TEXT PRIMARY KEY REFERENCES accounts(id),credits INTEGER NOT NULL DEFAULT 0 CHECK(credits>=0 AND credits<=9007199254740991),loadout TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS crate_unlocks(account_id TEXT NOT NULL REFERENCES accounts(id),item_id TEXT NOT NULL,source TEXT NOT NULL,PRIMARY KEY(account_id,item_id));
+      CREATE TABLE IF NOT EXISTS crate_grants(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),tier TEXT NOT NULL,milestone INTEGER NOT NULL,result_id TEXT,UNIQUE(account_id,milestone));
+      CREATE TABLE IF NOT EXISTS crate_openings(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),request_id TEXT NOT NULL,result TEXT NOT NULL,created INTEGER NOT NULL,UNIQUE(account_id,request_id));
+      CREATE TABLE IF NOT EXISTS crate_runs(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),state TEXT NOT NULL,PRIMARY KEY(account_id,village_id));
+      CREATE TABLE IF NOT EXISTS crate_charges(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),source_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL CHECK(state IN ('available','reserved','consumed')),village_id TEXT);`);
     // Account credit is restricted purchasing power, never protected savings or
     // spendable wallet gold. Migrate existing Railway databases without a reset.
     const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));
@@ -116,6 +124,70 @@ export class Store {
       if (result.changes) { progress.nights++; this.saveProgression(id, progress); }
       return { awarded:Boolean(result.changes), progress:this.progression(id) };
     });
+  }
+  crateAccount(id) {
+    if (!this.account(id)) throw new Error('Sign in to view your crates.');
+    const existing = this.readCrateAccount(id);
+    if (existing) return existing;
+    this.db.prepare('INSERT OR IGNORE INTO crate_accounts(account_id,loadout) VALUES(?,?)').run(id, JSON.stringify(emptyLoadout()));
+    return this.readCrateAccount(id);
+  }
+  readCrateAccount(id) {
+    const row = this.db.prepare('SELECT credits,loadout FROM crate_accounts WHERE account_id=?').get(id);
+    return row ? { credits: row.credits, loadout: JSON.parse(row.loadout) } : null;
+  }
+  crateCredit(id, difference) {
+    if (!Number.isSafeInteger(difference)) throw new Error('Invalid crate credit amount.');
+    const account = this.crateAccount(id);
+    if (!Number.isSafeInteger(account.credits + difference) || account.credits + difference < 0) throw new Error('Insufficient crate credits or credit balance is full.');
+    const result = this.db.prepare('UPDATE crate_accounts SET credits=credits+? WHERE account_id=? AND credits+? BETWEEN 0 AND 9007199254740991').run(difference, id, difference);
+    if (!result.changes) throw new Error('Insufficient crate credits.');
+  }
+  saveCrateLoadout(id, loadout) { this.crateAccount(id); this.db.prepare('UPDATE crate_accounts SET loadout=? WHERE account_id=?').run(JSON.stringify(loadout), id); }
+  crateUnlocks(id) { return this.db.prepare('SELECT item_id FROM crate_unlocks WHERE account_id=? ORDER BY item_id').all(id).map(row => row.item_id); }
+  unlockCrateItem(id, itemId, source) { return Boolean(this.db.prepare('INSERT OR IGNORE INTO crate_unlocks(account_id,item_id,source) VALUES(?,?,?)').run(id, itemId, source).changes); }
+  crateOpening(id, requestId) { const row = this.db.prepare('SELECT result FROM crate_openings WHERE account_id=? AND request_id=?').get(id, requestId); return row ? JSON.parse(row.result) : null; }
+  crateOpeningById(id, openingId) { const row = this.db.prepare('SELECT result FROM crate_openings WHERE account_id=? AND id=?').get(id, openingId); return row ? JSON.parse(row.result) : null; }
+  crateHistory(id) { return this.db.prepare('SELECT result FROM crate_openings WHERE account_id=? ORDER BY created DESC,rowid DESC LIMIT 30').all(id).map(row => JSON.parse(row.result)); }
+  saveCrateOpening(id, result) { this.db.prepare('INSERT INTO crate_openings(id,account_id,request_id,result,created) VALUES(?,?,?,?,?)').run(result.id, id, result.requestId, JSON.stringify(result), result.createdAt); }
+  grantCrate(id, tier, milestone) { this.db.prepare('INSERT OR IGNORE INTO crate_grants(id,account_id,tier,milestone) VALUES(?,?,?,?)').run(randomUUID(), id, tier, milestone); }
+  lastCrateMilestone(id) { return this.db.prepare('SELECT COALESCE(MAX(milestone),0) AS milestone FROM crate_grants WHERE account_id=?').get(id).milestone; }
+  activeCrateVillage(id) {
+    for (const row of this.db.prepare('SELECT id,state FROM villages').all()) { const village = JSON.parse(row.state); if (village.status === 'active' && village.players?.[id]) return row.id; }
+    return null;
+  }
+  crateGrant(id, grantId) { return this.db.prepare('SELECT id,tier,milestone,result_id AS resultId FROM crate_grants WHERE account_id=? AND id=?').get(id, grantId) ?? null; }
+  earnedCrates(id) { return this.db.prepare('SELECT id,tier,milestone FROM crate_grants WHERE account_id=? AND result_id IS NULL ORDER BY milestone').all(id); }
+  openCrateGrant(id, grantId, resultId) {
+    if (!this.db.prepare('UPDATE crate_grants SET result_id=? WHERE account_id=? AND id=? AND result_id IS NULL').run(resultId, id, grantId).changes) throw new Error('That earned crate has already been opened.');
+  }
+  crateRun(id, villageId) { const row = this.db.prepare('SELECT state FROM crate_runs WHERE account_id=? AND village_id=?').get(id, villageId); return row ? JSON.parse(row.state) : null; }
+  saveCrateRun(id, villageId, state) { this.db.prepare('INSERT INTO crate_runs(account_id,village_id,state) VALUES(?,?,?) ON CONFLICT(account_id,village_id) DO UPDATE SET state=excluded.state').run(id, villageId, JSON.stringify(state)); }
+  grantEmber(id, openingId) { this.db.prepare("INSERT INTO crate_charges(id,account_id,source_id,state) VALUES(?,?,?,'available')").run(randomUUID(), id, openingId); }
+  crateCharges(id) {
+    const rows = this.db.prepare('SELECT state,COUNT(*) AS count FROM crate_charges WHERE account_id=? GROUP BY state').all(id), counts = Object.fromEntries(rows.map(row => [row.state, row.count]));
+    return { total: (counts.available ?? 0) + (counts.reserved ?? 0), available: counts.available ?? 0, reserved: counts.reserved ?? 0 };
+  }
+  reserveEmber(id, villageId) {
+    if (this.db.prepare("SELECT id FROM crate_charges WHERE account_id=? AND state='reserved'").get(id)) return null;
+    const charge = this.db.prepare("SELECT id FROM crate_charges WHERE account_id=? AND state='available' ORDER BY rowid LIMIT 1").get(id);
+    if (!charge) return null;
+    this.db.prepare("UPDATE crate_charges SET state='reserved',village_id=? WHERE id=? AND state='available'").run(villageId, charge.id);
+    return charge.id;
+  }
+  emberReserved(id, villageId, chargeId) { return Boolean(this.db.prepare("SELECT id FROM crate_charges WHERE id=? AND account_id=? AND village_id=? AND state='reserved'").get(chargeId, id, villageId)); }
+  consumeEmber(id, villageId, chargeId) {
+    if (!this.db.prepare("UPDATE crate_charges SET state='consumed' WHERE id=? AND account_id=? AND village_id=? AND state='reserved'").run(chargeId, id, villageId).changes) throw new Error('No Phoenix Ember is reserved for this run.');
+  }
+  releaseEmber(id, villageId) { this.db.prepare("UPDATE crate_charges SET state='available',village_id=NULL WHERE account_id=? AND village_id=? AND state='reserved'").run(id, villageId); }
+  releaseEndedEmbers(id) {
+    for (const { village_id: villageId } of this.db.prepare("SELECT DISTINCT village_id FROM crate_charges WHERE account_id=? AND state='reserved'").all(id)) {
+      const row = this.db.prepare('SELECT state FROM villages WHERE id=?').get(villageId), village = row ? JSON.parse(row.state) : null;
+      if (village?.status === 'active' && village.keep?.hp > 0) continue;
+      this.releaseEmber(id, villageId);
+      const run = this.crateRun(id, villageId);
+      if (run) { run.phoenixStatus = 'released'; this.saveCrateRun(id, villageId, run); }
+    }
   }
   saveVillage(village) { this.db.prepare('INSERT INTO villages VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,updated=excluded.updated').run(village.id, JSON.stringify(village), Date.now()); }
   loadVillages() { return this.db.prepare('SELECT state FROM villages').all().map(row => JSON.parse(row.state)); }

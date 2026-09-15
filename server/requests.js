@@ -1,6 +1,6 @@
 import { REQUEST_RULES, requestDestinations, requestAtDestination } from '../shared/requests.js';
 import { TREASURY_RESERVE, saleUnitPrice } from '../shared/market.js';
-import { RESOURCE_WEIGHTS, STORAGE_CAPACITY, inventoryWeight } from '../shared/content.js';
+import { RESOURCE_WEIGHTS, STORAGE_CAPACITY, inventoryWeight, transferableCount, boundInventoryCount } from '../shared/content.js';
 
 const whole = value => Number.isSafeInteger(value) && value >= 0;
 const record = (book, key) => book.ledger[key] ||= { withdrawn: 0, stock: 0 };
@@ -127,7 +127,7 @@ export function requestsAction(sim, v, p, action) {
   const amount = action.amount;
   if (!Number.isSafeInteger(amount) || amount < 1 || amount > REQUEST_RULES.maxUnits) throw new Error('Choose a positive whole delivery amount.');
   if (amount > request.remaining || amount > eligible(book, target)) throw new Error('The remaining need changed. Review the noticeboard before delivering.');
-  if (!whole(p.inventory?.[request.resource]) || p.inventory[request.resource] < amount) throw new Error(`You do not carry enough ${request.resource}.`);
+  if (!whole(p.inventory?.[request.resource]) || transferableCount(p, request.resource) < amount) throw new Error(`You do not carry enough ${request.resource}.${boundInventoryCount(p, request.resource) ? ' Kit supplies cannot fund deliveries.' : ''}`);
   const plot = v.plots?.find(plot => plot.id === request.destinationId);
   const storage = request.destinationId === 'bank' ? v.stock : request.destinationId === 'barracks' ? v.barracks : plot.storage;
   if (plot && inventoryWeight(storage) + RESOURCE_WEIGHTS[request.resource] * amount > STORAGE_CAPACITY) throw new Error('This defense storage is full.');

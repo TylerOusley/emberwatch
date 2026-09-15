@@ -1,6 +1,6 @@
 import { canUseBuilding, canUsePlot } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES, resolveResource, clearResourceSegment, plotSolids } from '../shared/world.js';
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, STORAGE_CAPACITY, inventoryWeight } from '../shared/content.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, STORAGE_CAPACITY, inventoryWeight, resourceWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
 import { TOWER_STATS } from '../shared/defense.js';
 import { moveResource } from '../shared/transfers.js';
@@ -25,7 +25,7 @@ const checkEmpty = plot => {
   if (plot.patients?.length) throw new Error('Wait until every church patient has left before removing this building.');
 };
 const checkCapacity = (player, id, count) => {
-  if (inventoryWeight(player) + (RESOURCE_WEIGHTS[id] ?? 1) * count > carryCapacity(player) + 1e-6) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store goods on a plot or in a cart.');
+  if (inventoryWeight(player) + resourceWeight(player, id) * count > carryCapacity(player) + 1e-6) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store goods on a plot or in a cart.');
 };
 const award = (sim, village, player, gold) => {
   if (typeof sim.awardIncome === 'function') sim.awardIncome(village, player, gold);
@@ -65,6 +65,7 @@ export function ensureOwnership(village) {
     if (!Number.isInteger(player.backpackTier) || !BACKPACKS[player.backpackTier]) player.backpackTier = 0;
     player.tiers ??= {};
     for (const tool of Object.keys(TOOL_WEIGHTS)) if (tool !== 'bow' && !own(player.tiers, tool)) player.tiers[tool] = 'wood';
+    normalizeToolDurability(player);
     player.inventory ??= {};
     for (const id of Object.keys(RESOURCE_WEIGHTS)) player.inventory[id] ??= 0;
   }
@@ -157,7 +158,7 @@ export function ownershipAction(sim, village, player, action) {
     if (!owner) throw new Error('The shop has no owner.');
     if (recipe.item === 'cart') requireCartAllowance(village, player, recipe.amount);
     for (const [id, quantity] of Object.entries(recipe.cost)) if ((plot.storage[id] ?? 0) < quantity) throw new Error(`The shop needs more ${id} to craft this item.`);
-    const addedWeight = recipe.tool ? (player.durability[recipe.tool] > 0 ? 0 : TOOL_WEIGHTS[recipe.tool]) : (RESOURCE_WEIGHTS[recipe.item] ?? 1) * recipe.amount;
+    const addedWeight = recipe.tool ? (player.durability[recipe.tool] > 0 ? 0 : TOOL_WEIGHTS[recipe.tool]) : resourceWeight(player, recipe.item) * recipe.amount;
     if (inventoryWeight(player) + addedWeight > carryCapacity(player) + 1e-6) throw new Error('Your pack is full.');
     if (recipe.tool && player.durability[recipe.tool] > 0 && action.confirm !== true) throw new Error('Confirm replacing your current tool or weapon; its remaining durability will be lost.');
     const taxRate = Math.max(0, Math.min(100, village.policies?.tradeTax ?? 5));
@@ -175,7 +176,7 @@ export function ownershipAction(sim, village, player, action) {
       award(sim, village, owner, recipe.price - tax);
       owner.cycleServiceIncome = (owner.cycleServiceIncome ?? 0) + recipe.price - tax;
     }
-    if (recipe.tool) { player.tiers[recipe.tool] = recipe.tier; player.durability[recipe.tool] = TOOL_TIERS[recipe.tier].durability; }
+    if (recipe.tool) { player.tiers[recipe.tool] = recipe.tier; player.durability[recipe.tool] = player.maxDurability[recipe.tool] = acquiredToolDurability(player, recipe.tool, recipe.tier); if (player.boundKitTools) delete player.boundKitTools[recipe.tool]; }
     else player.inventory[recipe.item] = (player.inventory[recipe.item] ?? 0) + recipe.amount;
     return `${recipe.name} purchased for ${recipe.price} gold; ${tax} gold paid to the treasury.`;
   }

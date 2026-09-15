@@ -1,5 +1,22 @@
 # Emberwatch build validation
 
+## Build 15: persistent crates and equipment
+
+Validated 2026-09-15 on Node 24: **518/518 tests pass** in the complete game suite. The final actor-cleanup change also passes the 15 focused crate UI/equipment tests. JavaScript syntax, local imports and unique HTML IDs were checked; `git diff --check` is clean.
+
+The crate collection is connected to account progression, gameplay and the live character rig. This section records Build 15 checks; earlier sections describe the features available in their respective releases.
+
+- SQLite tests cover the four tier prices, expanded equal pools, funding-specific duplicate refunds, shared credits, permanent ownership, consumable repeat drops, recorded-night milestone backfill and unique grants. Earned and credit-funded duplicates never create bank gold. Openings replay the saved result across restarts and concurrent HTTP/WebSocket requests.
+- New-run loadouts grant physical equipment and bound kits once; returning residents migrate without supplies. Future choices do not change active equipment. Tests cover reconnect, used tool durability, manual-respawn forfeiture, stale village snapshots and preservation of ordinary replacement purchases. Failed opening, initial deployment and revival saves roll back account and world changes together.
+- Real simulation tests verify shield-before-armor ordering, the 25% cap, Last Stand threshold/ward behavior and spent-cycle persistence, Phoenix health/inventory/wallet preservation, three-second protection and attack cancellation. Phoenix tests also cover carrying references, church-bed cleanup, escrow refund exactly once, stale requests and the one-use-per-run rule.
+- Transfer, market, worker and trading tests exercise destination-specific pack weights, fractional capacity boundaries and unchanged storage weights. Bound food is excluded from transfers/sales/donations and consumed first; newly acquired gathering tools receive the buckle bonus without refilling existing tools or enhancing starting-kit tools.
+- Eleven crate UI tests cover equal-odds disclosure, funding selection, complete receipts saved before payment, timeout and reload recovery, repeated clicks, committed-result animation/Skip, reduced motion, storage failure, ownership-only future loadout choices, draft preservation and account switching.
+- Actual fitted models were checked for four-slot reuse, per-player material/resource ownership, role rebuilds, purchased-pack replacement and cleanup. The [equipped dwarf preview](previews/crate-equipment-build15.jpg) uses the actual live equipment manager and posed game meshes. It was visually inspected for face clearance and cross-slot layering.
+- Live crate snapshots perform no writes or transaction acquisition. A local eight-player snapshot-and-serialization sample measured 3.09 ms median and 4.11 ms at the 95th percentile for all eight snapshots over 100 cycles. This is a local CPU check, not a production network or frame-rate result.
+
+The browser control surface rejected the local preview URL with `ERR_BLOCKED_BY_CLIENT`. Model renders and automated DOM/controller checks do not establish interactive browser layout, animation feel, sustained eight-player frame rate or long-run crate balance. No production account, inventory or village was altered for QA.
+
+
 ## Build 14: interaction, trading, workers and connection recovery
 
 Validated 2026-09-15 on Node 24: **461/461 tests pass** with `npm test`. Runtime and test JavaScript passed syntax checks, local runtime imports resolve, and `git diff --check` is clean.

@@ -1,6 +1,6 @@
 # Crate equipment art
 
-This original Emberwatch art pack contains **20 models: 19 proposed crate items and the Sunforged Viking Helm, a proposed day-100 trophy**. It is an art and fitting package. It does not implement crate opening, drops, unlocks, inventory grants, damage reduction, carrying bonuses, starter supplies, self-revival, or Last Stand. The catalog and gallery describe those effects as planned features.
+This original Emberwatch art pack contains **20 models: 19 crate outcomes and the Sunforged Viking Helm, the 100-night trophy**. Build 15 uses these assets for live equipment and reward previews. Gameplay rules are implemented separately from the art factories; see [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md). The standalone gallery inspects artwork without granting items or changing the player’s account.
 
 ## Explore the collection
 
@@ -12,7 +12,7 @@ Drag to rotate and scroll to zoom. The canvas also supports arrow keys for rotat
 
 ## Catalog
 
-The authoritative names, classifications, designs, and proposed effects are in [crate-catalog.js](../public/src/crate-catalog.js). IDs remain stable across the JavaScript factory and exported filenames.
+The authoritative names, classifications, designs, and effect descriptions are in [crate-catalog.js](../public/src/crate-catalog.js). IDs remain stable across the JavaScript factory and exported filenames.
 
 | ID | Model | Collection | Attachment |
 | --- | --- | --- | --- |
@@ -92,7 +92,7 @@ pack.dispose();
 dwarf.dispose();
 ```
 
-The gallery uses `createCharacter(role, seed, { equipmentPreview: true })` to preserve separately named head surfaces. This lets a fitted cap, coif, or helm hide the original hair, hood, or helmet and restore it when removed. Use that opt-in mode for headwear review; ordinary game characters retain their existing batching behavior.
+The gallery uses `createCharacter(role, seed, { equipmentPreview: true })` to preserve separately named head surfaces. This lets a fitted cap, coif, or helm hide the original hair, hood, or helmet and restore it when removed. Use that opt-in mode for headwear review. Live player rigs also preserve the removable covering surfaces needed by their equipment manager.
 
 The character supplies joint animation. Equipment follows its attachment bones through movement rather than running a separate character animation. If the character's role rebuilds its rig, unfit the equipment before the rebuild and fit it again afterward. Dispose the previous asset when replacing equipment so visibility restoration remains under one owner.
 

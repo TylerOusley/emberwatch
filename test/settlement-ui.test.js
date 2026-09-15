@@ -511,3 +511,66 @@ test('bank quantities survive snapshots after blur and all buttons ignore unfini
   f.player.bank = 0; document.activeElement = f.fields.get('bank-amount'); f.ui.refresh();
   assert.equal(f.fields.get('bank-withdraw-max').disabled, true);
 });
+
+test('equipped resource packs update market limits and worker collection at exact carrying boundaries', t => {
+  const f = fixture(t);
+  f.player.inventory = { wheat: 76 }; f.player.durability = {}; f.player.crateEquipment = { utility: 'mining_pack' };
+  f.visit('market');
+  assert.equal(f.fields.get('trade-weight-stone').textContent, '2.4 weight each');
+  assert.equal(f.fields.get('trade-buy-stone').disabled, false, 'ten discounted stone fit exactly');
+  const input = f.fields.get('trade-amount-stone'); document.activeElement = input;
+  f.player.crateEquipment = {}; f.ui.refresh();
+  assert.equal(f.fields.get('trade-weight-stone').textContent, '3 weight each');
+  assert.equal(f.fields.get('trade-buy-stone').disabled, true);
+  assert.match(f.fields.get('trade-buy-quote-stone').textContent, /room for 8 more stone/);
+  document.activeElement = null;
+  f.player.inventory = { wheat: 97, arrows: 6 }; f.player.crateEquipment.utility = 'mining_pack';
+  f.state.workers = [{ id: 'worker-one', ownerId: f.player.id, x: f.player.x, z: f.player.z, cargo: { stone: 1 }, resource: 'stone' }];
+  f.ui.show('workers');
+  f.click('Collect carried supplies');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_collect', workerId: 'worker-one' });
+  f.player.crateEquipment = {}; f.ui.refresh();
+  assert.equal(f.buttons.find(button => button.text === 'Collect carried supplies').disabled, true);
+});
+
+test('bound starter food shows its transferable remainder and storage max cannot include it', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory = { food: 5 }; f.player.boundInventory = { food: 3 }; f.player.durability = {};
+  f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, maxHp: 500, storage: {} }];
+  f.visit('inventory'); assert.match(f.html, /5 carried · 2 transferable · 3 kit-bound \(eat only\)/);
+  f.visit('food'); assert.match(f.html, /Kit food is eaten first/); assert.match(f.html, /Transferable<\/dt><dd>2/);
+  f.visit('plot', site.id);
+  assert.equal(f.fields.get('storage-resource').value, 'food');
+  const quantity = f.fields.get('storage-amount'); quantity.value = '4'; quantity.oninput();
+  assert.equal(f.fields.get('storage-store').disabled, true);
+  assert.match(f.fields.get('storage-transfer-status').textContent, /Store up to 2/);
+  f.click('Store max'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_deposit', plotId: site.id, resource: 'food', max: true });
+  document.activeElement = quantity; f.player.boundInventory.food = 5; f.ui.refresh();
+  assert.equal(f.fields.get('storage-store-max').disabled, true);
+  assert.match(f.fields.get('storage-transfer-status').textContent, /0 transferable · 5 kit-bound/);
+});
+
+test('tool cards show purchase durability while carried tools retain their saved durability maximum', t => {
+  const f = fixture(t), site = PLOTS[0]; f.player.crateEquipment = { utility: 'miners_buckle' };
+  f.player.durability.pickaxe = 90;
+  f.visit('inventory'); assert.match(f.html, /90 \/ 100 uses remaining/);
+  f.player.maxDurability = { pickaxe: 110 }; f.ui.refresh(); assert.match(f.html, /90 \/ 110 uses remaining/);
+  f.visit('tools');
+  assert.match(f.html.match(/<article[^>]*data-shop-item="wood_pickaxe"[\s\S]*?<\/article>/)[0], /110 uses/);
+  assert.match(f.html.match(/<article[^>]*data-shop-item="wood_hammer"[\s\S]*?<\/article>/)[0], /100 uses/);
+  f.state.plots = [{ id: site.id, ownerId: 'bob', building: 'tool_shop', hp: 350, storage: { stone: 100, timber: 100, coal: 100, iron: 100 } }];
+  f.visit('plot', site.id);
+  assert.match(f.html.match(/<article[^>]*data-shop-item="stone_pickaxe"[\s\S]*?<\/article>/)[0], /165 uses/);
+});
+
+test('pack and merchant displays use deployed gear and keep stored resource weights undiscounted', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory = { wheat: 97, arrows: 6 }; f.player.durability = {}; f.player.crateEquipment = { utility: 'mining_pack' };
+  f.visit('merchant'); assert.match(f.html, /One unit weighs 2.4/); f.click('Buy one · 9g');
+  f.player.crateEquipment = { utility: 'foragers_pouch' }; f.visit('inventory'); assert.match(f.html, /97.6 \/ 115/);
+  f.player.crateEquipment = { utility: 'deep_delvers_belt' }; f.ui.refresh(); assert.match(f.html, /97.6 \/ 140/);
+  f.player.crateEquipment = { utility: 'lumber_pack' }; f.player.inventory = { timber: 5 }; f.ui.refresh();
+  assert.match(f.html, /1.6 weight each with your equipped pack/); assert.match(f.html, /8 \/ 100/);
+  f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, storage: { timber: 5 } }];
+  f.visit('plot', site.id); assert.match(f.html, /Capacity: 10 \/ 1,500 weight/);
+});

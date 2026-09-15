@@ -1,5 +1,9 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 15: crates and lasting equipment
+
+The prepared collection now has server-authoritative opening, permanent account unlocks, shared crate credits, source-specific duplicate refunds, lifetime milestone rewards and one-time run loadouts. Rare has six equal outcomes including both resource packs; Legendary has five including consumable Phoenix Ember. Fitted equipment affects armor, capacity, resource weight or newly purchased gathering-tool durability. Starter supplies are bound and do not refill. The Sunforged Viking Helm is earned at 100 personal credited nights and grants Last Stand. The complete current rules and initial balance settings are in [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md). Historical entries below describe their respective releases.
+
 This document records Tyler's game plan so later implementation does not silently change the rules. Emberwatch is a working title. Numerical prices, health values, recipes, and balance examples remain tunable unless a rule below explicitly fixes the relationship.
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
