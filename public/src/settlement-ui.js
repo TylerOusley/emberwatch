@@ -424,8 +424,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (TOWER_STATS[p.building]) {
       const tower = TOWER_STATS[p.building], status = state().defenseStatus?.find(d => d.plotId === id);
       const ammunition = Object.entries(tower.ammo).map(([resource, cost]) => [label(resource) + ' stored', num(p.storage?.[resource])]);
-      const shots = status?.shotsRemaining ?? Math.min(...Object.entries(tower.ammo).map(([resource, cost]) => Math.floor((p.storage?.[resource] || 0) / cost)));
-      const condition = p.hp <= 0 ? 'destroyed' : shots < 1 ? 'empty' : status?.status || 'ready';
+      const unlimited = Object.keys(tower.ammo).length === 0;
+      const shots = unlimited ? null : status?.shotsRemaining ?? Math.min(...Object.entries(tower.ammo).map(([resource, cost]) => Math.floor((p.storage?.[resource] || 0) / cost)));
+      const condition = p.hp <= 0 ? 'destroyed' : !unlimited && shots < 1 ? 'empty' : unlimited && status?.status === 'empty' ? 'ready' : status?.status || 'ready';
       const descriptions = {
         ready: ['Ready', 'Automatically fires when a zombie enters range.'],
         firing: ['Engaging zombies', 'A zombie is in range and the defense is attacking.'],
@@ -435,8 +436,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         destroyed: ['Destroyed', 'The owner must empty its storage, remove the ruined building, and rebuild.']
       };
       const [name, detail] = descriptions[condition] || descriptions.ready;
-      html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shots available', num(shots)], ...ammunition]);
-      html += '<p>' + (p.building === 'archer_tower' ? `Each shot consumes one stored arrow. New towers include ${tower.starterAmmo.arrows} arrows. Buy more from a player tinker shop or the traveling merchant, then store them in the tower.` : 'Each shot consumes one stored stone and one stored coal. Gather both with a pickaxe and place them in this building’s storage.') + '</p>';
+      html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shots available', unlimited ? 'Unlimited' : num(shots)], ...ammunition]);
+      html += '<p>' + (p.building === 'archer_tower' ? 'Archer towers fire automatically without arrows or other ammunition. Keep the tower repaired and upgrade it when you can.' : 'Each shot consumes one stored stone and one stored coal. Gather both with a pickaxe and place them in this building’s storage.') + '</p>';
     }
     if(mine && DEFENSE_UPGRADES[p.building]) {const upgrade=DEFENSE_UPGRADES[p.building];html+='<h3>Building upgrade</h3><p>'+costText({gold:upgrade.gold,...upgrade.resources})+'</p>'+command((p.level||1)>=2?'Fully upgraded':p.building==='church'?'Upgrade to four beds':'Upgrade to level 2','upgradeDefense',{plotId:id},(p.level||1)>=2||wallet()<upgrade.gold||!hasCost(p.storage,upgrade.resources)||p.hp<=0);}
     if (mine || p.building) html += '<h3>Building storage</h3><p>Capacity: ' + num(inventoryWeight(p.storage||{})) + ' / 1,500 weight. Materials stored on an empty plot can fund its construction.</p>' + storage(p.storage || {}, id, false, mine);
@@ -445,7 +446,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       for (const [building, info] of Object.entries(BUILDING_TYPES)) {
         const wrongRole = info.role && info.role !== me().role;
         const atLimit = info.limit && owned().filter(v => v.building === building).length >= info.limit;
-        html += `<section class="building-card"><strong>${esc(info.name)}</strong><p>${esc(costText(info.cost))}${building === 'archer_tower' ? `<br>Includes ${TOWER_STATS.archer_tower.starterAmmo.arrows} arrows` : ''}</p>${info.role ? `<small>${esc(label(info.role))} only${info.limit ? ` · limit ${info.limit}` : ''}</small>` : '<small>Every role</small>'}` + button(p.building === building ? 'Already built' : p.building ? 'Convert plot' : 'Build', () => {
+        html += `<section class="building-card"><strong>${esc(info.name)}</strong><p>${esc(costText(info.cost))}${building === 'archer_tower' ? '<br>No ammunition required' : ''}</p>${info.role ? `<small>${esc(label(info.role))} only${info.limit ? ` · limit ${info.limit}` : ''}</small>` : '<small>Every role</small>'}` + button(p.building === building ? 'Already built' : p.building ? 'Convert plot' : 'Build', () => {
           if (p.building) confirm('Replace this building?', `This removes your ${type.name} and any deployed troops. Empty storage and finish church treatments first. Building the ${info.name} costs ${costText(info.cost)}.`, 'plot_build', { plotId: id, building, confirm: true });
           else send({ type: 'action', kind: 'plot_build', plotId: id, building });
         }, wrongRole || atLimit || p.building === building || money() < info.cost.gold || !hasCost(Object.fromEntries(resources.map(r=>[r,(me().inventory?.[r]||0)+(p.storage?.[r]||0)])), info.cost)) + '</section>';
@@ -476,5 +477,5 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     return waypoint;
   }
-  return { show, refresh, getWaypoint, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); } };
+  return { show, refresh, getWaypoint, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); } };
 }

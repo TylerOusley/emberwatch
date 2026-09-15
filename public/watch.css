@@ -1,0 +1,32 @@
+/* Compact village tools stay with the existing corner HUD and shared dialog. */
+#first-watch-guide { pointer-events:auto; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+.guide-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.guide-heading button { background:none; border:0; padding:3px 0; color:var(--gold); font-size:10px; }
+.guide-dismiss { min-width:24px; min-height:24px; font-size:19px!important; }
+#first-watch-guide .guide-next { margin:9px 0 5px; color:var(--pale); font-size:11px; }
+#first-watch-guide .guide-detail { font-size:10px; line-height:1.6; margin-bottom:8px; }
+#first-watch-guide .guide-mark { background:#293d33; color:var(--gold); border:1px solid var(--line); border-radius:3px; font-size:10px; padding:7px 10px; }
+.guide-checklist { padding-left:0; list-style:none; margin-bottom:0; font-size:10px; line-height:1.8; max-height:140px; overflow:auto; }
+.guide-checklist .complete { color:#a9c991; }
+.progression-milestones { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:18px 0; }
+.progression-milestone { padding:13px; border:1px solid var(--line); background:#17272c; border-radius:3px; }
+.progression-milestone.earned { background:#2c3a2d; border-color:#a9965b88; }
+.progression-milestone strong,.progression-milestone span { display:block; margin-bottom:6px; }
+.progression-milestone span { color:var(--gold); font-size:11px; }
+.progression-milestone p { margin:0; font-size:10px; line-height:1.6; }
+.progression-panel .transfer-form { align-items:end; }
+.progression-panel label { display:grid; gap:6px; font-size:10px; color:#c3ccba; flex:1; }
+.progression-panel select { min-width:110px; }
+.progression-panel button { border:1px solid var(--line); border-radius:3px; padding:10px 13px; background:#304035; color:var(--pale); font-size:11px; }
+.progression-panel .panel-row { flex-wrap:wrap; gap:10px; }
+.progression-panel .panel-row select { width:auto; }
+.progression-panel h3,#guard-orders-panel h3 { margin:20px 0 10px; font-size:14px; }
+#guard-orders-panel .settlement-card { border:1px solid var(--line); padding:15px; margin:14px 0; background:#25352e60; border-radius:3px; }
+#guard-orders-panel .settlement-card h3 { margin-top:0; }
+#guard-orders-panel button[aria-pressed="true"] { border-color:var(--gold); color:var(--gold); background:#73623944; }
+#siege-health { border-top:1px solid #be79644d; margin-top:12px; padding-top:12px; font-size:9px; letter-spacing:1px; color:#e5a98d; }
+#siege-hp { float:right; letter-spacing:0; }
+#siege-health .meter { clear:both; margin-top:8px; }
+#siege-bar { background:#c77c63; }
+@media(max-height:850px) { #first-watch-guide .guide-detail { display:none; } .guide-checklist { max-height:82px; } }
+@media(max-width:760px) { .progression-milestones { grid-template-columns:1fr; } .progression-panel .panel-row>span { flex-basis:100%; } }

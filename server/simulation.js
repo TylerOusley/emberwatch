@@ -12,6 +12,11 @@ import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight } from '../sha
 import { ensureRoleStats, tickRoleStats, absorbDamage } from './roles.js';
 import { STARTER_GOLD, FOOD_IDS, canEquip } from '../shared/equipment.js';
 import { canUseBuilding } from '../shared/access.js';
+import { ENEMY_TYPES, MELEE, inMeleeArc, enemyKind } from '../shared/enemies.js';
+import { ensureEnemies, spawnWaveEnemy, splitEnemy, enemySnapshot, cancelZombieWindup, attackZombieStructure, beginZombieAttack, tickZombieAttack, nightIsCleared } from './enemies.js';
+import { ensureRequests, requestsTick, requestsSnapshot, requestsAction, requestsBeforeAction, requestsAfterAction } from './requests.js';
+import { ensureProgression, joinProgression, progressionNight, progressionTick, progressionDawn, progressionAction, recordProgressionAction, progressionSnapshot } from './progression.js';
+import { guardOrdersAction, guardOrdersSnapshot, guardDirective, guardOrderCanEngage } from './guard-orders.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -43,7 +48,7 @@ function ensureVillage(village) {
   if ((village.schemaVersion ?? 0) < 4 && village.phase === 'night') {
     for (const guard of village.guards ?? []) if (!guard.plotId && !guard.hungry && guard.hp > 0) guard.fedNight ??= village.day;
   }
-  ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village); ensureWorkers(village);
+  ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village); ensureWorkers(village); ensureEnemies(village); ensureRequests(village); ensureProgression(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
     player.inventory = { ...emptyInventory(), ...player.inventory };
@@ -110,6 +115,7 @@ export class Simulation {
       }
       player.online = true;
       ensureVillage(village);
+      joinProgression(this, village, player);
       this.relocateBlocked(village);
       this.inputs.delete(player.id);
       this.store.saveVillage(village);
@@ -141,10 +147,12 @@ export class Simulation {
       clockRunning: village.status === 'active' && Object.values(village.players).some(p => p.online),
       gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
+      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         tiers: p.tiers, backpackTier: p.backpackTier, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
         ...(p.id === viewerId ? { inventory: p.inventory, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
-      zombies: village.zombies.filter(z => z.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim }) => ({ id, x, z, yaw, hp, maxHp, anim })),
+      siegeNight: village.siegeNight,
+      zombies: village.zombies.filter(z => z.hp > 0).map(enemySnapshot),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
       resources: village.resources.map(({ id, available, remaining }) => ({ id, available, remaining })) };
   }
@@ -153,7 +161,15 @@ export class Simulation {
     const village = this.villages.get(villageId);
     if (!village) throw new Error('Join a village first.');
     const checkpoint = structuredClone(village), noticeCount = this.notices.length;
-    try { return this.store.transaction(() => this.performAction(villageId, playerId, action)); }
+    try { return this.store.transaction(() => {
+      const requestBefore = requestsBeforeAction(village);
+      const result = this.performAction(villageId, playerId, action);
+      requestsAfterAction(village, requestBefore, action);
+      this.finishClearedNight(village);
+      requestsTick(this, village);
+      this.store.saveVillage(village);
+      return result;
+    }); }
     catch (error) { restoreState(village, checkpoint); this.notices.length = noticeCount; throw error; }
   }
   performAction(villageId, playerId, action) {
@@ -162,18 +178,19 @@ export class Simulation {
     if (village.status !== 'active') throw new Error('The keep has fallen. This run has ended.');
     const kind = action.kind;
     if (typeof kind !== 'string') throw new Error('Invalid action.');
-    if (player.downed && !['respawn', 'churchLeave'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
+    if (player.downed && !['respawn', 'churchLeave', 'guide_visibility'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
     if (village.clock - player.lastAction < .55) throw new Error('Wait for your next action.');
-    if (player.bedPlotId && !['churchLeave', 'respawn'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
+    if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
     if (player.carryingId && ['attack', 'gather', 'repair', 'repairPlot', 'heal', 'mountHorse'].includes(kind)) throw new Error('Put your companion down before using tools or weapons.');
-    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
-    if (kind !== 'heal') player.healing = null;
-    for (const handler of [ownershipAction, economyAction, careAction, transportAction, workersAction]) {
+    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
+    if (!['heal', 'guide_visibility'].includes(kind)) player.healing = null;
+    for (const handler of [requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
         if (kind === 'role_change') { ensureRoleStats(player, { clock: village.clock }); if (!canEquip(player, player.tool)) player.tool = ''; }
         player.lastAction = village.clock;
+        recordProgressionAction(this, village, player, action);
         this.store.saveVillage(village);
         return result;
       }
@@ -190,10 +207,14 @@ export class Simulation {
         if (!(player.durability.bow > 0)) throw new Error('Buy a bow at a tinker shop first.');
         if (!(player.inventory.arrows > 0)) throw new Error('You need arrows to fire your bow.');
       } else use('sword');
-      const target = village.zombies.filter(z => z.hp > 0 && distance(player, z) <= (ranged ? 24 : 3.2) && this.clearAttack(village, player, z, ranged)).sort((a, b) => distance(player, a) - distance(player, b))[0];
+      const inReach = village.zombies.filter(z => z.hp > 0 && (ranged ? distance(player, z) <= 24 : inMeleeArc(player, z, MELEE.playerRange)) && this.clearAttack(village, player, z, ranged)).sort((a, b) => distance(player, a) - distance(player, b));
+      const targets = ranged ? inReach.slice(0, 1) : inReach;
       player.anim = 'attack'; player.animationUntil = village.clock + .45;
       if (ranged) player.inventory.arrows--;
-      if (target) { const damage = ranged ? 22 : ({ wood: 10, stone: 15, iron: 20 }[player.tiers?.sword] ?? 10); this.hitZombie(village, target, damage * (player.role === 'guard' ? 1.2 : 1), player); message = ranged ? 'Arrow landed.' : 'Strike landed.'; }
+      player.durability[ranged ? 'bow' : 'sword']--;
+      const damage = ranged ? 22 : ({ wood: 10, stone: 15, iron: 20 }[player.tiers?.sword] ?? 10);
+      for (const target of targets) this.hitZombie(village, target, damage * (player.role === 'guard' ? 1.2 : 1), player);
+      if (targets.length) message = ranged ? 'Arrow landed.' : 'Strike landed.';
     } else if (kind === 'repair') {
       use('hammer');
       const id = action.targetId === 'keep' ? 'keep' : action.targetId === 'gate' ? 'gate' : null;
@@ -264,6 +285,7 @@ export class Simulation {
       message = 'Test night started.';
     } else throw new Error('Unknown action.');
     player.lastAction = village.clock;
+    recordProgressionAction(this, village, player, action);
     // Save all successful authoritative mutations before reporting them to the client.
     this.store.saveVillage(village);
     return message;
@@ -306,36 +328,54 @@ export class Simulation {
   }
   hitZombie(village, zombie, damage, player) {
     if (zombie.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return;
-    const actual = Math.min(zombie.hp, damage);
+    const dealt = damage * (1 - clamp(zombie.armor ?? 0, 0, .8));
+    const actual = Math.min(zombie.hp, dealt);
     if (player?.online && player.role === 'guard') {
       zombie.contributors ??= {};
       zombie.contributors[player.id] = (zombie.contributors[player.id] ?? 0) + actual;
     }
-    zombie.hp = Math.max(0, zombie.hp - damage);
-    if (zombie.hp <= 0) for (const [id, contribution] of Object.entries(zombie.contributors ?? {})) {
-      const contributor = village.players[id];
-      if (contributor?.online && contributor.role === 'guard' && (contribution >= zombie.maxHp * .15 || id === player?.id)) this.awardJob(village, contributor, zombie.elite ? 3 : 1);
+    zombie.hp = Math.max(0, zombie.hp - dealt);
+    if (zombie.hp <= 0) {
+      cancelZombieWindup(zombie);
+      for (const [id, contribution] of Object.entries(zombie.contributors ?? {})) {
+        const contributor = village.players[id];
+        if (contributor?.online && contributor.role === 'guard' && (contribution >= zombie.maxHp * .15 || id === player?.id)) this.awardJob(village, contributor, ENEMY_TYPES[enemyKind(zombie)].reward);
+      }
+      splitEnemy(village, zombie);
     }
   }
+  cancelZombieWindup(zombie) { cancelZombieWindup(zombie); }
+  attackZombieStructure(village, zombie, structure, targetId, targetKind) { return attackZombieStructure(village, zombie, structure, targetId, targetKind); }
   hurtPlayer(village, player, damage) {
     player.hp = Math.max(0, player.hp - absorbDamage(village, player, damage));
     if (player.hp <= 0) { cancelCarry(village, player); cancelTreatment(village, player); dismountPlayer(village, player); player.downed = true; player.respawnAvailable = false; player.anim = 'downed'; player.healing = null; this.inputs.delete(player.id); }
   }
   startNight(village) {
     village.phase = 'night'; village.phaseRemaining = this.nightSeconds; village.spawned = 0; village.nextSpawn = village.clock + 2;
+    progressionNight(village);
     const active = Object.values(village.players).filter(p => p.online).length;
     const band = Math.floor((village.day - 1) / 5);
     village.waveCount = Math.min(80, 5 + active * 3 + band * 5);
+    village.siegeNight = village.day % 5 === 0;
     village.nightParticipants = Object.values(village.players).filter(p => p.online).map(p => p.id);
     careNight(this, village);
-    this.notice(village.id, `Night ${village.day}. Defend the gate together.`);
+    this.notice(village.id, village.siegeNight ? `Siege night ${village.day}! A Gravebreaker is rising. Step outside its red warning circle before the slam.` : `Night ${village.day}. Defend the gate together and dodge the red attack circles.`);
   }
-  dawn(village) {
-    return this.store.transaction(() => this.payDawn(village));
+  finishClearedNight(village) {
+    if (village.phaseRemaining <= 0 || !nightIsCleared(village)) return false;
+    this.dawn(village, { earlyClear: true });
+    return true;
   }
-  payDawn(village) {
+  dawn(village, { earlyClear = false } = {}) {
+    const checkpoint = structuredClone(village), noticeCount = this.notices.length;
+    try { return this.store.transaction(() => this.payDawn(village, { earlyClear })); }
+    catch (error) { restoreState(village, checkpoint); this.notices.length = noticeCount; throw error; }
+  }
+  payDawn(village, { earlyClear = false } = {}) {
     const survived = village.day;
-    village.phase = 'day'; village.phaseRemaining = this.daySeconds; village.day++; village.warningSent = false;
+    progressionDawn(this, village, survived, { earlyClear });
+    village.phase = 'day'; village.phaseRemaining = this.daySeconds; village.day++; village.warningSent = false; village.siegeNight = false;
+    village.spawned = 0; village.waveCount = 0; village.nextSpawn = 0;
     village.treasury += 1000 * survived;
     economyDawn(this, village);
     for (const player of Object.values(village.players)) {
@@ -346,7 +386,8 @@ export class Simulation {
       player.jobBonus = 0; player.repairBonus = 0; player.participated = 0; player.revivedThisNight = [];
       player.wageAccrued = 0; player.cycleServiceIncome = 0;
     }
-    this.notice(village.id, `Dawn breaks. Night ${survived} survived. Remaining zombies must still be defeated.`);
+    this.notice(village.id, earlyClear ? `The last zombie has fallen. Night ${survived} cleared! Dawn breaks early.` : `Dawn breaks. Night ${survived} survived.${village.zombies.some(z => z.hp > 0) ? ' Remaining zombies must still be defeated.' : ''}`);
+    requestsTick(this, village);
     this.store.saveVillage(village);
   }
   tick(dt) {
@@ -405,14 +446,17 @@ export class Simulation {
       }
       workersTick(this, village, dt);
       if (village.phase === 'night' && village.spawned < village.waveCount && village.clock >= village.nextSpawn) {
-        const band = Math.floor((village.day - 1) / 5), elite = band > 0 && village.spawned % 5 === 0;
-        village.zombies.push({ id: randomUUID(), x: ROAD[0].x + (village.spawned % 3 - 1) * 1.3, z: ROAD[0].z + (village.spawned % 2) * 1.5, yaw: Math.PI, hp: elite ? 120 + band * 20 : 65 + band * 14, maxHp: elite ? 120 + band * 20 : 65 + band * 14, anim: 'walk', roadIndex: 1, cooldown: 0, elite, speed: 1.75 + Math.min(band * .08, .65) });
-        village.spawned++; village.nextSpawn = village.clock + Math.max(1.5, 6 - band * .4);
+        spawnWaveEnemy(village);
       }
       this.tickNpcs(village, dt);
+      progressionTick(this, village, dt);
+      requestsTick(this, village);
       if (village.status === 'fallen') continue;
-      if (village.phaseRemaining <= 0) { if (village.phase === 'day') this.startNight(village); else this.dawn(village); }
-      if (village.phase === 'day' && village.day % 5 === 1 && village.day > 1 && !village.warningSent) { village.warningSent = true; this.notice(village.id, 'A stronger horde is stirring in the graveyard. Prepare before tonight.'); }
+      if (!this.finishClearedNight(village) && village.phaseRemaining <= 0) { if (village.phase === 'day') this.startNight(village); else this.dawn(village); }
+      if (village.phase === 'day' && !village.warningSent && (village.day % 5 === 0 || village.day % 5 === 1 && village.day > 1)) {
+        village.warningSent = true;
+        this.notice(village.id, village.day % 5 === 0 ? 'Siege tonight: a Gravebreaker is stirring beneath the graveyard. Stock the defenses and repair the gate.' : 'A stronger horde is stirring in the graveyard. Prepare before tonight.');
+      }
       village.zombies = village.zombies.filter(z => z.hp > 0);
     }
   }
@@ -426,11 +470,23 @@ export class Simulation {
     const zombies = village.zombies.filter(z => z.hp > 0);
     for (const guard of guards) {
       const guardPath = guardPathFor(village, guard);
+      const directive = guardDirective(village, guard);
       guard.cooldown = Math.max(0, guard.cooldown - dt);
-      const target = zombies.filter(z => z.hp > 0 && distance(guard, z) < 12 && z.z < 55).sort((a, b) => distance(guard, a) - distance(guard, b))[0];
+      if (village.clock < (guard.attackUntil ?? -1)) { guard.anim = 'attack'; continue; }
+      const target = zombies.filter(z => z.hp > 0 && guardOrderCanEngage(guard, z, directive)).sort((a, b) => distance(guard, a) - distance(guard, b))[0];
       if (target) {
         if (distance(guard, target) > 2.1 || !this.clearAttack(village, guard, target)) this.stepNpc(guard, target, 3.4, dt, guards);
-        else { guard.anim = 'attack'; guard.yaw = Math.atan2(target.x - guard.x, target.z - guard.z); if (!guard.cooldown && this.clearAttack(village, guard, target)) { this.hitZombie(village, target, (guard.damage ?? 14) * (guard.hungry ? .75 : 1), village.players[guard.ownerId]); guard.cooldown = 1.05; } }
+        else {
+          guard.anim = 'idle'; guard.yaw = Math.atan2(target.x - guard.x, target.z - guard.z);
+          if (!guard.cooldown && this.clearAttack(village, guard, target)) {
+            guard.anim = 'attack'; guard.attackUntil = village.clock + .45;
+            const victims = zombies.filter(z => z.hp > 0 && inMeleeArc(guard, z, MELEE.guardRange) && this.clearAttack(village, guard, z));
+            for (const victim of victims) this.hitZombie(village, victim, (guard.damage ?? 14) * (guard.hungry ? .75 : 1), village.players[guard.ownerId]);
+            guard.cooldown = 1.05;
+          }
+        }
+      } else if (directive) {
+        this.stepNpc(guard, directive.destination, 3, dt, guards);
       } else {
         const point = guardPath[Math.min(guard.roadIndex, guardPath.length - 1)];
         if (distance(guard, point) < 1.4 && guard.roadIndex < guardPath.length - 1) guard.roadIndex++;
@@ -440,24 +496,33 @@ export class Simulation {
     }
     for (const zombie of zombies) {
       if (zombie.hp <= 0) continue;
+      if (village.clock < (zombie.emergeUntil ?? 0)) { zombie.anim = zombie.birth === 'split' ? 'burst' : 'emerge'; continue; }
       zombie.cooldown = Math.max(0, zombie.cooldown - dt);
       const defenders = [...alivePlayers.filter(p => !p.downed), ...guards.filter(g => g.hp > 0)];
+      if (tickZombieAttack(this, village, zombie, defenders)) {
+        if (village.keep.hp <= 0) { village.status = 'fallen'; requestsTick(this, village); this.notice(village.id, 'The Hearthkeep has fallen. Your personal bank savings are safe.'); this.store.saveVillage(village); return; }
+        continue;
+      }
       // An intact gate blocks attacks/aggro across the doorway until a defender steps outside.
       const target = defenders.filter(d => distance(zombie, d) < 7 && !(village.gate.hp > 0 && zombie.z > 18 && d.z < 18)).sort((a, b) => distance(zombie, a) - distance(zombie, b))[0];
       if (target) {
         if (distance(zombie, target) > 1.9 || !this.clearAttack(village, zombie, target)) this.stepNpc(zombie, target, zombie.speed, dt, zombies);
-        else { zombie.anim = 'attack'; zombie.yaw = Math.atan2(target.x - zombie.x, target.z - zombie.z); if (!zombie.cooldown && this.clearAttack(village, zombie, target)) { if ('online' in target) this.hurtPlayer(village, target, zombie.elite ? 15 : 9); else target.hp = Math.max(0, target.hp - (zombie.elite ? 15 : 9)); zombie.cooldown = 1.5; } }
+        else {
+          zombie.anim = 'idle'; zombie.yaw = Math.atan2(target.x - zombie.x, target.z - zombie.z);
+          beginZombieAttack(village, zombie, target, target.id, 'ground');
+        }
         continue;
       }
       if (tickDefenseAttack(this, village, zombie, dt)) continue;
       if (village.gate.hp > 0 && zombie.z >= 18 && zombie.z <= 23 && zombie.roadIndex >= 3) {
-        zombie.anim = 'attack'; zombie.yaw = Math.PI;
-        if (!zombie.cooldown) { village.gate.hp = Math.max(0, village.gate.hp - (zombie.elite ? 15 : 8)); zombie.cooldown = 1.4; }
+        zombie.yaw = Math.PI;
+        this.attackZombieStructure(village, zombie, village.gate, 'gate', 'gate');
       } else if (zombie.z <= -33) {
-        zombie.anim = 'attack'; zombie.yaw = Math.PI;
-        if (!zombie.cooldown) { village.keep.hp = Math.max(0, village.keep.hp - (zombie.elite ? 20 : 10)); zombie.cooldown = 1.4; }
-        if (village.keep.hp <= 0) { village.status = 'fallen'; this.notice(village.id, 'The Hearthkeep has fallen. Your personal bank savings are safe.'); this.store.saveVillage(village); return; }
+        zombie.yaw = Math.PI;
+        this.attackZombieStructure(village, zombie, village.keep, 'keep', 'keep');
+        if (village.keep.hp <= 0) { village.status = 'fallen'; requestsTick(this, village); this.notice(village.id, 'The Hearthkeep has fallen. Your personal bank savings are safe.'); this.store.saveVillage(village); return; }
       } else {
+        cancelZombieWindup(zombie);
         const point = ROAD[Math.min(zombie.roadIndex, ROAD.length - 1)];
         if (distance(zombie, point) < 2 && zombie.roadIndex < ROAD.length - 1) zombie.roadIndex++;
         this.stepNpc(zombie, ROAD[Math.min(zombie.roadIndex, ROAD.length - 1)], zombie.speed, dt, zombies);

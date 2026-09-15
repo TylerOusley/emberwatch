@@ -4,7 +4,7 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
-## Build 09: detailed landscape and a living sky
+## Build 10: village cooperation and varied defenses
 
 Build 04 implements the forty internal and eight exposed plots, ownership and construction, private harvesting, stocked crafting shops, upgraded equipment, the treasury market and policies, merchant trade, owned defenses, church care, and horses/carts with protected loans. The Watch now faces the street; its guard exit and road agree with that entrance. Existing villages and account savings migrate without resetting the run.
 
@@ -20,7 +20,9 @@ Build 07 adds articulated knees, ankles, elbows and hip rotation to walking and 
 
 Build 08 requires residents to approach the front door or counter for building services. Owned structures use their building entrance; unbuilt plots, ruins, farms and mines use their frontage gate. Client prompts and authoritative transactions share these access points, while church beds remain separate care interaction points. The atlas marks entrances. A merchant character, a covered carriage and two harnessed horses appear during the authoritative merchant visit and disappear when it ends. They are visual visitors, separate from residents’ owned horses and carts.
 
-Build 09 adds decorative grass, ferns, shrubs, wildflowers, clover, leaf litter and limited wall ivy, with clearances around roads, permanent services, all plots, church beds, harvest nodes and the merchant caravan. Two drifting cloud decks, the sun, moon, stars and gradual lighting changes show the actual village cycle. Sunrise starts the day; sunset starts the night. Daytime remains eight minutes and nighttime four minutes. Everyone joining the same village sees its current phase, and the sky stops advancing when the simulation pauses. The camera can look upward without orbiting underground.
+Build 09 adds decorative grass, ferns, shrubs, wildflowers, clover, leaf litter and limited wall ivy, with clearances around roads, permanent services, all plots, church beds, harvest nodes and the merchant caravan. Two drifting cloud decks, the sun, moon, stars and gradual lighting changes show the actual village cycle. Sunrise starts the day; sunset starts the night. Build 09 uses eight-minute days and four-minute nights; Build 10 allows dawn sooner when the complete wave is defeated. Everyone joining the same village sees its current phase, and the sky stops advancing when the simulation pauses. The camera can look upward without orbiting underground.
+
+Build 10 implements the accepted follow-up ideas: distinct zombie behaviors, graveyard emergence, a Brood husk that splits into up to three weak non-splitting Grave mites within the battlefield population limit, fifth-night Gravebreaker sieges, funded shortage deliveries, owned troop commands, richer procedural audio, an optional first-day checklist, and persistent cosmetic milestones. Later steering makes all archer towers ammunition-free, adds a forward sword cleave for players and guards, and gives every zombie a fixed red attack warning that can be dodged before impact. Brief translucent sword trails and swoosh sounds follow the blade.
 
 ### Current implementation choices
 
@@ -34,7 +36,7 @@ The values below resolve earlier provisional details for this playtest and remai
 | Workers | Up to two per resident. Hire at the treasury for 75 wallet gold; pay one wallet gold per 30 seconds of work. Gather one unit every four seconds with provided basic tools, carry 40 weight, and deliver to an owned building or sell at the treasury. Daytime work while the employer is online; return to shelter at night or on pause. Cargo and paid work time survive saves. No automatic use of savings or purchase credit. |
 | Troops | Recruitment is 35 gold plus five timber and two iron from that barracks. Two barracks per Guard, three recruited slots each, including pending replacements. Troops consume one wheat per night. Fallen recruited troops respawn after 30 active seconds if the barracks has one wheat; that wheat covers the current night. Replacements preserve recruitment investment and wait when wheat is absent. |
 | Church care | Player-owned churches begin with two beds and upgrade to four. Bed healing is eight gold for ten seconds; revival is twenty gold for twenty seconds, returning at 45 HP. Cancelled or interrupted paid treatment refunds its payer. The permanent Sanctuary guides residents to priest care and owned churches. |
-| Defense | New archer towers include 20 arrows; existing empty towers must be restocked. Archer towers spend one arrow per shot; cannon shots spend one stone and one coal. Paid level-two upgrades and shared-stock hammer repairs keep defenses useful. |
+| Defense | Archer towers automatically shoot without consuming arrows or any ammunition; newly built towers grant no starter arrows. Existing stored arrows remain ordinary cargo. Cannon shots spend one stone and one coal. Paid level-two upgrades and shared-stock hammer repairs keep defenses useful. |
 | Food | Three inventory items restore 25, 60 and 100 hunger and use two, four and six wheat. Prices follow wheat scarcity plus a preparation fee. |
 | Horses and carts | The public stable stores up to three sale horses. The steward can restock an empty stable at 50 gold per horse during a merchant visit; players pay 100. Each resident can own one horse and deploy one cart in the run. Cart contents are owner-controlled; blocked carts detach without deleting cargo. |
 | Protected credit | Maximum outstanding debt is 200 gold per account; the village lends at most 500 gold per run and retains 1,000 treasury gold before a new loan. Borrowing creates approved purchase credit rather than wallet gold. |
@@ -52,7 +54,7 @@ The values below resolve earlier provisional details for this playtest and remai
 - The three starting jobs are **Guard, Priest, and Villager**. All three can gather, defend, and build universal structures.
 - A village holds **eight saved residents total**, counting online and offline players. An offline member retains their place and plot ownership. Solo play is valid; no minimum party size is needed.
 - Public server browsing shows online players, offline residents, and occupied capacity. There are no private invitation codes in the initial plan.
-- A day lasts eight minutes and a night lasts four. Difficulty increases after each five-night band, with a warning before the stronger wave.
+- A day lasts eight minutes and a night lasts up to four. Clearing the complete scheduled wave and all split offspring starts dawn early; empty gaps between spawns do not. Difficulty increases after each five-night band, with a warning before the stronger wave.
 - When a village has no online players, freeze its clock, enemies, resource consumption, wages, and rewards. Resume the same run rather than resetting its attacks.
 - Dawn stops new night-wave spawns. Existing zombies remain until defeated. A living keep at dawn counts as a survived night.
 - Keep destruction ends the run and removes the village from the selection list. Current residents can still view the loss result, and account savings are retained for the next run. A downed party does not immediately end a run while the keep still stands.
@@ -108,7 +110,7 @@ A player changing jobs loses buildings exclusive to the previous job. Universal 
 
 Private resource plots improve supply density, growth, and convenience. Owners can allow other players to harvest. A visitor receives 80% and the owner receives 20% of the actual resource output, using persistent fractional accounting so small harvests still produce the correct cumulative split. Owners keep their entire harvest when gathering their own plots.
 
-Sword shops craft wooden, stone, and iron swords on purchase from real stored resources. Every sword tier requires materials. Higher tiers deal more damage at the same attack speed and reach; 10/15/20 damage is a starting example. Weapon durability is not yet a settled rule and must not be inferred from gathering-tool durability.
+Sword shops craft wooden, stone, and iron swords on purchase from real stored resources. Every sword tier requires materials. Higher tiers deal more damage at the same attack speed and reach; 10/15/20 damage is a starting example. Current sword durability is 100/150/200 for wood/stone/iron. Each valid player attack consumes one durability, including an attack that misses; hitting several enemies with a cleave still consumes only one.
 
 ## Class traits
 
@@ -124,7 +126,7 @@ Each living deployed troop consumes **one wheat per night from its own barracks 
 
 An offline owner's troops still defend and consume supplies while other residents keep the village active. They do not generate an offline owner's performance bonus. A completely empty village pauses these activities.
 
-Exterior archer towers and cannon defenses require construction resources, ammunition, and repair. They can be destroyed. Starting construction examples are 200 gold, 60 timber, and 40 stone for an archer tower, and 500 gold, 40 timber, and 100 stone for a later cannon. Ammunition and upgrade recipes are still to be balanced.
+Exterior archer towers and cannon defenses require construction resources and repair. Archer towers need no ammunition; cannons consume stone and coal. They can be destroyed. Starting construction examples are 200 gold, 60 timber, and 40 stone for an archer tower, and 500 gold, 40 timber, 100 stone and 20 iron for a later cannon. Cannon ammunition and upgrade recipes are still to be balanced.
 
 ## Treasury, pay, and resource markets
 
@@ -134,7 +136,7 @@ Each new village starts with **20,000 gold in a public treasury**, once per run 
 | --- | --- | --- |
 | Guard base wage | 25 gold per active day/night cycle, prorated participation | Dawn |
 | Priest base wage | 25 gold per active day/night cycle, prorated participation | Dawn |
-| Guard performance | 1 per standard zombie, 3 per elite; up to 25 extra | With dawn wages |
+| Guard performance | 1 per Shambler, Grave runner or Grave mite; 2 per Brood husk; 3 per Ironbound; 5 per Gravebreaker; up to 25 extra total | With dawn wages |
 | Priest performance | 1 per 50 meaningful HP healed; 5 per eligible revival; up to 25 extra | With dawn wages |
 | Repairs, every job | 1 per successful repair swing, up to 10 extra per cycle | Dawn |
 
@@ -146,9 +148,9 @@ The treasury also receives transaction and land taxes, proceeds from steward-app
 
 ## Votes and the steward
 
-There is no player king. Residents vote on taxes, wages, spending, and resource priorities. A rules-based steward evaluates affordability, projected consumption, stock shortages/surpluses, full role earnings, upcoming danger, and village-wide fairness.
+There is no player king. Current votes cover guard/priest wages, trade tax, land-tax base and surplus-export priority. Broader spending votes remain a future extension. A rules-based steward evaluates affordability, projected consumption, stock shortages/surpluses, full role earnings, upcoming danger, and village-wide fairness.
 
-The steward may approve, veto with a concrete explanation, or suggest a revised proposal for another vote. A role majority cannot award itself unsustainable pay. A temporary shortage may justify a temporary incentive rather than a permanent increase. Starting voting rules are a majority of active voters, ties keeping current policy, and accepted changes taking effect next morning. A solo resident can propose a policy directly, subject to the same steward evaluation.
+The current steward approves or vetoes with a concrete explanation. Automatically suggesting revised counterproposals remains a future extension. A role majority cannot award itself unsustainable pay. A temporary shortage may justify a temporary incentive rather than a permanent increase. Starting voting rules are a majority of active voters, ties keeping current policy, and accepted changes taking effect next morning. A solo resident can propose a policy directly, subject to the same steward evaluation.
 
 The steward does **not** buy basic raw resources from the traveling merchant. Dwarfs must gather them. It can export verified surplus after reserving enough stock for food, repairs, defense, and expected consumption.
 
@@ -189,6 +191,17 @@ Loans use a limited lending pool and approved purchases rather than unrestricted
 3. **Ownership and crafting, implemented:** full plot map, purchases/conversions, storage, visitor harvesting shares, stocked tool/sword/tinker shops and equipment tiers.
 4. **Care and defenses, implemented:** owned barracks and food, recruitment, towers and ammunition, upgrades, damage/repair, carrying and church-bed treatment, manual dawn respawn with inventory and wallet penalties.
 5. **Transport and credit, implemented:** horses, carts, weight limits, restricted loans, durable debt, and repayments from earnings.
-6. **Playtest and refine:** verify every service and route visually in live multiplayer, tune survival/economy progression and solo play, refine models/animations, test eight-player performance and reconnects over long runs, and improve accessibility and operations. More jobs, gold ore, additional enemy varieties and expansion ideas remain later content decisions.
+6. **Playtest and refine:** verify every service and route visually in live multiplayer, tune survival/economy progression and solo play, refine models/animations, test eight-player performance and reconnects over long runs, and improve accessibility and operations. More jobs, gold ore, further enemy varieties and additional expansion ideas remain later content decisions.
 
 The deployment remains one Railway service using Node 24 and persistent SQLite storage. Existing account and village data are migrated in place. More server replicas, a different database or higher populations require measured coordination and scaling work; the full map alone does not establish that capacity.
+
+## Build 10 accepted additions
+
+- Enemies: Shambler, Grave runner, armored Ironbound, splitting Brood husk, weak Grave mite, and fifth-night Gravebreaker. Their silhouettes and behavior are distinct. New graveyard enemies visibly emerge for 2.2 seconds and cannot move or attack while rising. Offspring settle for 0.65 seconds at the death site and cannot split again. Active enemies are capped at 120, so a crowded battlefield can limit a brood to fewer than three offspring.
+- Combat: player and NPC guard sword swings hit all eligible zombies in a 120-degree forward arc, with existing wall/gate obstruction rules and one durability cost per player swing. Player reach is 3.2 m; guard reach 2.6 m. Red circular warnings lock to their world position; impact checks current defenders in the circle, so moving clear prevents damage. Base windups range from 0.65 to 1.65 seconds; Brood husk and Gravebreaker slams cover wider areas. Sword trails are short and translucent.
+- Noticeboard: the steward reserves actual treasury gold for finite shortages rather than creating new currency. Four requests/day, at most 24 units each, and 300 gold/day are initial limits. Requests protect the 500-gold reserve and two payroll cycles, accept partial deliveries at the destination entrance, refund unused escrow, and retain provenance across reloads to prevent withdrawal/redeposit bounty loops. Archer towers never request arrows.
+- Troop orders: owners who are currently guards can remotely order their intact barracks to defend the gate, hold the owner's current reachable position, follow, or retreat. Rally markers are owner-visible. Follow falls back home while the owner is downed, offline, mounted, in bed or unreachable. The public Watch keeps its original defense role; recruitment and supplies remain entrance interactions.
+- Guide and honors: new accounts can follow or dismiss a five-step first-watch guide. Existing accounts are not forced into it. Account honors unlock colors and crests after 1/5/10/20 credited nights, requiring at least half of the actual night online and alive. No retroactive joining credits or combat advantages. Personal choices persist across runs; owned-building trim and founder-selected keep banners remain within the run and are changed at their entrances. Banner choice is decorative and grants no governing power.
+- Audio: footsteps reflect roads/ground; daytime birds, nighttime crickets, wind, tools, fighting, grave emergence and a dusk bell make activity audible. Game sound has a saved mute control, starts only after a user gesture, and stops during hidden/stale/paused sessions.
+
+Early dawn: when all scheduled spawns have occurred and no living or emerging zombies remain, start the next day immediately. Run the same dawn wages, bonuses, survival grant and merchant/request review once. Wages keep their configured full-cycle per-second accrual rate, so an early clear pays only the time actually accrued, plus earned bonuses. If the four-minute deadline arrives first, the existing rule still applies: stop new spawns and leave surviving zombies to be cleared. Cosmetic participation measures half of the actual elapsed night, including an early clear.

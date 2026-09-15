@@ -1,5 +1,21 @@
 # Emberwatch build validation
 
+## Build 10: varied attacks, village requests and shared progression
+
+The complete `npm test` run passes **313/313 tests**, including all earlier gameplay regressions. All **57** client, shared and server JavaScript modules pass syntax and local import checks. The HTML contains **76 unique IDs**, and its local script and stylesheet paths resolve.
+
+Combat checks cover runners, armor, splitting husks and their three offspring, bounded enemy populations, graveyard emergence, fifth-night sieges, legacy enemies, and fixed warning circles whose damage uses the defenders' positions at impact. Sword cleaves hit each eligible enemy in the forward arc once, respect walls and the gate, and spend durability once. Guard animation windows match actual attacks. Both new and existing empty archer towers fire without ammunition; stored arrows remain cargo and cannon ammunition stays finite.
+
+Seven early-dawn tests verify that the complete scheduled wave must spawn and every living enemy, including emerging offspring and older remnants, must be defeated. The final player swing or NPC/tower tick can begin dawn immediately. The normal deadline still advances a night with stragglers. Accrued wages, performance bonuses, the hidden survival grant, request expiry and honors commit once; a real SQLite failure rolls the final kill and dawn back together, and retry/restart cannot duplicate payment. Shortened-night honors require living participation for at least half the actual night rather than half its original maximum duration.
+
+Request tests cover shortage detection, finite reward escrow, essential treasury/payroll reserves, partial doorway deliveries, loan repayment, cancellation/refunds, and persistent withdrawal provenance that prevents supply buyback loops. Troop-order checks enforce authenticated ownership and valid rally points, fallback when the owner cannot be followed, navigation around obstacles, and replacement troop inheritance. Progression checks cover additive account migration, private guide/unlock data, server-verified milestones and cosmetic selection, owned-property access and material cleanup.
+
+A combined test runs HTTP authentication, two real WebSocket clients using patch and legacy snapshots, delivery rejection and payment, shared enemy warning timing, owner-only orders, public appearance choices, private progression, and SQLite restart with a funded request and active siege windup. An empty restarted village stays paused. Existing market concurrency tests account for public gold held in request escrow while preserving exact sale totals and stale-quote rejection.
+
+Actual Three.js geometry was rendered and visually inspected for [enemy silhouettes](previews/zombie-variety.jpg), [grave emergence](previews/zombie-emergence.jpg), and [sword trails](previews/sword-trails.jpg). The trail shader compiled and rasterized in software OpenGL using the articulated sword geometry. Additional geometry previews checked character crests/sashes and property colors. Automated visual checks cover fixed ground warnings, animation transitions, disposal, pooled trails, reconnect suppression and frame timing. Procedural-audio tests verify gesture activation, persistent mute, bounded voices, footsteps, event deduplication and cleanup on pause/disconnect.
+
+These checks do not establish interactive browser appearance, perceived sound quality, sustained multiplayer frame rate, or long-run balance. The available browser has no usable WebGL context, so the complete update still needs a live in-game playtest. No production player data was modified during testing; existing villages and account balances migrate in place.
+
 ## Build 09: foliage, moving clouds and the day/night sky
 
 The complete `npm test` run passes **228/228 tests**. All 41 client, shared and server JavaScript modules pass syntax checks. The new timing metadata exposes the configured phase duration, fractional deadline and running state without changing the simulation clock or save format. Checks cover joining at each phase, rounded HUD countdowns, custom day/night lengths, bounded extrapolation during a stalled connection, phase boundaries, paused/fallen villages, and reconnects.

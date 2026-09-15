@@ -2,11 +2,15 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 09.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 10.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The requested systems now have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 10 adds six zombie types, graveyard emergence, sword cleave and dodgeable enemy attacks. Players and guards can strike multiple zombies in a forward arc; a short blade trail and swoosh follow the swing. Red ground circles mark enemy attacks before impact. The large Brood husk releases up to three weak Grave mites when killed, subject to the 120-enemy battlefield limit, and a Gravebreaker leads every fifth night. Archer towers now fire without ammunition, including existing empty towers; bows and cannons still need their normal supplies.
+
+Press **B** for steward-funded deliveries or read the board on the treasury wall. Press **R** to command your own barracks troops to defend, hold your current position, follow, or retreat. The village menu includes **Honors & appearance** and the optional **First-watch guide**. Surviving credited nights unlocks permanent cosmetic colors and crests. New footsteps, village ambience, zombie cues and the dusk bell share the saved Game sound setting.
 
 Grass clumps, ferns, wildflowers, shrubs, clover, fallen leaves and small patches of wall ivy give the village and woodland more detail. Plants sway in a breeze, with clear roads, doors, plots and gathering approaches. The sky now has drifting cloud layers, a sun that rises and sets, a visible moon and stars, and warm dawn/dusk lighting. It follows the village’s actual clock, including joining mid-cycle and pausing. Right-drag can look upward to follow the sky. [Sky cycle preview](docs/previews/sky-cycle.jpg).
 
@@ -16,9 +20,9 @@ Buildings now offer services at their front doors or shop counters. Player busin
 
 Walking and running now use independent hip, knee, ankle and elbow movement, coordinated shoulder rotation, and smoother transitions. Boots and trousers deform with the joints; zombies retain a slower uneven gait. Road edging is trimmed where paths meet.
 
-Oak & Iron sells backpack upgrades with visible, tier-specific packs worn on the dwarf’s back. New residents enter each run empty-handed with 10 gold, enough for one wooden tool; reconnecting preserves their existing gear and money. The treasury accepts a typed resource quantity with the exact tax and total shown before purchase or sale. Guard shields, priest health and villager carrying bonuses distinguish the three jobs. Fallen recruited troops return after 30 active seconds when their barracks has wheat. New archer towers include 20 arrows and report why they are firing or idle.
+Oak & Iron sells backpack upgrades with visible, tier-specific packs worn on the dwarf’s back. New residents enter each run empty-handed with 10 gold, enough for one wooden tool; reconnecting preserves their existing gear and money. The treasury accepts a typed resource quantity with the exact tax and total shown before purchase or sale. Guard shields, priest health and villager carrying bonuses distinguish the three jobs. Fallen recruited troops return after 30 active seconds when their barracks has wheat. Archer towers fire without ammunition and report why they are firing or idle; cannons consume stone and coal.
 
-Actual mesh previews: [visiting merchant](docs/previews/merchant-visit.jpg), [horse](docs/previews/horse.jpg), [mineral beds](docs/previews/mineral-beds.jpg), [sword grip](docs/previews/sword-grip.jpg). These show the game geometry under preview lighting; they are not live gameplay captures.
+Actual mesh previews: [sword sweep](docs/previews/sword-trails.jpg), [zombie varieties](docs/previews/zombie-variety.jpg), [graveyard emergence](docs/previews/zombie-emergence.jpg), [visiting merchant](docs/previews/merchant-visit.jpg), [horse](docs/previews/horse.jpg), [mineral beds](docs/previews/mineral-beds.jpg), [sword grip](docs/previews/sword-grip.jpg). These show the game geometry under preview lighting; they are not live gameplay captures.
 
 ## Integrated map and systems
 
@@ -29,7 +33,7 @@ Actual mesh previews: [visiting merchant](docs/previews/merchant-visit.jpg), [ho
 | Player businesses | Tool shops, sword shops, and tinker shops craft from actual shop storage and pay their owner. Mines, tree farms, wheat farms, and houses provide owned land uses and storage. |
 | Progression | Wood/stone/iron equipment, iron and coal nodes, bows and arrows, tool durability, eight configurable hotbar slots, weighted carrying, and three food tiers. |
 | Village economy | Stock-priced resource buying/selling, finite treasury reserves, transaction and land taxes, participation-based dawn wages, performance pay, merchant exports, and votes reviewed by the steward. |
-| Care and defense | Owned barracks and recruitment, troop wheat supplies, archer towers and cannon ammunition, upgrades and repairs, carrying downed dwarfs, and paid church-bed healing/revival. |
+| Care and defense | Owned barracks and recruitment, troop wheat supplies, ammunition-free archer towers, cannons supplied with stone and coal, upgrades and repairs, carrying downed dwarfs, and paid church-bed healing/revival. |
 | Transport and banking | Stable restocking, owned riding horses, cargo carts, protected account savings, restricted purchase loans, and repayments from earnings. |
 | Existing foundation | Eight-resident multiplayer, three roles, persistent villages, empty-village pause, chat and overhead bubbles, hunger HUD, escalating zombie nights, and manual dawn respawn. |
 
@@ -52,7 +56,7 @@ Create an account, create or join a village, and select Guard, Priest, or Villag
 
 A village starts with 20,000 treasury gold, 60 timber, 40 stone, 40 wheat, and two public watch guards with 12 wheat in their barracks. A new resident receives 10 wallet gold once per village run, with no tools, weapons, food or backpack. Rejoining never grants more. Visit Oak & Iron to choose the first wooden tool; existing residents retain their earned inventory and wallet. Join a village, gather and trade supplies, buy a plot, and establish the businesses and defenses the residents need.
 
-Each account has one active village. Its resident place, plots and stored property remain reserved while offline. Villages hold eight saved residents, including offline members; a single player can start alone. When nobody is online, the simulation pauses. Eight-minute days alternate with four-minute nights, and zombie difficulty grows every five nights. The keep’s destruction ends the run.
+Each account has one active village. Its resident place, plots and stored property remain reserved while offline. Villages hold eight saved residents, including offline members; a single player can start alone. When nobody is online, the simulation pauses. Eight-minute days alternate with nights lasting up to four minutes, and zombie difficulty grows every five nights. Defeating the entire spawned wave, including splitter offspring, starts dawn early; gaps between scheduled spawns do not. The keep’s destruction ends the run.
 
 Job changes preserve land and universal buildings. Changing away from Guard removes owned barracks and sword shops; changing away from Priest removes owned churches. The game requires confirmation and requires stores and treatment beds to be clear before removing buildings. Earned wages accrue under the role actually held at the time, so switching roles does not duplicate a cycle’s pay.
 
@@ -75,7 +79,7 @@ These are tunable implementation values, not a claim that the economy is already
 | Field care | Priest healing channels for two seconds and restores 30 HP. Revival channels for five seconds and restores 45 HP. |
 | Church beds | Two beds, upgradeable to four. Healing costs eight gold for ten seconds; revival costs twenty gold for twenty seconds and returns the dwarf at 45 HP. |
 | Barracks | At most two per Guard, three recruited slots each, counting living and pending replacements. Recruitment costs 35 gold plus five timber and two iron in barracks storage. Each troop consumes one wheat per night; unfed troops deal 25% less damage. A fallen recruited guard returns after 30 active seconds for one stored wheat, which covers that night’s ration. Empty wheat storage delays replacement. The public Watch follows the same replacement rule. |
-| Towers | Newly constructed archer towers include 20 arrows; existing depleted towers require restocking. Archer shots consume one stored arrow; cannon shots consume one stored stone and one coal. Defenses need ammunition, repairs, and paid upgrades. |
+| Towers | All archer towers fire without ammunition and grant no starter arrows. Existing stored arrows remain cargo. Cannons consume one stored stone and one coal per shot. Both defense types need repairs and can be upgraded. |
 | Horses | Stable capacity three. When empty, the steward can buy horses from the visiting merchant for 50 gold each; residents pay 100 gold. One owned horse per resident in the run. |
 | Carts | One deployed cart per resident; 300 cargo weight in owner-controlled storage. Attach it to your horse for hauling. |
 | Loans | At most 200 outstanding debt per account, a 500-gold lending pool per run, and a 1,000-gold treasury floor for new loans. Credit can fund approved purchases; it cannot be banked or withdrawn. Twenty percent of cumulative earnings repays debt, up to the remaining balance. |
@@ -91,6 +95,25 @@ The traveling merchant visits on day 3 and every second morning after that, stay
 Residents can propose wages, taxes, and export policy at the treasury or keep. A majority of the residents active when the vote opens sends the proposal to the steward. Its rules examine demand, wages plus service income, reserves, repairs and affordability; it explains an approval or veto. Approved changes are reviewed again at the next dawn before taking effect. A vote without a majority keeps the current policy. The steward is deterministic game logic and needs no external AI service.
 
 Bank savings are personal and separate from village funds. Loans create restricted purchase credit, not wallet gold. Credit is valid for land, construction, purchases from another player’s equipment shop, wooden tools, backpacks, and horses. It cannot finance buying from your own shop, ordinary transfers, or depositing money into savings. Debt and unused credit persist across runs; no one’s private savings fund public loans. Voluntary repayment uses wallet gold at the treasury.
+
+## Enemy attacks and village cooperation
+
+| Enemy | Behavior |
+| --- | --- |
+| Shambler | Standard slow zombie with a small telegraphed strike. |
+| Grave runner | Faster, less durable attacker with a short warning. |
+| Ironbound | Armored enemy with a recognizable helmet and reduced incoming damage. |
+| Brood husk | Large zombie with a wide slam; releases up to three weak Grave mites on death, within the battlefield limit. |
+| Grave mite | Small, weak offspring. Cannot split again. |
+| Gravebreaker | A larger siege enemy on every fifth night, with a slow, wide slam and heavy structure damage. |
+
+Graveyard spawns take 2.2 seconds to climb free before moving or attacking. Split offspring take 0.65 seconds to settle at the parent's death site. Once every scheduled enemy and split offspring is defeated, the night ends early and dawn pays accrued wages, bonuses and the survival grant once. Wages accrue at the same per-second rate, so a shorter night does not grant a full twelve-minute wage. If the four-minute deadline arrives first, dawn stops new spawns while existing zombies remain to be defeated. Attack circles lock to the ground when the windup starts; damage checks the defenders still inside at impact, with obstruction checks. Leaving the red circle lets you dodge. Sword cleave covers a 120-degree forward arc, with 3.2 m reach for players and 2.6 m for NPC guards. Each player swing consumes durability once, and each defeated zombie grants its eligible credit once. Bows remain single-target.
+
+The noticeboard posts real shortages in communal food/repair stock, public barracks wheat and cannon supplies. At most four requests and 300 reserved gold are committed per day, with up to 24 units per request. It preserves 500 treasury gold plus two active payroll cycles before funding deliveries. Bring a chosen partial quantity to the marked entrance; payment uses the normal loan-repayment rules. Ordinary donations or sales can fill a need without an extra bounty. Expired, superseded and fallen-village requests refund unused escrow; withdrawing supplies cannot manufacture a new rewarded shortage.
+
+Owned barracks support Defend the gate, Hold here, Follow me and Retreat to barracks. Hold captures the owner's actual current position. Troops follow the existing roads and gate, respect obstacles and stay within their order's fighting area. A following troop retreats when its owner is unavailable or unreachable, and replacements inherit the barracks order. The public Watch remains independent.
+
+New accounts receive a compact optional guide covering their first tool, gathering, selling, food and finding the gate. Dismiss or reopen it from the village menu. Account honors unlock at 1, 5, 10 and 20 credited nights across runs; a credit requires being online and alive for at least half of an actually survived night. Cosmetic sashes and crests persist across runs. Earned colors can decorate owned buildings at their entrances, and the founder can choose the keep banner at the keep entrance. These choices affect appearance only.
 
 ## Hired workers
 
@@ -112,6 +135,8 @@ Sales use current stock prices, tax, the treasury’s emergency reserve and norm
 | E | Gather a matching nearby resource or interact with a service, plot, horse, cart, or downed companion. |
 | I | Open your pack, equipment and hotbar setup. |
 | M | Open the village atlas and mark a destination. |
+| B | Read village delivery requests; actual deliveries need the destination entrance. |
+| R | Command troops belonging to your own barracks. |
 | Enter | Focus chat; send the typed message. |
 | T | Toggle village chat. |
 | H | Open controls and help. |
@@ -127,7 +152,7 @@ Chat is village-only, limited to 240 characters and one message per second. Mess
 1. Join the same village with two separate accounts in different browsers. Confirm synchronized gathering and chat, then use the atlas to find plots and permanent services.
 2. Trade supplies, buy land, and build a stocked tool shop. Have the other account buy a stone or iron tool and verify its yield, durability, storage cost and payment.
 3. Build a production plot, allow visitors, and gather enough resources to observe the accumulated owner share. Load stores or a cart when your pack fills.
-4. Recruit and feed barracks troops; stock a tower with ammunition. Defend the single gate, repair damage, and inspect combined wages and bonuses at dawn.
+4. Recruit and feed barracks troops; build an archer tower without ammunition and supply a cannon with stone and coal. Defend the single gate, repair damage, and inspect combined wages and bonuses at dawn.
 5. Carry a downed dwarf to a church bed or revive them in the field. Dawn enables manual respawn without interrupting a rescue; choosing respawn loses all carried inventory, tools, weapons, the backpack and 25% of wallet gold. Respawn grants no free replacement gear; bank savings or approved purchase credit can fund a new tool.
 6. Try a policy proposal and inspect the steward’s reason. On a merchant morning, check surplus exports and stable stock, then ride and haul a cart.
 7. Deposit wallet gold, use approved purchase credit, and verify that debt, unused credit and protected savings survive a server restart. Check that all-offline villages remain paused.

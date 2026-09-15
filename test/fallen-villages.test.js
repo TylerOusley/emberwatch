@@ -43,6 +43,7 @@ test('fallen runs leave the public list immediately and after restart while resu
   village.guards = []; village.gate.hp = 0; village.keep.hp = 10;
   village.zombies = [{ id: 'last-zombie', x: 0, z: -34, yaw: Math.PI, hp: 65, maxHp: 65, anim: 'walk', roadIndex: 5, cooldown: 0, elite: false, speed: 1.75 }];
   app.simulation.tickNpcs(village, .05);
+  village.clock += .81; app.simulation.tickNpcs(village, .81);
   assert.equal(village.status, 'fallen');
   const available = await list();
   assert.deepEqual(available.map(v => v.id), [activeId]);
