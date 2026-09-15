@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { plotEntrance } from '../shared/access.js';
 import { Simulation } from '../server/simulation.js';
 import { careSnapshot } from '../server/care-defense.js';
-import { PLOTS, GUARD_ROAD, plotFront } from '../shared/world.js';
+import { PLOTS, GUARD_ROAD } from '../shared/world.js';
 import { TOWER_STATS, RECRUIT } from '../shared/defense.js';
 
 function fixture() {
@@ -23,7 +24,7 @@ function fixture() {
 test('a normally constructed outer archer tower fires at the zombie road, then requires resupply', () => {
   const { sim, village, player, act } = fixture();
   const site = PLOTS.find(p => p.id === 'outpost-1');
-  Object.assign(player, plotFront(site, 1));
+  Object.assign(player, plotEntrance(site, village.plots.find(p => p.id === site.id)));
   player.wallet = 500; player.inventory.timber = 60; player.inventory.stone = 40;
   act({ kind: 'plot_buy', plotId: site.id });
   act({ kind: 'plot_build', plotId: site.id, building: 'archer_tower' });
@@ -42,7 +43,7 @@ test('a normally constructed outer archer tower fires at the zombie road, then r
   const hp = zombie.hp;
   sim.tick(3); assert.equal(zombie.hp, hp, 'spent ammunition never regenerates for free');
   assert.equal(careSnapshot(village, player.id, sim).defenseStatus[0].status, 'empty');
-  Object.assign(player, plotFront(site, 1)); player.inventory.arrows = 2;
+  Object.assign(player, plotEntrance(site, village.plots.find(p => p.id === site.id))); player.inventory.arrows = 2;
   act({ kind: 'plot_deposit', plotId: site.id, resource: 'arrows', amount: 2 });
   sim.tick(.05); assert.equal(zombie.hp, hp - 20); assert.equal(plot.storage.arrows, 1);
 });

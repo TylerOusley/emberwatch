@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSettlementUI } from '../public/src/settlement-ui.js';
 import { WORKER_RULES } from '../shared/workers.js';
-import { PLOTS } from '../shared/world.js';
+import { BUILDINGS, PLOTS } from '../shared/world.js';
+
+import { buildingEntrance } from '../shared/access.js';
+const treasuryEntrance = buildingEntrance(BUILDINGS.find(b => b.id === 'bank'));
 
 // Exercise actual control handlers without a WebGL scene. The small DOM adapter
 // preserves selected values and focus so incoming worker snapshots are covered.
@@ -12,6 +15,7 @@ function fixture(t) {
   const fields = new Map(), sent = [];
   const player = { id: 'alice', name: 'Alice', role: 'guard', x: -10, z: -23, wallet: 200, bank: 50, hp: 100, maxHp: 100, hunger: 70, inventory: {}, durability: {}, tiers: {} };
   const worker = { id: 'hired-one', ownerId: 'alice', name: 'Alice’s worker', x: -10, z: -23, resource: 'timber', sourcePlotId: null, mode: 'sell', destinationPlotId: null, status: 'Waiting for orders', paused: true, cargo: {} };
+  Object.assign(player, treasuryEntrance);
   const state = { workers: [worker], players: [player], plots: [], guards: [], stock: {}, treasury: 20000, policies: {}, loan: { credit: 500 } };
   const content = { contains: element => [...fields.values()].includes(element), querySelectorAll: selector => selector === '[data-settlement-button]' ? buttons : [] };
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
@@ -86,7 +90,7 @@ test('worker controls enforce wallet hiring, crew limits, proximity, partial col
   f.state.workers.pop(); f.player.x = 10; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
   f.click('Mark the treasury'); assert.equal(f.ui.getWaypoint().id, 'bank');
   f.click('Find worker'); assert.deepEqual(f.ui.getWaypoint(), { kind: 'worker', id: f.worker.id, name: f.worker.name, x: f.worker.x, z: f.worker.z });
-  f.player.x = -10; f.worker.paused = false; f.worker.cargo = { stone: 10 }; f.player.inventory = { wheat: 97 }; f.ui.refresh();
+  Object.assign(f.player, treasuryEntrance); f.worker.paused = false; f.worker.cargo = { stone: 10 }; f.player.inventory = { wheat: 97 }; f.ui.refresh();
   f.click('Collect carried supplies'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_collect', workerId: f.worker.id });
   assert.equal(f.button('Dismiss worker').disabled, true);
   f.player.inventory.wheat = 100; f.ui.refresh(); assert.equal(f.button('Collect carried supplies').disabled, true);
@@ -102,4 +106,21 @@ test('worker names and statuses are escaped and clearing the UI drops an old vil
   f.ui.show('workers'); assert.doesNotMatch(f.html, /<img src=x|<script>/); assert.match(f.html, /&lt;img src=x/);
   f.select('worker-0-resource', 'iron'); f.ui.clear(); f.ui.show('workers');
   assert.equal(f.fields.get('worker-0-resource').value, 'timber');
+});
+
+test('worker hiring requires the player entrance while returning workers can wait in the forecourt', t => {
+  const f = fixture(t), bank = BUILDINGS.find(b => b.id === 'bank');
+  f.ui.show('workers');
+  f.player.x = bank.x - bank.w / 2 - 1;
+  f.click(`Hire a worker · ${WORKER_RULES.hireCost}g`);
+  assert.equal(f.sent.length, 0);
+  assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
+  f.click('Apply orders'); assert.equal(f.sent.at(-1).kind, 'worker_assign');
+  Object.assign(f.player, treasuryEntrance);
+  Object.assign(f.worker, { x: bank.x, z: bank.z - bank.d / 2 - 1 });
+  f.ui.refresh(); f.click('Dismiss worker');
+  f.click('Confirm change'); assert.equal(f.sent.at(-1).kind, 'worker_dismiss');
+  f.ui.show('workers'); f.click('Dismiss worker');
+  f.player.x = bank.x - bank.w / 2 - 1; f.click('Confirm change');
+  assert.equal(f.sent.length, 2); assert.match(f.html, /BUILDING ENTRANCE/);
 });

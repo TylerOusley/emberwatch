@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,7 +12,7 @@ import { saleQuote, saleUnitPrice, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '..
 import { taxedSaleQuote } from '../shared/economy.js';
 
 const treasury = BUILDINGS.find(b => b.id === 'bank');
-const visitTreasury = player => Object.assign(player, { x: treasury.x, z: treasury.z + treasury.d / 2 + 1 });
+const visitTreasury = player => Object.assign(player, buildingEntrance(treasury));
 
 async function fixture(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'emberwatch-market-'));

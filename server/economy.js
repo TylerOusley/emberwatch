@@ -1,3 +1,4 @@
+import { canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
 import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
@@ -8,10 +9,7 @@ const materials = Object.keys(RESOURCE_MARKET);
 const basics = ['wheat', 'timber', 'stone'];
 const own = (object, key) => typeof key === 'string' && Object.hasOwn(object, key);
 const whole = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
-const near = (p, id) => {
-  const b = BUILDINGS.find(building => building.id === id);
-  return !!b && Math.hypot(Math.max(0, Math.abs(p.x - b.x) - b.w / 2), Math.max(0, Math.abs(p.z - b.z) - b.d / 2)) <= 3.5;
-};
+const near = (p, id) => canUseBuilding(p, BUILDINGS.find(building => building.id === id));
 const requireBank = p => { if (!near(p, 'bank')) throw new Error('Visit the Village Treasury to trade resources.'); };
 const addIncome = (sim, v, p, amount) => {
   if (!whole(p.wallet) || !whole(p.wallet + amount)) throw new Error('Your wallet cannot accept this payment.');

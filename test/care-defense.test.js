@@ -1,11 +1,12 @@
+import { plotEntrance } from '../shared/access.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PLOTS, plotFront, canStand, plotSolids, plotSolid } from '../shared/world.js';
+import { PLOTS, plotFront, canStand, plotSolids, plotSolid, plotBedPoint } from '../shared/world.js';
 import { CHURCH, RECRUIT } from '../shared/defense.js';
 import { careAction, careTick, careNight, ensureCare, cancelCarry, cancelTreatment, careSnapshot, guardPathFor, tickDefenseAttack } from '../server/care-defense.js';
 
 function fixture(building = 'church', id = 'west-1') {
-  const site = PLOTS.find(p => p.id === id), door = plotFront(site, 1);
+  const site = PLOTS.find(p => p.id === id), door = building === 'church' ? plotBedPoint(site, 0) : plotEntrance(site, building);
   const player = name => ({ id: name, name, role: name === 'owner' ? 'priest' : 'villager', online: true, downed: false, hp: 60, maxHp: 100, wallet: 500, x: door.x, z: door.z, inventory: {}, durability: { hammer: 100 }, tiers: { hammer: 'iron' }, tool: 'hammer', repairBonus: 0, jobBonus: 0 });
   const owner = player('owner'), visitor = player('visitor'), casualty = player('casualty');
   const plot = { id, ownerId: owner.id, building, level: 1, hp: 300, maxHp: 300, storage: { wheat: 0, timber: 100, stone: 100, iron: 100, coal: 10, arrows: 10 } };

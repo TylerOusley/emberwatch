@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
-import { PLOTS, RESOURCES, canStand, plotFront, plotSolids } from '../shared/world.js';
+import { BUILDINGS, PLOTS, RESOURCES, canStand, plotSolids } from '../shared/world.js';
 
 async function fixture(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'emberwatch-settlement-'));
@@ -32,8 +33,8 @@ async function residents(app, role = 'villager') {
   return { founder, guest, village: app.simulation.villages.get(id), owner, visitor };
 }
 const act = (app, village, player, action) => { village.clock += .7; return app.simulation.action(village.id, player.id, action); };
-const atPlot = (player, site = PLOTS[0]) => Object.assign(player, plotFront(site, 1));
-const atBank = player => Object.assign(player, { x: -18, z: -17.5 });
+const atPlot = (player, village, site = PLOTS[0]) => Object.assign(player, plotEntrance(site, village.plots.find(p => p.id === site.id)));
+const atBank = player => Object.assign(player, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
 async function waitFor(fn, timeout = 2500) {
   const end = performance.now() + timeout;
   while (performance.now() < end) { const value = fn(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 5)); }
@@ -53,21 +54,21 @@ test('real loans, plot construction, stocked multiplayer crafting and tier yield
   const { founder, guest, village: v, owner, visitor } = await residents(app);
   atBank(owner); act(app, v, owner, { kind: 'loan', amount: 200 });
   assert.equal(app.store.account(owner.id).credit, 200); assert.equal(owner.wallet, 50);
-  atPlot(owner); act(app, v, owner, { kind: 'plot_buy', plotId: PLOTS[0].id });
+  atPlot(owner, v); act(app, v, owner, { kind: 'plot_buy', plotId: PLOTS[0].id });
   assert.equal(owner.wallet, 0); assert.equal(app.store.account(owner.id).credit, 150);
   // Seed gathered materials; the actual transfer, construction, purchase and
   // resulting harvest still use the same authoritative actions as the client.
   owner.inventory.timber = 20; owner.inventory.stone = 10;
   act(app, v, owner, { kind: 'plot_deposit', plotId: PLOTS[0].id, resource: 'timber', amount: 20 });
   act(app, v, owner, { kind: 'plot_deposit', plotId: PLOTS[0].id, resource: 'stone', amount: 10 });
-  owner.x = visitor.x = PLOTS[0].x; owner.z = visitor.z = PLOTS[0].z;
+  visitor.x = PLOTS[0].x; visitor.z = PLOTS[0].z; atPlot(owner, v);
   act(app, v, owner, { kind: 'plot_build', plotId: PLOTS[0].id, building: 'tool_shop' });
   assert.equal(app.store.account(owner.id).credit, 110);
   for (const player of [owner, visitor]) assert.ok(canStand(player.x, player.z, .48, plotSolids(v.plots)), 'construction moves every obstructed dwarf outside the new building');
-  atPlot(owner); owner.inventory.timber = 5; owner.inventory.stone = 10;
+  atPlot(owner, v); owner.inventory.timber = 5; owner.inventory.stone = 10;
   act(app, v, owner, { kind: 'plot_deposit', plotId: PLOTS[0].id, resource: 'timber', amount: 5 });
   act(app, v, owner, { kind: 'plot_deposit', plotId: PLOTS[0].id, resource: 'stone', amount: 10 });
-  atPlot(visitor);
+  atPlot(visitor, v);
   act(app, v, visitor, { kind: 'craft_buy', plotId: PLOTS[0].id, recipe: 'stone_pickaxe', confirm: true });
   assert.equal(visitor.wallet, 15); assert.equal(visitor.tiers.pickaxe, 'stone'); assert.equal(visitor.durability.pickaxe, 150);
   assert.equal(owner.wallet, 28, 'shop earnings repay six gold of debt before reaching the owner wallet');
@@ -90,7 +91,7 @@ test('real loans, plot construction, stocked multiplayer crafting and tier yield
 
 test('failed post-purchase persistence rolls back account credit and every village mutation', async t => {
   const { app } = await fixture(t), { village: v, owner } = await residents(app);
-  atBank(owner); act(app, v, owner, { kind: 'loan', amount: 200 }); atPlot(owner);
+  atBank(owner); act(app, v, owner, { kind: 'loan', amount: 200 }); atPlot(owner, v);
   app.simulation.saveAll();
   const durableBefore = JSON.stringify(app.store.loadVillages()[0]), accountBefore = app.store.account(owner.id);
   v.clock += .7; const before = structuredClone(v), originalSave = app.store.saveVillage;
@@ -122,7 +123,7 @@ test('changing jobs accrues only each role active time and cannot duplicate dawn
 test('an owned rear barracks dispatches troops through a fully built neighborhood and the single gate', async t => {
   const { app } = await fixture(t), { village: v, owner } = await residents(app, 'guard');
   const site = PLOTS.find(plot => plot.id === 'west-20'); assert.ok(site);
-  owner.wallet = 600; atPlot(owner, site);
+  owner.wallet = 600; atPlot(owner, v, site);
   act(app, v, owner, { kind: 'plot_buy', plotId: site.id });
   // A mature-map collision fixture fills every other deed footprint. This
   // deliberately stress-tests paths independently of eight-resident finances.
@@ -130,7 +131,7 @@ test('an owned rear barracks dispatches troops through a fully built neighborhoo
   const plot = v.plots.find(p => p.id === site.id);
   plot.storage = { timber: 40, stone: 25, iron: 2, wheat: 2 };
   act(app, v, owner, { kind: 'plot_build', plotId: site.id, building: 'barracks' });
-  atPlot(owner, site); act(app, v, owner, { kind: 'recruitGuard', plotId: site.id });
+  atPlot(owner, v, site); act(app, v, owner, { kind: 'recruitGuard', plotId: site.id });
   const guard = v.guards.find(g => g.plotId === site.id); assert.ok(guard);
   let passedGate = false; v.phaseRemaining = 10000;
   for (let i = 0; i < 2200; i++) {
@@ -144,7 +145,7 @@ test('an owned rear barracks dispatches troops through a fully built neighborhoo
 
 test('real WebSocket residents receive the same plot mutations and only their own loan balances', async t => {
   const f = await fixture(t), { app } = f, { village: v, founder, guest, owner, visitor } = await residents(app);
-  atBank(owner); act(app, v, owner, { kind: 'loan', amount: 200 }); atPlot(owner);
+  atBank(owner); act(app, v, owner, { kind: 'loan', amount: 200 }); atPlot(owner, v);
   const a = await socket(f.base, founder.session, v.id), b = await socket(f.base, guest.session, v.id);
   t.after(() => { a.ws.terminate(); b.ws.terminate(); });
   v.clock += .7;

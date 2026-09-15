@@ -1,5 +1,6 @@
 import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carryCapacity, MAX_PLOTS, PLOT_PRICES, TOOL_WEIGHTS, inventoryWeight } from '../../shared/content.js';
-import { BUILDINGS, PLOTS, plotFront } from '../../shared/world.js';
+import { BUILDINGS, PLOTS } from '../../shared/world.js';
+import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
 import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote } from '../../shared/economy.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS } from '../../shared/defense.js';
@@ -16,7 +17,7 @@ const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
 export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar }) {
-  let current = null, signature = '', handlers = [], waypoint = null;
+  let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const workerDrafts = new Map();
   const content = () => document.getElementById('panel-content');
@@ -35,7 +36,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return `<button type="button" class="${className}" data-settlement-button="${id}" ${disabled ? 'disabled' : ''} ${title ? `title="${esc(title)}"` : ''}>${esc(text)}</button>`;
   }
   function command(text, kind, extra = {}, disabled = false, title = '') {
-    return button(text, () => send({ type: 'action', kind, ...extra }), disabled, title);
+    return button(text, () => {
+      if (kind === 'worker_hire' && !atTreasury(me())) { render(); return; }
+      send({ type: 'action', kind, ...extra });
+    }, disabled, title);
   }
   function choices(id, values, selected) {
     return `<select id="${id}">${values.map(([value, text]) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select>`;
@@ -48,6 +52,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function wire() {
     for (const b of content().querySelectorAll('[data-settlement-button]')) b.onclick = () => {
       if (b.disabled) return;
+      if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
       handlers[Number(b.dataset.settlementButton)]?.();
     };
     const policyInput=document.getElementById('policy-name');
@@ -73,13 +78,42 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     current = { kind, id }; signature = ''; render();
   }
   function confirm(title, detail, kind, extra) {
-    current = { kind: 'confirm', title, detail, action: kind, extra }; render();
+    current = { kind: 'confirm', title, detail, action: kind, extra, source: current }; render();
+  }
+  function panelAccess(panel = current) {
+    if (!panel || !me() || !state()) return null;
+    if (panel.kind === 'confirm') {
+      const access = panel.action === 'worker_dismiss' ? serviceAccess('bank') : panelAccess(panel.source);
+      return access?.treatment ? { ...access, allowed: access.entrance, treatment: false } : access;
+    }
+    if (panel.kind === 'plot' || (panel.kind === 'church' && panel.id && panel.id !== 'church')) {
+      const site = PLOTS.find(p => p.id === panel.id), plot = plots().find(p => p.id === panel.id);
+      if (!site) return null;
+      const treatment = plot?.building === 'church' && (me().bedPlotId === site.id ||
+        canUseChurchBed(me(), site, plot));
+      const atDoor = canUsePlot(me(), site, plot);
+      return { allowed: atDoor || treatment, entrance: atDoor, treatment: Boolean(treatment && (!atDoor || panel.kind === 'church' || me().bedPlotId)),
+        point: { ...plotEntrance(site, plot), id: site.id, name: site.name || site.id, kind: 'plot' } };
+    }
+    if (['bank', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant'].includes(panel.kind)) return serviceAccess(panel.kind);
+    return null;
+  }
+  function serviceAccess(id) {
+    const building = BUILDINGS.find(b => b.id === id);
+    return building ? { allowed: canUseBuilding(me(), building), point: { ...building, ...buildingEntrance(building), kind: 'service' } } : null;
+  }
+  const accessMode = access => !access ? 'remote' : !access.allowed ? 'blocked' : access.treatment ? 'treatment' : 'entrance';
+  function entranceGuidance(access) {
+    return head('BUILDING ENTRANCE', `Go to ${access.point.name}.`, 'Stand at the entrance to use this building. The minimap marker shows where to approach.') +
+      button('Mark entrance', () => { waypoint = { ...access.point }; toast(access.point.name + ' entrance marked on your minimap.'); });
   }
   function render() {
     if (!current || !me() || !state()) return;
     handlers = [];
     const builders = { inventory: pack, bank, food, tools, workers, barracks: watch, church, stable, merchant, policies, roles, plot, cart, horse, atlas, confirm: confirmation };
-    const body = builders[current.kind]?.(current.id) || '';
+    const access = panelAccess();
+    renderedAccess = accessMode(access);
+    const body = access && !access.allowed ? entranceGuidance(access) : access?.treatment && current.kind !== 'confirm' ? church(current.id) : builders[current.kind]?.(current.id) || '';
     if (!body) return;
     const dialog = document.getElementById('panel-dialog');
     const scroll = dialog.scrollTop;
@@ -88,6 +122,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function refresh() {
     if (!current || getActivePanel() !== 'settlement' || !document.getElementById('panel-dialog').open) return;
+    // Leaving an entrance must invalidate service controls even while editing a quantity.
+    if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
     // Network snapshots must not reset a quantity or selection while it is being edited.
     if (content().contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
       if (current.kind === 'bank') for (const resource of Object.keys(RESOURCE_MARKET)) updateTrade(resource);
@@ -95,7 +131,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo]), current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, atTreasury(w)])] : null]);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
@@ -139,7 +175,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return html;
   }
   const ownWorkers = () => (state()?.workers || []).filter(worker => worker.ownerId === me()?.id);
-  function atTreasury(player) {
+  const atTreasury = player => canUseBuilding(player, BUILDINGS.find(b => b.id === 'bank'));
+  // Workers wait and sell around the treasury forecourt, not at the resident doorway.
+  function workerAtTreasury(player) {
     const bank = BUILDINGS.find(b => b.id === 'bank');
     return Math.hypot(Math.max(0, Math.abs(player.x - bank.x) - bank.w / 2), Math.max(0, Math.abs(player.z - bank.z) - bank.d / 2)) <= 3.5;
   }
@@ -169,8 +207,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const nearBank = atTreasury(p), full = crew.length >= WORKER_RULES.maxPerPlayer;
     let html = head('HIRED HANDS', 'Put your workers to work.', 'Choose a resource and gathering ground, then send each haul to your building storage or sell it to the village.') + stats([['Your workers', `${crew.length} / ${WORKER_RULES.maxPerPlayer}`], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
     html += `<p>Workers carry ${WORKER_RULES.carryCapacity} weight and work during daylight while you are online. They shelter at night or when danger approaches. Hiring and wages use your wallet; work stops when you cannot pay. Sales follow village prices and tax, with proceeds paid to you.</p>`;
-    html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
-    if (!nearBank) html += '<p>Visit the Village Treasury to hire or dismiss workers.</p>' + button('Mark the treasury', () => markService('bank'));
+    html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury entrance to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
+    if (!nearBank) html += '<p>Visit the Village Treasury entrance to hire or dismiss workers.</p>' + button('Mark the treasury', () => markService('bank'));
     if (!crew.length) html += '<p>Your hired workers will appear here. Manage their orders from your pack at any time.</p>';
     crew.forEach((worker, index) => {
       const draft = workerDraft(worker), order = draft.order, sources = workerSourcePlots(order.resource);
@@ -196,7 +234,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += command(worker.paused ? 'Resume work' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused });
       html += button('Find worker', () => { waypoint = { kind: 'worker', id: worker.id, name: worker.name || 'Your worker', x: worker.x, z: worker.z }; toast('Your worker is marked on the minimap.'); });
       html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Take as much as your pack can hold. The worker keeps any remainder.');
-      html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !atTreasury(worker) || weight > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
+      html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
       html += '</div></section>';
     });
     return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div>';
@@ -275,7 +313,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function markService(kind) {
     const service = BUILDINGS.find(b => b.id === kind);
     if (!service) return;
-    waypoint = { ...service, kind: 'service' };
+    waypoint = { ...service, ...buildingEntrance(service), kind: 'service' };
     toast(service.name + ' marked on your minimap.');
   }
   function church(id = 'church') {
@@ -320,10 +358,12 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     html += '<h3>The steward’s last decision</h3><p>' + esc(state().steward?.lastDecision || 'The steward is watching village supplies.') + '</p>';
     return html;
   }
+  const atCouncil = () => BUILDINGS.some(b => ['bank', 'keep'].includes(b.id) && canUseBuilding(me(), b));
   function policies() {
-    const s = state();
+    const s = state(), canPropose = atCouncil();
     let html = head('VILLAGE COUNCIL', 'A voice for every dwarf.', 'A majority vote goes to the steward for an affordability and fairness review. Approved policies take effect at the next dawn.') + stats([['Guard wage', `${num(s.policies?.guardWage)}g`], ['Priest wage', `${num(s.policies?.priestWage)}g`], ['Trade tax', `${num(s.policies?.tradeTax)}%`], ['Base land tax', `${num(s.policies?.landTax)}g`]]);
-    html += '<p>Wages are paid at dawn and depend on participation. Performance pay is additional. Full-cycle land tax is the base tax multiplied by the square of your plot count, prorated by your time online.</p><h3>Propose a change</h3><div class="policy-form"><label>Policy' + choices('policy-name', [['guardWage', 'Guard daily wage'], ['priestWage', 'Priest daily wage'], ['tradeTax', 'Trade tax %'], ['landTax', 'Land tax base']]) + '</label><label>New value' + quantity('policy-value', 60, 25).replace('min="1"', 'min="10" step="5"') + '</label>' + button('Submit proposal', () => send({ type: 'action', kind: 'propose_policy', policy: value('policy-name'), value: amount('policy-value') })) + '</div><div class="transfer-form">' + choices('export-priority', [['conserve', 'Conserve supplies'], ['balanced', 'Balanced reserves'], ['trade', 'Export more surplus']], s.policies?.exportPriority) + button('Propose resource priority', () => send({ type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: value('export-priority') })) + '</div><h3>Votes & decisions</h3>';
+    html += '<p>Wages are paid at dawn and depend on participation. Performance pay is additional. Full-cycle land tax is the base tax multiplied by the square of your plot count, prorated by your time online.</p><h3>Propose a change</h3><div class="policy-form"><label>Policy' + choices('policy-name', [['guardWage', 'Guard daily wage'], ['priestWage', 'Priest daily wage'], ['tradeTax', 'Trade tax %'], ['landTax', 'Land tax base']]) + '</label><label>New value' + quantity('policy-value', 60, 25).replace('min="1"', 'min="10" step="5"') + '</label>' + button('Submit proposal', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: value('policy-name'), value: amount('policy-value') }); }, !canPropose) + '</div><div class="transfer-form">' + choices('export-priority', [['conserve', 'Conserve supplies'], ['balanced', 'Balanced reserves'], ['trade', 'Export more surplus']], s.policies?.exportPriority) + button('Propose resource priority', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: value('export-priority') }); }, !canPropose) + '</div><h3>Votes & decisions</h3>';
+    if (!canPropose) html += '<p>Visit the Treasury or Hearthkeep entrance to submit a proposal. You can read the council and vote from anywhere.</p>' + button('Mark the treasury', () => markService('bank'));
     const proposals = s.proposals || [];
     if (!proposals.length) html += '<p>No proposals yet. All residents have a voice.</p>';
     for (const proposal of [...proposals].reverse()) {
@@ -359,7 +399,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const place = PLOTS.find(p => p.id === id), p = plots().find(p => p.id === id) || { id }, mine = p.ownerId === me().id;
     if (!place) return head('LAND REGISTRY', 'That plot is unavailable.');
     const type = BUILDING_TYPES[p.building], title = type?.name || 'Open plot';
-    let html = head(place.outside ? 'BEYOND THE WALL · EXPOSED LAND' : 'VILLAGE LAND', `${place.name || id} · ${title}`, place.outside ? 'Outside plots offer forward defenses and access to rich gathering grounds. Buildings here are exposed to the horde.' : 'One building or land use per plot. Stand by the plot to buy, build, trade, or manage it.');
+    let html = head(place.outside ? 'BEYOND THE WALL · EXPOSED LAND' : 'VILLAGE LAND', `${place.name || id} · ${title}`, place.outside ? 'Outside plots offer forward defenses and access to rich gathering grounds. Buildings here are exposed to the horde.' : 'One building or land use per plot. Use its entrance to buy, build, trade, or manage it.');
     if (!p.ownerId) {
       const count = owned().length, price = PLOT_PRICES[count];
       html += stats([['Your land', `${count} / ${MAX_PLOTS}`], ['Purchase', price === undefined ? 'Plot limit reached' : `${price} gold`], ['Total daily tax after purchase', `${num((state().policies?.landTax ?? 2) * (count + 1) ** 2)} gold`]]);
@@ -421,13 +461,20 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function atlas() {
     let html = head('VILLAGE ATLAS', 'Find your place in the village.', 'Gold marks your land. Open plots lie beyond the central services, with exposed defense plots beside the approach road. Mark a destination to find it on your minimap.');
     html += '<h3>Permanent services</h3><div class="atlas-list">';
-    for (const b of BUILDINGS.filter(b => !['house'].includes(b.kind))) html += row(b.name, `${Math.round(gap(b, me()))} m away`, button('Mark', () => { waypoint = { ...b, kind: 'service' }; toast(b.name + ' marked on your minimap.'); }));
+    for (const b of BUILDINGS.filter(b => !['house'].includes(b.kind))) html += row(b.name, `${Math.round(gap(buildingEntrance(b), me()))} m to entrance`, button('Mark', () => markService(b.id)));
     html += '</div><h3>Plots & player businesses</h3><div class="atlas-list">';
     for (const place of PLOTS) {
       const p = plots().find(p => p.id === place.id), type = BUILDING_TYPES[p?.building];
-      html += row(`${place.name || place.id}${p?.ownerId === me().id ? ' · yours' : ''}`, `${type?.name || 'Open plot'}${p?.ownerId ? ' · ' + (p.ownerName || 'Village resident') : ''} · ${place.outside ? 'outside' : 'inside'} · ${Math.round(gap(place, me()))} m`, button('Mark', () => { waypoint = { ...plotFront(place, -.8), id: place.id, name: place.name || place.id, kind: 'plot' }; toast((place.name || place.id) + ' marked on your minimap.'); }));
+      html += row(`${place.name || place.id}${p?.ownerId === me().id ? ' · yours' : ''}`, `${type?.name || 'Open plot'}${p?.ownerId ? ' · ' + (p.ownerName || 'Village resident') : ''} · ${place.outside ? 'outside' : 'inside'} · ${Math.round(gap(plotEntrance(place, p), me()))} m to entrance`, button('Mark', () => { waypoint = { ...plotEntrance(place, p), id: place.id, name: place.name || place.id, kind: 'plot' }; toast((place.name || place.id) + ' marked on your minimap.'); }));
     }
     return html + '</div>';
   }
-  return { show, refresh, getWaypoint: () => waypoint, clear: () => { current = null; waypoint = null; signature = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); } };
+  function getWaypoint() {
+    if (waypoint?.kind === 'plot') {
+      const site = PLOTS.find(p => p.id === waypoint.id);
+      if (site) Object.assign(waypoint, plotEntrance(site, plots().find(p => p.id === site.id)));
+    }
+    return waypoint;
+  }
+  return { show, refresh, getWaypoint, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); } };
 }

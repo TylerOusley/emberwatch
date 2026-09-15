@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BUILDINGS } from '/shared/world.js';
 import { createHorseModel, createHorseResources } from './horse-model.js';
+import { createMerchantVisit } from './merchant-model.js';
 
 // Sculpted riding horses and cargo carts, sharing geometry between instances.
 export function createTransportWorld(scene) {
@@ -10,7 +11,8 @@ export function createTransportWorld(scene) {
   const box = new THREE.BoxGeometry(1, 1, 1), round = new THREE.CylinderGeometry(1, 1, 1, 10), soft = new THREE.IcosahedronGeometry(1, 1);
   const material = color => new THREE.MeshStandardMaterial({ color, roughness: .92, flatShading: true });
   const m = { coat: material('#8b5b3e'), dark: material('#342d26'), white: material('#d7c7a5'), leather: material('#6b382b'), wood: material('#987144'), iron: material('#404c4b'), cargo: material('#a99567') };
-  let time = 0;
+  const merchantStall = BUILDINGS.find(building => building.id === 'merchant');
+  let time = 0, merchantVisit = null, disposed = false;
   function part(parent, geometry, mat, position, scale) {
     const mesh = new THREE.Mesh(geometry, mat); mesh.position.set(...position); mesh.scale.set(...scale); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   }
@@ -69,7 +71,17 @@ export function createTransportWorld(scene) {
   return {
     root,
     update(state, dt = 1 / 60, renderedRiders) {
-      if (!state) return; dt = Math.min(.1, Math.max(0, dt)); time += dt;
+      if (disposed) return;
+      if (!state) { if (merchantVisit) merchantVisit.group.visible = false; return; }
+      dt = Math.min(.1, Math.max(0, dt)); time += dt;
+      const present = state.merchant?.present === true;
+      if (present && !merchantVisit && merchantStall) {
+        merchantVisit = createMerchantVisit(merchantStall, horseResources); root.add(merchantVisit.group);
+      }
+      if (merchantVisit) {
+        merchantVisit.group.visible = present;
+        if (present) merchantVisit.update(dt, time);
+      }
       const stable = BUILDINGS.find(building => building.id === 'stable');
       const stock = stable ? Array.from({ length: Math.min(3, Math.max(0, state.stable?.stock ?? 0)) }, (_, index) => ({ id: `stable-stock-${index}`, x: stable.x - 2 + index * 3, z: stable.z + 9.5, yaw: -Math.PI / 2, moving: false })) : [];
       sync(horses, [...(state.horses ?? []), ...stock], horseMesh, dt, (mesh, horse, traveled, frameTime, followsRider) => {
@@ -81,6 +93,8 @@ export function createTransportWorld(scene) {
       });
     },
     dispose() {
+      if (disposed) return; disposed = true;
+      merchantVisit?.dispose(); merchantVisit = null;
       for (const mesh of horses.values()) mesh.userData.actor.dispose();
       scene.remove(root); horses.clear(); carts.clear();
       horseResources.dispose();

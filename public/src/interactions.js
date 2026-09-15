@@ -22,11 +22,28 @@ export function chooseInteraction(player, tool, nodes, states, buildings) {
   const resource = nearestGatherable(player, tool, nodes, states);
   if (resource) return { kind: 'gather', resource, targetId: resource.id };
   if (tool === 'hammer' && distance(player, { x: 0, z: 18 }) <= 4.5) return { kind: 'repair', targetId: 'gate' };
-  let target = null, nearest = 2.4;
+  let target = null, nearest = Infinity;
   for (const building of buildings) {
-    if (!SERVICES.has(building.kind)) continue;
-    const gap = Math.hypot(Math.max(0, Math.abs(player.x - building.x) - building.w / 2), Math.max(0, Math.abs(player.z - building.z) - building.d / 2));
+    if (!SERVICES.has(building.kind) || !canUseBuilding(player, building)) continue;
+    const gap = distance(player, buildingEntrance(building));
     if (gap < nearest) { nearest = gap; target = building; }
   }
   return target ? { kind: target.kind, building: target } : null;
 }
+
+// Occupied plots use their building's doorway. Open land uses the fence gate;
+// church beds are separate interaction points for care beside the bed itself.
+export function choosePlotInteraction(player, sites, states = []) {
+  if (!player || player.downed) return null;
+  let nearest = Infinity, selected = null;
+  for (const site of sites) {
+    const state = states.find(plot => plot.id === site.id);
+    const atDoor = canUsePlot(player, site, state);
+    const atBed = canUseChurchBed(player, site, state);
+    if (!atDoor && !atBed) continue;
+    const gap = distance(player, plotEntrance(site, state));
+    if (gap < nearest) { nearest = gap; selected = { kind: 'plot', site, state, atBed: atBed && !atDoor }; }
+  }
+  return selected;
+}
+import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';

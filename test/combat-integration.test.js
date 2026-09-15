@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/index.js';
-import { BUILDINGS, PLOTS, canStand, plotFront, plotSolids } from '../shared/world.js';
+import { BUILDINGS, PLOTS, canStand, plotSolids } from '../shared/world.js';
 import { carryCapacity, inventoryWeight } from '../shared/content.js';
 
 async function fixture(t, role = 'villager', companion = false) {
@@ -58,7 +59,7 @@ test('a two-second healing channel cannot become a fast revival when its target 
 test('a full pack rejects a replacement wooden tool without charging or changing saved state', async t => {
   const { app, sim, village, player } = await fixture(t);
   const shop = BUILDINGS.find(b => b.id === 'tools');
-  Object.assign(player, { x: shop.x + shop.w / 2 + 1, z: shop.z });
+  Object.assign(player, buildingEntrance(shop));
   player.durability.pickaxe = 0;
   player.inventory.wheat = carryCapacity(player) - inventoryWeight(player);
   assert.equal(inventoryWeight(player), carryCapacity(player));
@@ -73,7 +74,7 @@ test('a full pack rejects a replacement wooden tool without charging or changing
 
 test('constructing a plot building relocates a zombie out of the new collision footprint', async t => {
   const { app, sim, village, player } = await fixture(t);
-  const site = PLOTS[0]; Object.assign(player, plotFront(site, 1)); player.wallet = 500;
+  const site = PLOTS[0]; Object.assign(player, plotEntrance(site, village.plots.find(p => p.id === site.id))); player.wallet = 500;
   sim.action(village.id, player.id, { kind: 'plot_buy', plotId: site.id });
   const plot = village.plots.find(p => p.id === site.id);
   // Seed gathered construction supplies; ownership, payment, construction,

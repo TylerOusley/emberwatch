@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { BUILDINGS } from '../shared/world.js';
 import { MAX_TRADE_AMOUNT, saleQuote, purchaseQuote } from '../shared/market.js';
 import { taxedSaleQuote, taxedPurchaseQuote, MAX_TRADE_AMOUNT as sharedLimit } from '../shared/economy.js';
@@ -22,7 +23,7 @@ test('bulk quotes price every crossed stock band and cap work at ten thousand un
 
 test('a full expedition backpack trades in one action with finite gold, inventory and storage', () => {
   const bank = BUILDINGS.find(b => b.id === 'bank');
-  const player = { id: 'bulk', role: 'villager', backpackTier: 3, x: bank.x - bank.w / 2 - 1, z: bank.z, online: true, wallet: 5000, inventory: { wheat: 550 }, durability: {} };
+  const player = { id: 'bulk', role: 'villager', backpackTier: 3, ...buildingEntrance(bank), online: true, wallet: 5000, inventory: { wheat: 550 }, durability: {} };
   const village = { players: { bulk: player }, stock: { wheat: 10 }, treasury: 10000, day: 1, policies: {} };
   ensureEconomy(village);
   const run = action => economyAction({}, village, player, action);
