@@ -1,67 +1,90 @@
 import { requestAtDestination } from '../../shared/requests.js';
+import { BUILDINGS, PLOTS } from '../../shared/world.js';
+import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot } from '../../shared/access.js';
+import { NOTICEBOARD_POINT, canReadNoticeboard } from './noticeboard.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const title = value => String(value || '').replace(/^./, c => c.toUpperCase());
 
-/** Remote reading is allowed; every actual delivery still requires its doorway. */
-export function createRequestsUI({ getState, getMe, getActivePanel, openPanel, send, markTarget, document: doc = globalThis.document }) {
-  let visible = false, signature = '', handlers = [];
+// The board is a place to read and plan. Deliveries have a separate, local
+// counter view so residents can finish a request without carrying the board UI.
+export function createRequestsUI({ getState, getMe, getActivePanel, openPanel, closePanel = () => {}, send, markTarget, document: doc = globalThis.document }) {
+  let view = null, signature = '', handlers = [], deliveryButtons = new Map();
   const drafts = new Map();
   const content = () => doc.getElementById('panel-content');
-  const active = () => visible && getActivePanel() === 'requests';
-  const ready = request => {
-    const p = getMe(), s = getState();
-    return s?.status === 'active' && p && !p.downed && !p.bedPlotId && !p.mountedHorseId && requestAtDestination(p, request, s);
-  };
+  const active = () => view && getActivePanel() === 'requests';
+  const standing = () => getState()?.status === 'active' && getMe() && !getMe().downed && !(getMe().hp <= 0) && !getMe().bedPlotId && !getMe().mountedHorseId && !getMe().carriedBy;
+  function destination(id) {
+    const service = ['bank', 'barracks'].includes(id) && BUILDINGS.find(b => b.id === id);
+    if (service) return { id, name: service.name, point: { ...buildingEntrance(service), id, name: service.name, kind: 'service' }, allowed: canUseBuilding(getMe(), service) };
+    const plot = getState()?.plots?.find(p => p.id === id && p.building === 'cannon' && p.ownerId && p.hp > 0), site = plot && PLOTS.find(p => p.id === id);
+    return site ? { id, name: site.name, point: { ...plotEntrance(site, plot), id, name: site.name, kind: 'plot' }, allowed: canUsePlot(getMe(), site, plot) } : null;
+  }
+  const viewAllowed = () => standing() && (view?.kind === 'board' ? canReadNoticeboard(getMe()) : view?.kind === 'destination' && destination(view.id)?.allowed);
+  function markAndClose(point) { view = null; signature = ''; if (point) markTarget({ ...point }); closePanel(); }
+  function requireAccess() {
+    if (viewAllowed()) return true;
+    markAndClose(view?.kind === 'destination' ? destination(view.id)?.point ?? NOTICEBOARD_POINT : NOTICEBOARD_POINT); return false;
+  }
+  const ready = request => view?.kind === 'destination' && request.destinationId === view.id && standing() && request.status === 'open' &&
+    request.expiresDay > (getState()?.day ?? 0) && requestAtDestination(getMe(), request, getState());
   const limit = request => Math.max(0, Math.min(request.remaining, getMe()?.inventory?.[request.resource] || 0));
   const draftAmount = request => Number(drafts.get(request.id) ?? Math.min(limit(request), 10));
   const valid = request => ready(request) && Number.isSafeInteger(draftAmount(request)) && draftAmount(request) > 0 && draftAmount(request) <= limit(request);
+  const selectedItems = () => (getState()?.requests?.items ?? []).filter(r => r.status === 'open' && (view?.kind === 'board' || r.destinationId === view?.id));
+  const currentSignature = () => JSON.stringify([view, getState()?.requests, getState()?.status, getState()?.day, getMe()?.inventory, standing()]);
   function button(text, handler, disabled = false) {
     const index = handlers.push(handler) - 1;
     return `<button class="secondary-button" type="button" data-request-button="${index}" ${disabled ? 'disabled' : ''}>${esc(text)}</button>`;
   }
   function row(request, index) {
-    const atDoor = ready(request), maximum = limit(request), amount = drafts.get(request.id) ?? Math.min(maximum, 10);
-    return `<section class="building-card"><strong>${esc(title(request.resource))} → ${esc(request.destinationName)}</strong>` +
-      `<p>${esc(request.reason)}</p><div class="settlement-stats"><div><span>Still needed</span><strong>${request.remaining} ${esc(request.resource)}</strong></div><div><span>Payment</span><strong>${request.unitGold} gold each</strong></div><div><span>You carry</span><strong>${getMe()?.inventory?.[request.resource] || 0}</strong></div></div>` +
-      `<p>Expires at dawn on day ${request.expiresDay}. ${atDoor ? 'You are at the delivery entrance.' : 'Bring your supplies to the marked entrance to deliver.'}</p>` +
-      '<div class="transfer-form">' + `<input id="request-amount-${index}" data-request-input="${index}" type="number" inputmode="numeric" min="1" max="${Math.max(1, maximum)}" value="${esc(amount)}" aria-label="${esc(request.resource)} delivery amount">` +
-      button('Deliver supplies', () => {
-        // Recheck a moving player and newer state at the moment of clicking.
-        const current = getState()?.requests?.items?.find(r => r.id === request.id && r.status === 'open');
-        if (!current || !valid(current)) { render(); return; }
-        send({ type: 'action', kind: 'request_deliver', requestId: current.id, amount: draftAmount(current) });
-      }, !valid(request)) + button('Mark entrance', () => markTarget({ ...request.point })) + '</div></section>';
+    let html = `<section class="building-card"><strong>${esc(title(request.resource))} → ${esc(request.destinationName)}</strong><p>${esc(request.reason)}</p>` +
+      `<div class="settlement-stats"><div><span>Still needed</span><strong>${request.remaining} ${esc(request.resource)}</strong></div><div><span>Payment</span><strong>${request.unitGold} gold each</strong></div><div><span>You carry</span><strong>${getMe()?.inventory?.[request.resource] || 0}</strong></div></div><p>Expires at dawn on day ${request.expiresDay}.</p>`;
+    if (view.kind === 'board') return html + button('Mark delivery entrance', () => { if (requireAccess()) markAndClose(request.point); }) + '</section>';
+    const maximum = limit(request), amount = drafts.get(request.id) ?? Math.min(maximum, 10);
+    html += '<div class="transfer-form">' + `<input id="request-amount-${index}" data-request-input="${index}" type="number" inputmode="numeric" min="1" max="${Math.max(1, maximum)}" value="${esc(amount)}" aria-label="${esc(request.resource)} delivery amount">`;
+    deliveryButtons.set(request.id, handlers.length);
+    html += button('Deliver supplies', () => {
+      if (!requireAccess()) return;
+      const current = selectedItems().find(r => r.id === request.id);
+      if (!current || !valid(current)) { render(); return; }
+      send({ type: 'action', kind: 'request_deliver', requestId: current.id, amount: draftAmount(current) });
+    }, !valid(request));
+    return html + '</div></section>';
+  }
+  function updateDeliveryButtons() {
+    const buttons = content()?.querySelectorAll('[data-request-button]') ?? [];
+    for (const [id, index] of deliveryButtons) { const request = selectedItems().find(r => r.id === id); if (buttons[index]) buttons[index].disabled = !request || !valid(request); }
   }
   function render() {
-    const s = getState(), p = getMe(); if (!s || !p) return;
-    const book = s.requests || { items: [], reservedGold: 0 }, items = book.items.filter(r => r.status === 'open');
-    const history = book.items.filter(r => r.status !== 'open').slice(-4).reverse();
-    handlers = [];
+    if (!getState() || !getMe() || !view || !requireAccess()) return;
+    const book = getState().requests || { items: [], reservedGold: 0 }, items = selectedItems(), board = view.kind === 'board';
+    const history = board ? book.items.filter(r => r.status !== 'open').slice(-4).reverse() : [];
+    handlers = []; deliveryButtons = new Map(); signature = currentSignature();
     const scroll = doc.getElementById('panel-dialog')?.scrollTop || 0;
-    const html = '<div class="settlement-panel"><p class="eyebrow">VILLAGE NOTICEBOARD</p><h2>Supplies for the next watch.</h2>' +
-      '<p>The steward posts deliveries when village food, repairs, or defenses need supplies. Anyone can help. Payment is reserved when a request opens; loan repayments apply to earnings.</p>' +
-      `<p><strong>${book.reservedGold} gold reserved</strong> for open requests. Read the board from anywhere, then deliver at the destination entrance.</p>` +
-      (items.length ? items.map(row).join('') : '<p>No funded deliveries are needed right now. The steward checks shortages during the day while protecting essential funds.</p>') +
-      '<p>Ordinary sales and donations still work. They can fill a shortage and close its request; use “Deliver supplies” here to receive the posted payment. Removing stored supplies does not create a rewarded shortage.</p>' +
+    const html = '<div class="settlement-panel"><p class="eyebrow">' + (board ? 'VILLAGE REQUEST BOARD' : 'REQUESTED DELIVERIES') + '</p><h2>' + (board ? 'Supplies for the next watch.' : esc(destination(view.id).name)) + '</h2>' +
+      (board ? '<p>The steward posts deliveries when village food, repairs, or defenses need supplies. Anyone can help. Mark a delivery entrance, close the board, and bring your supplies there.</p>' + `<p><strong>${book.reservedGold} gold reserved</strong> for open requests. At the destination, press E and choose “Requested deliveries” to receive the posted payment.</p>` : '<p>You are at this delivery entrance. These requests belong to this destination only. Payment comes from the funds reserved by the steward; loan repayments apply to earnings.</p>') +
+      (items.length ? items.map(row).join('') : `<p>${board ? 'No funded deliveries are needed right now. The steward checks shortages during the day while protecting essential funds.' : 'No funded deliveries are open for this destination. Check the village request board for other needs.'}</p>`) +
+      '<p>Ordinary sales and donations still work. They can fill a shortage and close its request; use “Deliver supplies” at the requested destination to receive the posted payment. Removing stored supplies does not create a rewarded shortage.</p>' +
       (history.length ? '<h3>Recent requests</h3>' + history.map(r => `<div class="settlement-row"><div><strong>${esc(title(r.resource))} · ${esc(r.destinationName)}</strong><small>${esc(title(r.status))} · ${r.delivered} delivered · ${esc(r.reason)}</small></div></div>`).join('') : '') + '</div>';
     openPanel(html, 'requests');
-    const dialog = doc.getElementById('panel-dialog');
-    dialog?.classList.add('settlement-dialog'); if (dialog) dialog.scrollTop = scroll;
+    const dialog = doc.getElementById('panel-dialog'); dialog?.classList.add('settlement-dialog'); if (dialog) dialog.scrollTop = scroll;
     for (const b of content().querySelectorAll('[data-request-button]')) b.onclick = () => { if (!b.disabled) handlers[Number(b.dataset.requestButton)]?.(); };
     for (const input of content().querySelectorAll('[data-request-input]')) input.oninput = () => {
-      const request = items[Number(input.dataset.requestInput)]; drafts.set(request.id, input.value);
-      const button = content().querySelectorAll('[data-request-button]')[Number(input.dataset.requestInput) * 2];
-      if (button) button.disabled = !valid(request);
+      const request = items[Number(input.dataset.requestInput)]; if (request) drafts.set(request.id, input.value); updateDeliveryButtons();
     };
   }
   function update() {
-    if (!active() || !getState() || !getMe()) return;
-    const next = JSON.stringify([getState().requests, getState().status, getMe().inventory,
-      (getState().requests?.items || []).filter(r => r.status === 'open').map(r => ready(r))]);
-    if (next !== signature) { signature = next; render(); }
+    if (!active() || !getState() || !getMe() || !requireAccess()) return;
+    updateDeliveryButtons();
+    // Retain the focused input as well as its draft while snapshots arrive.
+    // Controls still revalidate shortages and inventory immediately above.
+    if (doc.activeElement?.tagName === 'INPUT' && content()?.contains?.(doc.activeElement)) return;
+    if (currentSignature() !== signature) render();
   }
-  function show() { visible = true; signature = ''; render(); }
-  function clear() { visible = false; signature = ''; drafts.clear(); }
-  return { show, update, clear };
+  function show() { view = { kind: 'board' }; signature = ''; render(); }
+  function showDestination(id) { view = { kind: 'destination', id }; signature = ''; render(); }
+  function findBoard() { markAndClose(NOTICEBOARD_POINT); }
+  function clear() { view = null; signature = ''; drafts.clear(); }
+  return { show, showDestination, findBoard, update, clear };
 }

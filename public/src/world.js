@@ -178,11 +178,7 @@ export function createWorld(scene) {
     const a=Math.PI*(i+.5)/9;
     box(M.stoneLight,Math.cos(a)*5.28,3.78+Math.sin(a)*1.35,20.02,1.22,.63,.45,0,(a-Math.PI/2)*.24);
   }
-  const gate=new THREE.Group();gate.name='gate-portcullis';gate.position.set(0,.25,18.7);root.add(gate);
-  for(let i=-5;i<=5;i++)localBox(gate,M.iron,i,2.5,0,.15,5.1,.18);
-  for(const y of [.65,1.75,2.85,4,4.8])localBox(gate,M.woodDark,0,y,0,10.2,.2,.26);
-  for(const x of [-4.5,4.5])localBox(gate,M.iron,x,2.7,.18,.2,4.7,.16);
-  gate.userData.openAmount=1;gate.position.y=4.3;
+  const gateArtwork=createGateArtwork(),gate=gateArtwork.gate;root.add(gate,gateArtwork.frame);
   banner(-8,6.9,20.65,1.35,2.7);banner(8,6.9,20.65,1.35,2.7);
 
   function roof(x,z,w,d,base,h,material=M.roof){
@@ -359,11 +355,8 @@ export function createWorld(scene) {
   for(const [x,z] of [[-22,12],[-23,11.8],[19,11],[-13,-18],[26,-7]])barrel(x,z,.85+rng()*.25);
   // Communal well: compact landmark beside the main road.
   const wx=8,wz=-4;
-  const wellG=new THREE.CylinderGeometry(1.45,1.55,1.15,12,1,true);mesh(wellG,M.stoneLight,root,wx,.575,wz);
-  const wellInside=mesh(new THREE.CylinderGeometry(1.34,1.34,.02,16),M.water,root,wx,.55,wz);wellInside.castShadow=false;
-  for(const side of [-1,1])box(M.woodDark,wx+side*1.2,1.85,wz,.2,3.7,.23);
-  roof(wx,wz,3.6,2.7,3.6,1.3);beam(M.woodLight,[wx-1.3,2.6,wz],[wx+1.3,2.6,wz],.16);
-  cylinder(M.woodDark,wx,1.9,wz,.025,1.4);mesh(new THREE.CylinderGeometry(.23,.18,.36,8),M.wood,root,wx,1.13,wz);
+  const wellArtwork=createWellArtwork();root.add(wellArtwork.root);
+  roof(wx,wz,3.6,2.7,3.6,1.3);
 
   function lamp(x,z,h=3.4){
     cylinder(M.stoneDark,x,.19,z,.26,.38);box(M.woodDark,x,h/2,z,.13,h,.14);box(M.iron,x+.3,h,z,.8,.1,.1);
@@ -515,9 +508,9 @@ export function createWorld(scene) {
     const players=Array.isArray(state.players)?state.players:Object.values(state.players||{}),guards=Array.isArray(state.guards)?state.guards:Object.values(state.guards||{});
     const nearby=[...players,...guards,...(state.workers||[])].some(p=>Math.abs((p.x??p.position?.x??999))<6.2&&Math.abs((p.z??p.position?.z??999)-18)<7);
     const target=nearby?1:0;
-    gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;
+    gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;gateArtwork.update();
   }
-  return {root,resources,gate,update,road:mainRoad,lanterns,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
+  return {root,resources,gate,landmarks:{gate:gateArtwork,well:wellArtwork},update,road:mainRoad,lanterns,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
 }
 
 // Build-time curb clipping uses the exact triangles of the rendered roads,
@@ -901,4 +894,150 @@ export function createWorldDetails(lanes=[]){
   root.userData.ivyPlacements=ivyPlacements;
   root.userData.detailLayout=layout;root.userData.detailStats={instances:layout.length+ivy.count,drawCalls:root.children.length,triangles};
   return {root,update(seconds){time.value=Number.isFinite(seconds)?seconds:0;},time};
+}
+
+// Art-only landmarks. Their roots retain the original coordinates; every
+// collider, entrance, gate lift amount and interaction stays in shared/world.
+function landmarkBuilder(){
+  const geometries=new Map(),materials=new Map(),textures=new Set(),owned=new Set(),v=new THREE.Vector3();
+  const mat=(name,color,metalness=0,roughness=.9,grain='stone')=>{
+    if(materials.has(name))return materials.get(name);
+    const data=new Uint8Array(64*64);let seed=314159;
+    for(let y=0;y<64;y++)for(let x=0;x<64;x++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const n=(seed&255)/255;data[y*64+x]=Math.round(grain==='wood'?128+42*Math.sin(x*.79+Math.sin(y*.17)*.62)+n*25:100+n*65+Math.sin(x*2.1+y*.73)*12);}
+    const texture=new THREE.DataTexture(data,64,64,THREE.RedFormat);texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.minFilter=THREE.LinearMipmapLinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=true;texture.needsUpdate=true;textures.add(texture);
+    const m=new THREE.MeshStandardMaterial({color,metalness,roughness,bumpMap:texture,bumpScale:grain==='wood'?.016:grain==='metal'?.006:.022});m.name=name;materials.set(name,m);return m;
+  };
+  const geometry=(key,make)=>{if(!geometries.has(key)){const g=make();geometries.set(key,g);owned.add(g);}return geometries.get(key);};
+  const add=(parent,g,m,x=0,y=0,z=0,name='')=>{const n=new THREE.Mesh(g,m);n.position.set(x,y,z);n.name=name;n.castShadow=true;n.receiveShadow=true;parent.add(n);return n;};
+  const bevelBox=(w,h,d,b=.014)=>geometry(`box:${w}:${h}:${d}:${b}`,()=>{
+    const s=new THREE.Shape();s.moveTo(-w/2+b,-h/2+b);s.lineTo(w/2-b,-h/2+b);s.lineTo(w/2-b,h/2-b);s.lineTo(-w/2+b,h/2-b);s.closePath();
+    const g=new THREE.ExtrudeGeometry(s,{depth:d-2*b,bevelEnabled:true,bevelSize:b,bevelThickness:b,bevelSegments:1,steps:1});g.translate(0,0,-d/2+b);return g;
+  });
+  const box=(parent,m,x,y,z,w,h,d,b=.014,name='')=>add(parent,bevelBox(w,h,d,b),m,x,y,z,name);
+  const beam=(parent,m,a,b,w=.14,d=w)=>{const start=new THREE.Vector3(...a),end=new THREE.Vector3(...b),length=start.distanceTo(end);const n=box(parent,m,0,0,0,w,length,d,Math.min(.012,w*.1));n.position.copy(start).add(end).multiplyScalar(.5);n.quaternion.setFromUnitVectors(v.set(0,1,0),end.sub(start).normalize());return n;};
+  function merge(parent){
+    const batches=new Map();
+    for(const n of [...parent.children]){
+      if(!n.isMesh||n.isInstancedMesh)continue;
+      n.updateMatrix();const g=n.geometry.clone();g.applyMatrix4(n.matrix);const flat=g.index?g.toNonIndexed():g;
+      if(flat!==g)g.dispose();if(!batches.has(n.material))batches.set(n.material,[]);batches.get(n.material).push(flat);parent.remove(n);
+    }
+    for(const [m,parts]of batches){
+      const count=parts.reduce((sum,g)=>sum+g.attributes.position.count,0),g=new THREE.BufferGeometry();
+      for(const [name,size]of [['position',3],['normal',3],['uv',2]]){const values=new Float32Array(count*size);let offset=0;for(const p of parts){const a=p.attributes[name];if(a)values.set(a.array,offset);offset+=p.attributes.position.count*size;}g.setAttribute(name,new THREE.BufferAttribute(values,size));}
+      g.computeBoundingBox();g.computeBoundingSphere();owned.add(g);const n=add(parent,g,m);n.name=`landmark-${m.name||[...materials].find(([,value])=>value===m)?.[0]||'detail'}`;
+      for(const p of parts)p.dispose();
+    }
+  }
+  let disposed=false;
+  function dispose(){if(disposed)return;disposed=true;for(const g of owned)g.dispose();for(const m of materials.values())m.dispose();for(const t of textures)t.dispose();owned.clear();}
+  return {mat,geometry,add,box,beam,merge,dispose,owned};
+}
+
+export function createGateArtwork(){
+  const b=landmarkBuilder(),gate=new THREE.Group(),frame=new THREE.Group();gate.name='gate-portcullis';gate.position.set(0,4.3,18.7);gate.userData.openAmount=1;frame.name='gate-hoist-and-guides';frame.position.z=18.7;
+  const oak=b.mat('weathered-oak',0x695239,0,.89,'wood'),endgrain=b.mat('endgrain',0x473b2e,0,.92,'wood');
+  const iron=b.mat('forged-iron',0x424c4c,.72,.64,'metal'),worn=b.mat('worn-metal-edges',0x7a8177,.64,.58,'metal'),rust=b.mat('oxide',0x6b513c,.38,.9,'metal');
+  for(let i=-5;i<=5;i++){
+    const x=i*1.09;
+    b.box(gate,oak,x,2.68,0,.22,4.82,.27,.022,'oak-upright');
+    // Each timber ends in a forged, four-sided shoe with a true pointed tip.
+    const shoe=b.geometry('pointed-shoe',()=>{const p=[-.14,.55,-.17,.14,.55,-.17,.14,.55,.17,-.14,.55,.17,0,0,0],ix=[0,2,1,0,3,2,0,1,4,1,2,4,2,3,4,3,0,4];const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setIndex(ix);g.computeVertexNormals();return g;});
+    b.add(gate,shoe,iron,x,0,0,'forged-pointed-shoe');
+    for(const y of [.65,1.74,2.83,3.92,4.87]){
+      // Iron straps wrap across the joint on both sides, with peened heads.
+      for(const side of [-1,1]){
+        b.box(gate,iron,x,y,side*.205,.35,.34,.07,.012,'joint-strap');
+        const rivet=b.add(gate,b.geometry('peened-rivet',()=>new THREE.SphereGeometry(.046,8,6)),(i+Math.round(y))%7===0?rust:worn,x,y,side*.255,'joint-rivet');rivet.scale.z=.43;
+      }
+    }
+  }
+  for(const y of [.65,1.74,2.83,3.92,4.87])b.box(gate,oak,0,y,0,11.30,.255,.33,.021,'mortised-crossrail');
+  for(const side of [-1,1]){
+    b.beam(gate,iron,[0,.67,side*.206],[side*5.42,4.87,side*.206],.13,.065);
+    for(const x of [-5.54,5.54])b.box(gate,iron,x,2.7,side*.195,.11,4.80,.065,.010,'edge-strap');
+  }
+  // The guides stay fixed while the original gate group moves vertically.
+  for(const side of [-1,1]){
+    const x=side*5.98;
+    b.box(frame,endgrain,x,5.22,0,.38,10.38,.63,.026,'hoist-upright');
+    b.box(frame,iron,x-side*.20,5.04,-.22,.075,10.05,.085,.009,'rear-guide');
+    b.box(frame,iron,x-side*.20,5.04,.22,.075,10.05,.085,.009,'front-guide');
+    for(const y of [.38,2.3,4.25,6.2,8.15,10.03])b.box(frame,iron,x,y,.34,.51,.14,.07,.012,'guide-bracket');
+    b.box(frame,iron,x,.22,0,.55,.44,.77,.025,'guide-foot');
+    b.beam(frame,oak,[x,8.94,-.32],[x-side*1.05,10.35,-.32],.20,.24);
+  }
+  b.box(frame,oak,0,10.34,-.18,12.58,.37,.56,.026,'hoist-header');
+  b.box(frame,iron,0,10.37,.124,12.62,.115,.035,.009,'header-face-strap');
+  const axle=b.add(frame,b.geometry('hoist-axle',()=>new THREE.CylinderGeometry(.11,.11,11.45,14)),iron,0,10.04,-.035,'hoist-axle');axle.rotation.z=Math.PI/2;
+  for(const side of [-1,1]){
+    const x=side*3.93;
+    const drum=b.add(frame,b.geometry('hoist-drum',()=>new THREE.CylinderGeometry(.30,.30,.36,16)),oak,x,10.04,-.035,'chain-drum');drum.rotation.z=Math.PI/2;
+    for(const shift of [-.20,.20]){const rim=b.add(frame,b.geometry('drum-rim',()=>new THREE.TorusGeometry(.31,.035,6,20)),iron,x+shift,10.04,-.035,'drum-rim');rim.rotation.y=Math.PI/2;}
+    b.box(frame,iron,x,10.04,-.40,.55,.48,.12,.016,'drum-bearing');
+    b.box(gate,iron,x,4.91,.01,.48,.24,.46,.02,'lifting-collar');
+  }
+  b.merge(gate);b.merge(frame);
+  const chains=new THREE.Group();chains.name='moving-lift-chains';frame.add(chains);
+  const linkGeo=b.geometry('oval-chain-link',()=>{const g=new THREE.TorusGeometry(.083,.024,6,10);g.scale(.79,1.34,1);return g;});
+  const links=new THREE.InstancedMesh(linkGeo,worn,80);links.name='forged-chain-links';links.instanceMatrix.setUsage(THREE.DynamicDrawUsage);links.castShadow=true;links.receiveShadow=true;links.frustumCulled=false;chains.add(links);
+  const transform=new THREE.Object3D();let previousY=NaN;
+  function update(){
+    chains.visible=gate.visible;
+    if(gate.position.y===previousY)return;previousY=gate.position.y;
+    const bottom=gate.position.y+5.055,top=10.04,length=Math.max(.07,top-bottom),step=.15;
+    const count=Math.min(40,Math.max(1,Math.ceil(length/step))),spacing=length/count;
+    let index=0;
+    for(const side of [-1,1])for(let i=0;i<count;i++){
+      transform.position.set(side*3.93,bottom+(i+.5)*spacing,.25);transform.rotation.set(0,i%2?Math.PI/2:0,0);transform.scale.set(1,Math.min(1,spacing/.15),1);transform.updateMatrix();links.setMatrixAt(index++,transform.matrix);
+    }
+    links.count=index;links.instanceMatrix.needsUpdate=true;
+    gate.userData.chainBottom=bottom;gate.userData.chainTop=top;
+  }
+  update();let disposed=false;
+  return {gate,frame,update,dispose(){if(disposed)return;disposed=true;b.dispose();gate.clear();frame.clear();}};
+}
+
+export function createWellArtwork(){
+  const b=landmarkBuilder(),root=new THREE.Group();root.name='communal-well';root.position.set(8,0,-4);
+  const stones=[0x949986,0xa5a890,0x858e80,0x9c9f89,0x8c9380].map((c,i)=>b.mat(`well-stone-${i}`,c));
+  const coping=b.mat('coping-stone',0xb1b29c),mortar=b.mat('recessed-mortar',0x505950),damp=b.mat('damp-stone',0x65705e);
+  const oak=b.mat('well-oak',0x705438,0,.90,'wood'),dark=b.mat('well-endgrain',0x473c2f,0,.91,'wood'),iron=b.mat('well-iron',0x4e5753,.60,.65,'metal'),rope=b.mat('hemp-rope',0x9b8866,0,1,'wood');
+  function wedge(inner,outer,height,start,end,bevel=.018){
+    const key=`stone:${inner}:${outer}:${height}:${start}:${end}:${bevel}`;
+    return b.geometry(key,()=>{const s=new THREE.Shape();s.absarc(0,0,outer,start,end,false);s.lineTo(Math.cos(end)*inner,Math.sin(end)*inner);s.absarc(0,0,inner,end,start,true);s.closePath();const g=new THREE.ExtrudeGeometry(s,{depth:height-2*bevel,bevelEnabled:true,bevelSize:bevel,bevelThickness:bevel,bevelSegments:1,curveSegments:Math.max(2,Math.ceil((end-start)/(Math.PI*2)*24)),steps:1});g.rotateX(-Math.PI/2);g.translate(0,bevel,0);return g;});
+  }
+  // Solid annular masonry has top, outside, bottom and inward-facing surfaces.
+  // The dark continuous backing closes tiny joints without sealing the shaft.
+  b.add(root,wedge(1.115,1.472,1.12,0,Math.PI*2,.006),mortar,0,0,0,'well-mortar-ring');
+  for(let row=0;row<3;row++)for(let i=0;i<16;i++){
+    const angle=(i+(row%2)*.5)/16*Math.PI*2,gap=.012;
+    const stone=b.add(root,wedge(1.105,1.49+Math.sin(i*2+row)*.018,.355,angle+gap,angle+Math.PI*2/16-gap),stones[(i+row*3)%stones.length],0,.02+row*.37,0,'well-masonry-course');stone.userData.course=row;
+  }
+  for(let i=0;i<16;i++){
+    const a=i/16*Math.PI*2;
+    b.add(root,wedge(1.06,1.59,.20,a+.010,a+Math.PI*2/16-.010,.023),coping,0,1.12,0,'thick-coping-stone');
+  }
+  b.add(root,wedge(1.11,1.20,.11,0,Math.PI*2,.005),damp,0,.035,0,'damp-inner-course');
+  const waterMaterial=b.mat('well-water',0x456f70,.30,.18);waterMaterial.bumpScale=.004;
+  const water=b.add(root,b.geometry('well-water-disc',()=>new THREE.CircleGeometry(1.105,48)),waterMaterial,0,.055,0,'well-water');water.rotation.x=-Math.PI/2;water.castShadow=false;
+  for(const side of [-1,1]){
+    b.box(root,oak,side*1.29,1.88,0,.24,3.76,.27,.022,'well-roof-post');
+    b.box(root,iron,side*1.29,.30,0,.28,.22,.31,.012,'post-foot-band');
+    b.beam(root,dark,[side*1.29,2.73,0],[side*.72,3.63,0],.12,.18);
+    const bearing=b.add(root,b.geometry('well-axle-bearing',()=>new THREE.TorusGeometry(.135,.027,6,16)),iron,side*1.29,2.67,0,'well-bearing');bearing.rotation.y=Math.PI/2;
+  }
+  const spindle=b.add(root,b.geometry('well-spindle',()=>new THREE.CylinderGeometry(.103,.103,3.14,16)),oak,0,2.67,0,'well-winding-spindle');spindle.rotation.z=Math.PI/2;
+  for(let i=0;i<14;i++){const wrap=b.add(root,b.geometry('rope-wrap',()=>new THREE.TorusGeometry(.116,.020,5,16)),rope,-.18+i*.030,2.67,0,'rope-wrap');wrap.rotation.y=Math.PI/2;}
+  b.beam(root,iron,[1.54,2.67,0],[1.54,2.34,0],.055,.06);
+  const crank=b.add(root,b.geometry('crank-handle',()=>new THREE.CylinderGeometry(.055,.055,.28,10)),dark,1.66,2.34,0,'well-crank-handle');crank.rotation.z=Math.PI/2;
+  const hanging=b.add(root,b.geometry('hanging-rope',()=>new THREE.CylinderGeometry(.018,.018,1.285,8)),rope,.04,2.0275,.113,'hanging-rope');
+  // Open slatted bucket: the rim is a true ring and its inside remains visible.
+  b.add(root,wedge(.181,.217,.31,0,Math.PI*2,.006),oak,.04,.88,.113,'open-wooden-bucket');
+  b.add(root,b.geometry('bucket-bottom',()=>new THREE.CylinderGeometry(.188,.188,.035,24)),oak,.04,.899,.113,'solid-bucket-bottom');
+  for(const y of [.93,1.13]){const hoop=b.add(root,b.geometry('bucket-hoop',()=>new THREE.TorusGeometry(.221,.012,5,20)),iron,.04,y,.113,'bucket-hoop');hoop.rotation.x=Math.PI/2;}
+  const handle=b.add(root,b.geometry('bucket-handle',()=>new THREE.TorusGeometry(.205,.013,5,20,Math.PI)),iron,.04,1.18,.113,'bucket-handle');handle.rotation.z=0;
+  b.merge(root);root.traverse(n=>{if(n.isMesh&&n.material===waterMaterial)n.castShadow=false;});
+  root.userData.innerRadius=1.06;root.userData.outerRadius=1.59;root.userData.rimHeight=1.32;
+  return {root,dispose(){b.dispose();root.clear();}};
 }

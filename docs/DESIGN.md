@@ -4,7 +4,11 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
-## Build 10: village cooperation and varied defenses
+## Build 11: gate detail, solid well and physical noticeboard
+
+Build 11 improves gate and well artwork while preserving gate movement and gameplay. Players read village requests by approaching the treasury noticeboard and pressing E. The previous B shortcut is removed; menu/HUD navigation points to the physical board. Delivery destinations expose their own requested deliveries at their actual entrances. Public request data and authoritative payment checks remain unchanged.
+
+Crates, functional armor, starting kits and a 100-night gold helmet are design ideas awaiting review, not accepted runtime behavior. See [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md); Build 11 does not add them.
 
 Build 04 implements the forty internal and eight exposed plots, ownership and construction, private harvesting, stocked crafting shops, upgraded equipment, the treasury market and policies, merchant trade, owned defenses, church care, and horses/carts with protected loans. The Watch now faces the street; its guard exit and road agree with that entrance. Existing villages and account savings migrate without resetting the run.
 
