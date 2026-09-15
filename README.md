@@ -2,19 +2,21 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 07.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 08.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The requested systems now have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-## Build 05: playtest improvements
+## Latest playtest improvements
 
 Natural mineral beds replace scattered boulders. Trees react and fall when exhausted; mineral deposits chip and crumble as they are mined. Horses have sculpted, articulated models and share the rendered rider transform while mounted. Sword grips follow the hand. Routine successful strikes, gathering and repairs no longer produce pop-ups; other notices sit in a corner. Downed players can rotate the camera while deciding whether to wait for a rescue.
+
+Buildings now offer services at their front doors or shop counters. Player businesses use their actual building entrance; open plots, farms and mines use the frontage gate. The server checks the same access points for purchases and storage. Church care remains available beside the beds. Atlas markers lead to these entrance points. The visiting merchant appears at The Wayfarer with a covered carriage and two horses, and leaves when the visit ends.
 
 Walking and running now use independent hip, knee, ankle and elbow movement, coordinated shoulder rotation, and smoother transitions. Boots and trousers deform with the joints; zombies retain a slower uneven gait. Road edging is trimmed where paths meet.
 
 Oak & Iron sells backpack upgrades with visible, tier-specific packs worn on the dwarf’s back. New residents enter each run empty-handed with 10 gold, enough for one wooden tool; reconnecting preserves their existing gear and money. The treasury accepts a typed resource quantity with the exact tax and total shown before purchase or sale. Guard shields, priest health and villager carrying bonuses distinguish the three jobs. Fallen recruited troops return after 30 active seconds when their barracks has wheat. New archer towers include 20 arrows and report why they are firing or idle.
 
-Actual mesh previews: [horse](docs/previews/horse.jpg), [mineral beds](docs/previews/mineral-beds.jpg), [sword grip](docs/previews/sword-grip.jpg). These show the game geometry under preview lighting; they are not live gameplay captures.
+Actual mesh previews: [visiting merchant](docs/previews/merchant-visit.jpg), [horse](docs/previews/horse.jpg), [mineral beds](docs/previews/mineral-beds.jpg), [sword grip](docs/previews/sword-grip.jpg). These show the game geometry under preview lighting; they are not live gameplay captures.
 
 ## Integrated map and systems
 

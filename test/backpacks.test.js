@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../server/store.js';
 import { Simulation } from '../server/simulation.js';
-import { BUILDINGS, PLOTS, RESOURCES, plotFront } from '../shared/world.js';
+import { BUILDINGS, PLOTS, RESOURCES } from '../shared/world.js';
 import { BACKPACKS, BUILDING_TYPES, carryCapacity, inventoryWeight } from '../shared/content.js';
 import { ensureOwnership } from '../server/ownership.js';
 
@@ -22,7 +23,7 @@ async function fixture(t) {
   f.act = action => { f.village.clock += .7; return f.sim.action(f.village.id, f.player.id, action); };
   f.near = id => {
     const b = BUILDINGS.find(building => building.id === id);
-    Object.assign(f.player, { x: b.x - b.w / 2 - 1, z: b.z });
+    Object.assign(f.player, buildingEntrance(b));
   };
   f.fill = weight => {
     for (const id of Object.keys(f.player.inventory)) f.player.inventory[id] = 0;
@@ -92,7 +93,7 @@ test('upgraded capacity applies consistently to gathering, market, food, shops, 
   assert.throws(() => f.act({ kind: 'buyFood', tier: 'food' }), /pack is full/);
 
   const plot = v.plots[0]; Object.assign(plot, { ownerId: p.id, building: 'tool_shop', hp: 350, maxHp: 350, storage: { stone: 20, timber: 10 } });
-  Object.assign(p, plotFront(PLOTS[0], 1)); f.fill(248);
+  Object.assign(p, plotEntrance(PLOTS[0], plot)); f.fill(248);
   f.act({ kind: 'craft_buy', plotId: plot.id, recipe: 'stone_hammer' });
   assert.equal(inventoryWeight(p), 250);
   assert.throws(() => f.act({ kind: 'craft_buy', plotId: plot.id, recipe: 'stone_pickaxe' }), /pack is full/);
@@ -120,7 +121,7 @@ test('legacy saves default to pockets and do not refill a purchased backpack or 
   assert.equal(p.backpackTier, 0); assert.equal(p.inventory.wheat, 17);
   p.backpackTier = 2; ensureOwnership(v); assert.equal(p.backpackTier, 2);
   const plot = v.plots[0]; plot.ownerId = p.id;
-  Object.assign(p, plotFront(PLOTS[0], 1));
+  Object.assign(p, plotEntrance(PLOTS[0], plot));
   for (const [id, amount] of Object.entries(BUILDING_TYPES.archer_tower.cost)) if (id !== 'gold') plot.storage[id] = amount;
   f.act({ kind: 'plot_build', plotId: plot.id, building: 'archer_tower' });
   assert.equal(plot.storage.arrows, 20, 'only newly paid construction includes a starter quiver');

@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
-import { RESOURCES, GUARD_ROAD, canStand } from '../shared/world.js';
+import { BUILDINGS, RESOURCES, GUARD_ROAD, canStand } from '../shared/world.js';
 
 async function fixture(t, options = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'emberwatch-test-'));
@@ -72,7 +73,7 @@ test('HTTP authentication, real WebSocket multiplayer synchronization, and stale
   const stoppedX = p.x; app.simulation.tick(.1); assert.equal(p.x, stoppedX, 'disconnected/stalled input never makes a dwarf walk forever');
   assert.throws(() => app.simulation.input(village.id, p.id, { x: Infinity, z: 0, yaw: 0 }), /Invalid movement/);
   // Worker contracts travel over the same authenticated socket as player actions.
-  Object.assign(p, { x: -18, z: -17.5, wallet: 300 });
+  Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')), { wallet: 300 });
   village.clock += 1;
   a.ws.send(JSON.stringify({ type: 'action', kind: 'worker_hire', ownerId: bob.playerId, price: 0 }));
   await waitFor(() => village.workers.length === 1);
@@ -143,7 +144,7 @@ test('persistent protected savings, new process recovery, no offline advancement
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const { user, session } = await account(app, 'BankDwarf');
   const { id } = app.simulation.create('Saved Hearth', user), village = app.simulation.villages.get(id), p = app.simulation.join(id, user);
-  p.x = -18; p.z = -17.5; p.wallet = 50; // A funded savings scenario, beyond the new-arrival allowance.
+  Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'bank'))); p.wallet = 50; // A funded savings scenario, beyond the new-arrival allowance.
   action(app, village, p, { kind: 'deposit', amount: 30 });
   assert.equal(p.wallet, 20); assert.equal(app.store.account(p.id).bank, 30);
   assert.throws(() => action(app, village, p, { kind: 'withdraw', amount: 31 }), /Insufficient/);

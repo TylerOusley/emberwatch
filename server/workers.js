@@ -1,3 +1,4 @@
+import { canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids } from '../shared/world.js';
 import { RESOURCE_WEIGHTS, STORAGE_CAPACITY, inventoryWeight, carryCapacity } from '../shared/content.js';
@@ -16,7 +17,7 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const whole = value => Number.isSafeInteger(value) && value >= 0;
 const hasCargo = worker => WORKER_RESOURCES.some(id => worker.cargo[id] > 0);
 const nearBank = p => Math.hypot(Math.max(0, Math.abs(p.x - bank.x) - bank.w / 2), Math.max(0, Math.abs(p.z - bank.z) - bank.d / 2)) <= 3.5;
-const requireBank = p => { if (!nearBank(p)) throw new Error('Visit the Village Treasury to hire or dismiss workers.'); };
+const requireBank = p => { if (!canUseBuilding(p, bank)) throw new Error('Visit the Village Treasury to hire or dismiss workers.'); };
 const homeFor = (v, w) => {
   const slot = Math.max(0, v.workers.indexOf(w));
   return { x: home.x + slot % 2 * 1.2, z: bank.z + (Math.floor(slot / 2) - 3.5) * 1.2 };

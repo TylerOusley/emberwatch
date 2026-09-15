@@ -1,13 +1,11 @@
+import { canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, canStand, moveWithCollision, plotSolids } from '../shared/world.js';
 import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
 import { TRANSPORT, LOANS } from '../shared/transport.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-function nearBuilding(player, id) {
-  const b = BUILDINGS.find(candidate => candidate.id === id);
-  return b && Math.hypot(Math.max(0, Math.abs(player.x - b.x) - b.w / 2), Math.max(0, Math.abs(player.z - b.z) - b.d / 2)) <= 3.5;
-}
+const nearBuilding = (player, id) => canUseBuilding(player, BUILDINGS.find(candidate => candidate.id === id));
 const wholeAmount = amount => { if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000000) throw new Error('Choose a positive whole amount.'); return amount; };
 
 export function ensureTransport(village) {

@@ -1,3 +1,4 @@
+import { canUseBuilding, canUsePlot } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES } from '../shared/world.js';
 import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, STORAGE_CAPACITY, inventoryWeight } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
@@ -13,7 +14,7 @@ const gatherDelay = (type, privatePlot) => (type === 'wheat' ? 90 : 150) * (priv
 const metadata = id => PLOTS.find(plot => plot.id === id);
 const checkNear = (player, plot) => {
   const m = metadata(plot.id);
-  if (!m || Math.hypot(Math.max(0, Math.abs(player.x - m.x) - m.w / 2), Math.max(0, Math.abs(player.z - m.z) - m.d / 2)) > 4) throw new Error('Visit this plot to use it.');
+  if (!canUsePlot(player, m, plot)) throw new Error('Visit this building’s entrance or the plot’s front gate to use it.');
 };
 const checkOwner = (plot, player) => { if (plot.ownerId !== player.id) throw new Error('Only the plot owner can do that.'); };
 const checkEmpty = plot => {
@@ -79,7 +80,7 @@ export function ownershipAction(sim, village, player, action) {
   ensureOwnership(village);
   if (action.kind === 'buyBackpack') {
     const shop = BUILDINGS.find(building => building.id === 'tools');
-    if (!shop || Math.hypot(Math.max(0, Math.abs(player.x - shop.x) - shop.w / 2), Math.max(0, Math.abs(player.z - shop.z) - shop.d / 2)) > 3.5) throw new Error('Visit Oak & Iron to buy a backpack.');
+    if (!canUseBuilding(player, shop)) throw new Error('Visit Oak & Iron’s front counter to buy a backpack.');
     const pack = Number.isInteger(action.tier) ? BACKPACKS[action.tier] : null;
     if (!pack || pack.tier < 1) throw new Error('Choose a simple, reinforced or expedition backpack.');
     if (pack.tier <= player.backpackTier) throw new Error('You already have this backpack or a larger one equipped.');

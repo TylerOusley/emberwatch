@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { createApp } from '../server/index.js';
+import { BUILDINGS } from '../shared/world.js';
+import { buildingEntrance } from '../shared/access.js';
+
+const bankEntrance = buildingEntrance(BUILDINGS.find(building => building.id === 'bank'));
 
 async function listen(app) {
   app.server.listen(0, '127.0.0.1');
@@ -30,7 +34,7 @@ test('fallen runs leave the public list immediately and after restart while resu
   const player = app.simulation.join(fallenId, founder.user);
   const neighborPlayer = app.simulation.join(activeId, neighbor.user);
   app.simulation.disconnect(activeId, neighborPlayer.id);
-  player.x = -18; player.z = -17.5; player.wallet = 50;
+  Object.assign(player, bankEntrance); player.wallet = 50;
   app.simulation.action(fallenId, player.id, { kind: 'deposit', amount: 30 });
   const list = async () => (await (await fetch(base + '/api/villages')).json()).villages;
   assert.deepEqual((await list()).map(v => v.id), [fallenId, activeId]);
@@ -59,7 +63,7 @@ test('fallen runs leave the public list immediately and after restart while resu
   assert.equal(returningAccount.bank, 30);
   const nextId = app.simulation.create('Next Watch', returningAccount).id;
   const nextPlayer = app.simulation.join(nextId, returningAccount);
-  nextPlayer.x = -18; nextPlayer.z = -17.5;
+  Object.assign(nextPlayer, bankEntrance);
   const wallet = nextPlayer.wallet;
   app.simulation.action(nextId, nextPlayer.id, { kind: 'withdraw', amount: 20 });
   assert.equal(nextPlayer.wallet, wallet + 20, 'savings remain spendable in the next run');

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +16,7 @@ async function fixture(t, role = 'villager') {
   t.after(async () => { store.close(); await rm(directory, { recursive:true, force:true }); });
   const session = await store.authenticate('register','NewArrival','starter-test-password'), account = store.account(session.playerId);
   const { id } = sim.create('Empty Hands', account), p = sim.join(id, account, role), v = sim.villages.get(id);
-  return { store, sim, account, p, v, near(id) { const b = BUILDINGS.find(b=>b.id===id); p.x=b.x-b.w/2-1;p.z=b.z; }, act(action) {v.clock+=.7;return sim.action(id,p.id,action);} };
+  return { store, sim, account, p, v, near(id) { const b = BUILDINGS.find(b=>b.id===id); Object.assign(p,buildingEntrance(b)); }, act(action) {v.clock+=.7;return sim.action(id,p.id,action);} };
 }
 test('new resident starts with exactly one tool price and no equipment; purchase is authoritative', async t => {
   const f = await fixture(t), {p,v,sim} = f;

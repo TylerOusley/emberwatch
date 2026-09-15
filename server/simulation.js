@@ -11,6 +11,7 @@ import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight } from '../sha
 
 import { ensureRoleStats, tickRoleStats, absorbDamage } from './roles.js';
 import { STARTER_GOLD, FOOD_IDS, canEquip } from '../shared/equipment.js';
+import { canUseBuilding } from '../shared/access.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -18,7 +19,7 @@ const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0,
 const durability = () => ({ sword: 0, axe: 0, pickaxe: 0, scythe: 0, hammer: 0, bow: 0 });
 const makeResource = resource => ({ id: resource.id, available: true, remaining: resource.type === 'wheat' ? 1 : resource.type === 'timber' ? 5 : 8, regrowAt: 0 });
 const building = id => BUILDINGS.find(b => b.id === id);
-const nearBuilding = (player, id, range = 3.5) => {
+const nearStructure = (player, id, range = 3.5) => {
   const b = building(id);
   return Math.hypot(Math.max(0, Math.abs(player.x - b.x) - b.w / 2), Math.max(0, Math.abs(player.z - b.z) - b.d / 2)) <= range;
 };
@@ -193,7 +194,7 @@ export class Simulation {
       use('hammer');
       const id = action.targetId === 'keep' ? 'keep' : action.targetId === 'gate' ? 'gate' : null;
       if (!id) throw new Error('Choose the gate or keep to repair.');
-      if (id === 'gate' ? distance(player, { x: 0, z: 18 }) > 4.5 : !nearBuilding(player, 'keep', 4.5)) throw new Error('Move closer to the damaged structure.');
+      if (id === 'gate' ? distance(player, { x: 0, z: 18 }) > 4.5 : !nearStructure(player, 'keep', 4.5)) throw new Error('Move closer to the damaged structure.');
       const structure = village[id];
       if (structure.hp >= structure.maxHp) throw new Error('This structure is already fully repaired.');
       const cost = id === 'gate' ? { timber: 1, stone: 0 } : { timber: 1, stone: 1 };
@@ -223,7 +224,7 @@ export class Simulation {
       ensureRoleStats(player, { fresh: true, clock: village.clock });
       message = 'You returned empty-handed. Your carried inventory, equipment, backpack and 25% of wallet gold were lost. Your bank savings are safe.';
     } else if (kind === 'deposit' || kind === 'withdraw') {
-      if (!nearBuilding(player, 'bank')) throw new Error('Visit the Village Treasury to use your savings.');
+      if (!canUseBuilding(player, building('bank'))) throw new Error('Visit the Village Treasury to use your savings.');
       if (!Number.isSafeInteger(action.amount) || action.amount < 1 || action.amount > 1000000) throw new Error('Enter a whole gold amount.');
       if (kind === 'deposit' && player.wallet < action.amount) throw new Error('You do not have that much gold in your wallet.');
       const delta = kind === 'deposit' ? action.amount : -action.amount;
@@ -231,20 +232,20 @@ export class Simulation {
       message = kind === 'deposit' ? 'Gold secured in your personal bank.' : 'Gold withdrawn to your wallet.';
     } else if (kind === 'donate') {
       if (action.targetId === 'barracks') {
-        if (!nearBuilding(player, 'barracks')) throw new Error('Bring wheat to The Watch to feed the guards.');
+        if (!canUseBuilding(player, building('barracks'))) throw new Error('Bring wheat to The Watch to feed the guards.');
         if (!player.inventory.wheat) throw new Error('Gather some wheat for the barracks first.');
         village.barracks.wheat += player.inventory.wheat;
         message = `${player.inventory.wheat} wheat delivered to the barracks.`;
         player.inventory.wheat = 0;
       } else {
-        if (!nearBuilding(player, 'bank')) throw new Error('Bring your materials to the Village Treasury.');
+        if (!canUseBuilding(player, building('bank'))) throw new Error('Bring your materials to the Village Treasury.');
         const total = player.inventory.timber + player.inventory.stone + player.inventory.wheat;
         if (!total) throw new Error('You have no materials to donate.');
         for (const id of ['timber', 'stone', 'wheat']) { village.stock[id] += player.inventory[id]; player.inventory[id] = 0; }
         message = `${total} materials donated to village supplies.`;
       }
     } else if (kind === 'buyTool') {
-      if (!nearBuilding(player, 'tools')) throw new Error('Visit Oak & Iron to buy wooden tools.');
+      if (!canUseBuilding(player, building('tools'))) throw new Error('Visit Oak & Iron to buy wooden tools.');
       if (!['axe', 'pickaxe', 'scythe', 'hammer'].includes(action.tool)) throw new Error('Choose a wooden gathering tool or hammer.');
       if (player.durability[action.tool] > 0) throw new Error('Your current tool still has durability remaining.');
       if (inventoryWeight(player) + TOOL_WEIGHTS[action.tool] > carryCapacity(player)) throw new Error('Make room in your pack before buying another tool.');

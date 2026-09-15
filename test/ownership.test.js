@@ -1,3 +1,4 @@
+import { plotEntrance } from '../shared/access.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLOTS, RESOURCES } from '../shared/world.js';
@@ -11,11 +12,11 @@ function fixture() {
   const accounts = { Owner: { credit: 0 }, Visitor: { credit: 0 } };
   const sim = { store: { account: id => accounts[id], spendCredit: (id, amount) => { assert.ok(accounts[id].credit >= amount); accounts[id].credit -= amount; } }, awardIncome: (v, p, amount) => { p.wallet += amount; } };
   ensureOwnership(village);
-  const at = (p, index = 0) => { p.x = PLOTS[index].x; p.z = PLOTS[index].z; return village.plots[index]; };
+  const at = (p, index = 0) => { Object.assign(p, plotEntrance(PLOTS[index], village.plots[index])); return village.plots[index]; };
   const act = (p, action) => ownershipAction(sim, village, p, action);
   const built = (building, index = 0) => {
     const plot = at(owner, index); plot.ownerId = owner.id; plot.building = building; plot.hp = plot.maxHp = BUILDING_TYPES[building].maxHp;
-    ensureOwnership(village); return plot;
+    ensureOwnership(village); at(owner, index); return plot;
   };
   return { village, owner, visitor, accounts, sim, at, act, built };
 }

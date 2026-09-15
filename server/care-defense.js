@@ -1,3 +1,4 @@
+import { canUsePlot, canUseChurchBed } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import * as world from '../shared/world.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../shared/defense.js';
@@ -122,10 +123,12 @@ export function cancelTreatment(village, player) {
   player.bedPlotId = null;
 }
 
-function getPlot(village, player, id, allowed, ownerOnly = false) {
+function getPlot(village, player, id, allowed, ownerOnly = false, access = 'entrance') {
   const plot = (village.plots ?? []).find(item => item.id === id);
   if (!usable(plot) || !allowed.includes(plot.building)) throw new Error('Choose a standing building of the right type.');
-  if (!near(player, siteFor(plot))) throw new Error('Move closer to that building.');
+  const site = siteFor(plot);
+  const reachable = access === 'bed' ? canUseChurchBed(player, site, plot) : access === 'repair' ? near(player, site) : canUsePlot(player, site, plot);
+  if (!reachable) throw new Error(access === 'bed' ? 'Stand beside a church bed to begin treatment.' : access === 'repair' ? 'Move closer to that building.' : 'Visit this building’s entrance to use it.');
   if (ownerOnly && plot.ownerId !== player.id) throw new Error('Only this building’s owner can do that.');
   return plot;
 }
@@ -228,7 +231,7 @@ export function careAction(sim, village, player, action) {
     return 'Treatment cancelled and the payer refunded.';
   }
   if (action.kind === 'churchTreat') {
-    const plot = getPlot(village, player, action.plotId, ['church']);
+    const plot = getPlot(village, player, action.plotId, ['church'], false, 'bed');
     const target = village.players[action.targetId ?? player.id];
     if (!target?.online || target.bedPlotId) throw new Error('That dwarf is unavailable for treatment.');
     if (target.id !== player.id && (player.carryingId !== target.id || !target.downed)) throw new Error('Carry the downed dwarf to the church first.');
@@ -280,7 +283,7 @@ export function careAction(sim, village, player, action) {
     }
     return plot.building === 'church' ? 'Church upgraded to four beds.' : 'Defense upgraded to level 2.';
   }
-  const plot = getPlot(village, player, action.plotId, Object.keys(DEFENSE_UPGRADES).concat(['house', 'tool_shop', 'sword_shop', 'tinker_shop', 'mine', 'wheat_farm', 'tree_farm']));
+  const plot = getPlot(village, player, action.plotId, Object.keys(DEFENSE_UPGRADES).concat(['house', 'tool_shop', 'sword_shop', 'tinker_shop', 'mine', 'wheat_farm', 'tree_farm']), false, 'repair');
   if (player.tool !== 'hammer' || (player.durability?.hammer ?? 0) <= 0) throw new Error('Equip a working hammer first.');
   if (plot.hp >= plot.maxHp) throw new Error('This building is already fully repaired.');
   if ((village.stock.timber ?? 0) < 1 || (village.stock.stone ?? 0) < 1) throw new Error('The village needs timber and stone for this repair.');

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { BUILDINGS } from '../shared/world.js';
 import { FOOD, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 import { MAX_TRADE_AMOUNT } from '../shared/market.js';
@@ -18,7 +19,7 @@ function fixture(roles = ['villager']) {
 function visit(p, id) {
   const b = BUILDINGS.find(item => item.id === id);
   assert.ok(b, `${id} has a mapped service`);
-  Object.assign(p, { x: b.x, z: b.z + b.d / 2 + 1 });
+  Object.assign(p, buildingEntrance(b));
 }
 function rejected(v, fn, pattern) {
   const before = structuredClone(v);

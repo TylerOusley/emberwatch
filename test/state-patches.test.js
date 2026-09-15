@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
-import { RESOURCES } from '../shared/world.js';
+import { RESOURCES, BUILDINGS } from '../shared/world.js';
+import { buildingEntrance } from '../shared/access.js';
 
 async function waitFor(fn, timeout = 2500) {
   const deadline = performance.now() + timeout;
@@ -45,7 +46,7 @@ test('opt-in state patches coexist with legacy snapshots, preserve private state
   const firstAccount = app.store.accountFromToken(firstSession.token), secondAccount = app.store.accountFromToken(secondSession.token);
   const { id } = app.simulation.create('Patch Settlement', firstAccount), village = app.simulation.villages.get(id);
   const first = app.simulation.join(id, firstAccount), second = app.simulation.join(id, secondAccount);
-  first.x = -18; first.z = -17.5; village.clock += .7;
+  Object.assign(first, buildingEntrance(BUILDINGS.find(building => building.id === 'bank'))); village.clock += .7;
   app.simulation.action(id, first.id, { kind: 'loan', amount: 200 });
   const modern = await connect(base, firstSession, id, true), legacy = await connect(base, secondSession, id, false);
   streams.push(modern, legacy);

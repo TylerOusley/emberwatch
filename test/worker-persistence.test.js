@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../server/store.js';
 import { Simulation, createVillage } from '../server/simulation.js';
-import { BUILDINGS, plotFront } from '../shared/world.js';
+import { BUILDINGS } from '../shared/world.js';
 import { WORKER_RULES } from '../shared/workers.js';
 
 async function fixture(t) {
@@ -38,7 +39,7 @@ test('real worker progress survives SQLite restart and resumes without another h
   const { id } = f.sim.create('Working Hearth', f.account);
   const player = f.sim.join(id, f.account), village = f.sim.villages.get(id);
   player.wallet = 1000;
-  Object.assign(player, plotFront(BUILDINGS.find(b => b.id === 'bank'), -1.3));
+  Object.assign(player, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
   f.store.bank(player.id, 57);
   f.sim.action(id, player.id, { kind: 'worker_hire' });
   assert.equal(player.wallet, 1000 - WORKER_RULES.hireCost);

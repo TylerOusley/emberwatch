@@ -4,7 +4,7 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
-## Build 07: articulated movement
+## Build 08: building entrances and visiting merchant
 
 Build 04 implements the forty internal and eight exposed plots, ownership and construction, private harvesting, stocked crafting shops, upgraded equipment, the treasury market and policies, merchant trade, owned defenses, church care, and horses/carts with protected loans. The Watch now faces the street; its guard exit and road agree with that entrance. Existing villages and account savings migrate without resetting the run.
 
@@ -17,6 +17,8 @@ Build 05 adds the accepted feedback: empty-handed starts with one tool’s purch
 Build 06 corrects the working-tool hand poses, gives each backpack upgrade a visible worn model, increases newly founded treasuries to 20,000 gold, adds paid gathering workers, and removes fallen runs from public browsing. Existing runs retain their saved treasury balances and bank accounts remain independent of a village’s survival.
 
 Build 07 adds articulated knees, ankles, elbows and hip rotation to walking and running, blended by movement speed. The upper body counters the hips and leans gently into turns. Zombie movement remains slower and uneven. Boots and trousers now deform around the extra joints. These are client visual changes; authoritative movement speed, collision, combat timing and saved game rules remain the same. Road border stones stop at adjoining path surfaces so junctions do not contain internal curb rows.
+
+Build 08 requires residents to approach the front door or counter for building services. Owned structures use their building entrance; unbuilt plots, ruins, farms and mines use their frontage gate. Client prompts and authoritative transactions share these access points, while church beds remain separate care interaction points. The atlas marks entrances. A merchant character, a covered carriage and two harnessed horses appear during the authoritative merchant visit and disappear when it ends. They are visual visitors, separate from residents’ owned horses and carts.
 
 ### Current implementation choices
 

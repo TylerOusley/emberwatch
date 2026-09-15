@@ -1,5 +1,17 @@
 # Emberwatch build validation
 
+## Build 08: entrance access and the visiting merchant
+
+The complete `npm test` run passes **212/212 tests**. All 39 client, shared and server JavaScript modules pass syntax checks. Shared entrance rules cover the actual rotated front doors and projecting shop counters. The checks verify reachable approach points for every permanent building and all 48 plots across supported building types, reject side/rear/interior positions, and use frontage gates for open land and ruins.
+
+Authoritative action tests reject out-of-reach banking, trading, loans, food/tools/backpack/horse/merchant purchases, donations, plot storage/crafting/ownership controls, recruitment, upgrades and policy proposals without changing village or account balances. They recheck position on each request. Church treatment remains available at the beds and hammer repairs remain available beside damaged structures. Existing tests now approach the correct entrance; their economy, persistence, combat and multiplayer assertions are retained.
+
+Client checks cover entrance-only prompts, gathering priority, stale open panels and confirmations, focused form invalidation, treatment controls at beds, worker hiring/dismissal, remote worker orders and council votes, and atlas markers that move from a plot gate to the current building entrance after construction. Worker delivery and waiting positions remain usable.
+
+The merchant, two harnessed horses and covered carriage follow the authoritative visit-presence flag, including joining during a visit, departure, missing state and later arrivals. Geometry is reused across visits. Tests verify that these decorative visitors never create owned/purchasable horses or mutate game state, clear the stall approach, roads, buildings and mineral gathering areas, and dispose their private assets without damaging shared character/horse assets. The rigid carriage uses ten material batches. The [merchant preview](previews/merchant-visit.jpg) renders the actual stall and visitor geometry at their real relative positions; it was visually inspected. Studio rendering omits canvas sign lettering and game textures/ground.
+
+Interactive WebGL appearance and production multiplayer frame rate still require a live playtest. This update does not reset villages or change existing balances, inventories, merchant schedules or trade prices.
+
 ## Build 07: articulated movement and clear path junctions
 
 The complete `npm test` run passes **194/194 tests**. All 38 client, shared, server and movement-preview JavaScript modules pass syntax checks. New checks cover independent knee/ankle/elbow movement, walking versus running, floor clearance, frame-rate consistency, smooth transitions through tools, turns, carrying, riding and downing, clothing deformation and skeleton disposal. Existing combat, equipment, backpack, worker, multiplayer and persistence checks remain green.

@@ -83,8 +83,9 @@ test('mounted horses use the rider rendered transform while dismounted and stabl
   const threeURL = new URL('../node_modules/three/build/three.module.js', import.meta.url).href;
   const sharedURL = new URL('../shared/world.js', import.meta.url).href;
   const horseURL = new URL('../public/src/horse-model.js', import.meta.url).href;
+  const merchantURL = new URL('../public/src/merchant-model.js', import.meta.url).href;
   const source = readFileSync(new URL('../public/src/transport-world.js', import.meta.url), 'utf8')
-    .replace("'three'", JSON.stringify(threeURL)).replace("'/shared/world.js'", JSON.stringify(sharedURL)).replace("'./horse-model.js'", JSON.stringify(horseURL));
+    .replace("'three'", JSON.stringify(threeURL)).replace("'/shared/world.js'", JSON.stringify(sharedURL)).replace("'./horse-model.js'", JSON.stringify(horseURL)).replace("'./merchant-model.js'", JSON.stringify(merchantURL));
   const { createTransportWorld } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const scene = new THREE.Scene(), world = createTransportWorld(scene);
   const state = { horses: [{ id: 'ridden', riderId: 'player', x: 0, z: 0, yaw: 0, moving: true }], carts: [], stable: { stock: 1 } };

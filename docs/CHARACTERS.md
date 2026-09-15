@@ -1,5 +1,11 @@
 # Natural character redesign
 
+## Visiting merchant
+
+The Wayfarer gains a merchant character during each authoritative visit, with a plum outfit and idle movement. Two sculpted horses and a covered, four-wheel carriage park north of the stall. Their group appears on arrival, disappears on departure, and reuses geometry on later visits. These visitors are decorative; the stable and residents' owned transport remain separate. Materials used for the merchant's outfit are cloned so regular villagers keep their colors.
+
+[Merchant and caravan preview](previews/merchant-visit.jpg). This is an actual-geometry studio render; canvas sign lettering, terrain and game textures are omitted.
+
 ## Articulated locomotion
 
 The biped rig now includes a pelvis and two ankle joints. The walk cycle has separate contact, weight-acceptance, planted, toe-off and recovery poses. Knees fold during the returning step, ankles roll with the foot, elbows move with the arm swing, and hips counter the shoulders. Running blends into stronger knee lift, bent arms and forward lean as speed rises. Small turn leans use the rendered turning rate. Zombie gaits retain asymmetric dragging steps and delayed arm motion.

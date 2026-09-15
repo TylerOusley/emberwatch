@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES, canStand, plotFront, plotSolids } from '../shared/world.js';
 import { WORKER_RULES } from '../shared/workers.js';
 import { inventoryWeight } from '../shared/content.js';
@@ -7,7 +8,7 @@ import { taxedSaleQuote } from '../shared/economy.js';
 import { ensureOwnership } from '../server/ownership.js';
 import { ensureWorkers, workersAction, workersTick, workersSnapshot } from '../server/workers.js';
 
-const bank = BUILDINGS.find(b => b.id === 'bank'), home = plotFront(bank, -1.3);
+const bank = BUILDINGS.find(b => b.id === 'bank'), home = buildingEntrance(bank);
 const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 function fixture() {
@@ -187,6 +188,7 @@ test('collection is owner-only, nearby and capacity-bounded; dismissal cannot lo
   act({ kind: 'worker_collect', workerId: w.id });
   assert.equal(owner.inventory.stone, 1); assert.equal(w.cargo.stone, 3);
   assert.throws(() => act({ kind: 'worker_collect', workerId: w.id }), /pack is full/);
+  Object.assign(owner, home); Object.assign(w, home);
   assert.throws(() => act({ kind: 'worker_dismiss', workerId: w.id }), /cargo/);
   owner.inventory = {}; act({ kind: 'worker_collect', workerId: w.id }); assert.equal(w.cargo.stone, 0);
   assign(w); w.x = 30; assert.throws(() => act({ kind: 'worker_dismiss', workerId: w.id }), /return to the treasury/);

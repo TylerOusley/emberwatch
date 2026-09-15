@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildingEntrance } from '../shared/access.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +21,7 @@ async function fixture(t) {
   const village = { id: 'transport-village', treasury: 2500, players: { [p.id]: p, [other.id]: other }, plots: [] };
   ensureTransport(village);
   function act(who, action) { return sim.store.transaction(() => { const result = transportAction(sim, village, who, action); sim.store.saveVillage(village); return result; }); }
-  const near = (who, id) => { const building = BUILDINGS.find(b => b.id === id); who.x = building.x - building.w / 2 - 2; who.z = building.z; };
+  const near = (who, id) => { const building = BUILDINGS.find(b => b.id === id); Object.assign(who, buildingEntrance(building)); };
   return { directory, sim, p, other, village, act, near };
 }
 
