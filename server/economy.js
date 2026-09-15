@@ -10,7 +10,8 @@ const basics = ['wheat', 'timber', 'stone'];
 const own = (object, key) => typeof key === 'string' && Object.hasOwn(object, key);
 const whole = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
 const near = (p, id) => canUseBuilding(p, BUILDINGS.find(building => building.id === id));
-const requireBank = p => { if (!near(p, 'bank')) throw new Error('Visit the Village Treasury to trade resources.'); };
+const requireBank = p => { if (!near(p, 'bank')) throw new Error('Visit the Village Treasury to manage village debts.'); };
+const requireMarket = p => { if (!near(p, 'market')) throw new Error('Visit the Resource Exchange to trade or donate resources.'); };
 const addIncome = (sim, v, p, amount) => {
   if (!whole(p.wallet) || !whole(p.wallet + amount)) throw new Error('Your wallet cannot accept this payment.');
   if (sim.awardIncome) sim.awardIncome(v, p, amount);
@@ -133,7 +134,7 @@ export function economyAction(sim, v, p, action) {
     return proposal.status === 'voting' ? 'Your vote has been recorded.' : proposal.reason;
   }
   if (kind === 'sell') {
-    requireBank(p);
+    requireMarket(p);
     const { resource, amount, minTotal } = action;
     const quote = taxedSaleQuote(resource, v.stock[resource], amount, v.policies.tradeTax);
     if (!whole(minTotal, 1)) throw new Error('Request a current whole-gold sale quote.');
@@ -146,7 +147,7 @@ export function economyAction(sim, v, p, action) {
     return `Sold ${amount} ${resource} for ${quote.total} gold${quote.tax ? ` after ${quote.tax} gold tax` : ''}. Gold added to your wallet.`;
   }
   if (kind === 'buyResource') {
-    requireBank(p);
+    requireMarket(p);
     const { resource, amount, maxTotal } = action;
     const quote = taxedPurchaseQuote(resource, v.stock[resource], amount, v.policies.tradeTax);
     if (!whole(maxTotal, 1)) throw new Error('Request a current whole-gold purchase quote.');
@@ -194,7 +195,7 @@ export function economyAction(sim, v, p, action) {
     p.wallet -= amount; p.landDebt -= amount; v.treasury += amount;
     return `Paid ${amount} gold in land-tax arrears.`;
   }
-  requireBank(p);
+  requireMarket(p);
   const total = materials.reduce((sum, id) => sum + p.inventory[id], 0);
   if (!total) throw new Error('You have no materials to donate.');
   for (const id of materials) { v.stock[id] += p.inventory[id]; p.inventory[id] = 0; }

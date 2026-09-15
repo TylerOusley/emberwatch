@@ -10,9 +10,17 @@ export function ensureRequests(v) {
   v.requests ||= { version: 1, day: v.day, spent: 0, issued: [], nextId: 1, items: [], ledger: {} };
   const book = v.requests;
   book.ledger ||= {};
-  for (const target of requestDestinations(v)) {
+  const targets = requestDestinations(v);
+  for (const target of targets) {
     if (!Object.hasOwn(book.ledger, target.key)) book.ledger[target.key] = { withdrawn: 0, stock: target.stock };
   }
+  // Relocate old open and historical deliveries without reissuing them, touching
+  // escrow, or clearing the provenance that prevents buy/deliver payout loops.
+  for (const request of book.items) if (request.destinationId === 'bank') {
+    const target = targets.find(t => t.key === request.key);
+    if (target) { request.destinationName = target.name; request.point = { ...target.point }; }
+  }
+  book.version = 2;
   return book;
 }
 

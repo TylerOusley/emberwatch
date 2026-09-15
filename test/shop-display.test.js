@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { itemArt, shopInterior } from '../public/src/shop-display.js';
 
-const items=['axe','pickaxe','scythe','hammer','sword','bow','arrows','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal'];
-const themes=['tools','weapons','tinker','food','merchant','stable'];
+const items=['axe','pickaxe','scythe','hammer','sword','bow','arrows','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','gold'];
+const themes=['tools','weapons','tinker','food','merchant','stable','bank','market'];
 function safeSVG(svg) {
   assert.match(svg,/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   assert.match(svg,/aria-hidden="true"/);
@@ -43,9 +43,9 @@ test('untrusted item, material and room inputs never enter SVG markup',()=>{
   assert.equal(itemArt('axe',null),itemArt('axe'));
 });
 
-test('six shop interiors can coexist without SVG ID collisions or remote dependencies',()=>{
+test('eight shop interiors can coexist without SVG ID collisions or remote dependencies',()=>{
   const views=themes.map(theme=>shopInterior(theme));
-  assert.equal(new Set(views).size,6);
+  assert.equal(new Set(views).size,8);
   for(let i=0;i<views.length;i++){
     safeSVG(views[i]);assert.match(views[i],/viewBox="0 0 1400 480"/);
     assert.match(views[i],new RegExp(`data-shop-theme="${themes[i]}"`));

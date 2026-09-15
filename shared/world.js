@@ -14,9 +14,10 @@ export const BUILDINGS = [
  {id:'house1',kind:'house',name:'Hearthstone Cottage',x:22,z:-35,w:8,d:8},
  {id:'house2',kind:'house',name:'Bramble Cottage',x:-26,z:-39,w:8,d:7},
  {id:'stable',kind:'stable',name:'Hearthside Stables',x:19,z:-66,w:10,d:8},
- {id:'merchant',kind:'merchant',name:'The Wayfarer',x:-18,z:-67,w:10,d:7}
+ {id:'merchant',kind:'merchant',name:'The Wayfarer',x:-18,z:-67,w:10,d:7},
+ {id:'market',kind:'market',name:'Resource Exchange',x:18,z:-86,w:12,d:9}
 ];
-const buildingFacing={keep:0,barracks:Math.PI/2,tools:Math.PI/2,food:-Math.PI/2,bank:Math.PI/2,church:-Math.PI/2,house1:-Math.PI/2,house2:Math.PI/2,stable:-Math.PI/2,merchant:Math.PI/2};
+const buildingFacing={keep:0,barracks:Math.PI/2,tools:Math.PI/2,food:-Math.PI/2,bank:Math.PI/2,church:-Math.PI/2,house1:-Math.PI/2,house2:Math.PI/2,stable:-Math.PI/2,merchant:Math.PI/2,market:-Math.PI/2};
 for(const building of BUILDINGS)building.yaw=buildingFacing[building.id]??0;
 export const WORLD_BOUNDS = Object.freeze({minX:-112,maxX:112,minZ:-234,maxZ:128});
 export const WALLS = [

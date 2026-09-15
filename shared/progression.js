@@ -16,7 +16,7 @@ export const COSMETIC_CRESTS = Object.freeze({ none:'No crest', flame:'Flame', s
 export const GUIDE_STEPS = Object.freeze([
   Object.freeze({ id:'tool', name:'Choose your first tool', detail:'Visit Oak & Iron. Your starting 10 gold buys an axe, pickaxe, or scythe. Pick one to begin gathering.', destination:'tools' }),
   Object.freeze({ id:'gather', name:'Gather a resource', detail:'Equip your tool and use it on a tree, mineral outcrop, or wheat stalk.', destination:'gather' }),
-  Object.freeze({ id:'sell', name:'Sell supplies', detail:'Bring resources to the Treasury entrance and sell your chosen quantity for wallet gold.', destination:'bank' }),
+  Object.freeze({ id:'sell', name:'Sell supplies', detail:'Bring resources to the Resource Exchange. Choose Sell max or enter a quantity to earn wallet gold.', destination:'market' }),
   Object.freeze({ id:'food', name:'Buy food for later', detail:'Visit The Breadboard. Food goes into your pack; equip it and eat when hungry.', destination:'food' }),
   Object.freeze({ id:'gate', name:'Find the village gate', detail:'Follow the main road to the single gate. This is where the village stands together at night.', destination:'gate' })
 ]);

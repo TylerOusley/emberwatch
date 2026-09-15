@@ -1,4 +1,4 @@
-import { canUseBuilding } from '../shared/access.js';
+import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
 import { RESOURCE_WEIGHTS, STORAGE_CAPACITY, inventoryWeight, carryCapacity } from '../shared/content.js';
@@ -12,6 +12,8 @@ const tools = { wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe
 const production = { wheat: 'wheat_farm', timber: 'tree_farm', stone: 'mine', iron: 'mine', coal: 'mine' };
 const publicNodes = new Map(RESOURCES.map(node => [node.id, node]));
 const bank = BUILDINGS.find(building => building.id === 'bank');
+const market = BUILDINGS.find(building => building.id === 'market');
+const marketDoor = buildingEntrance(market);
 const home = plotFront(bank, -1.3);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const whole = value => Number.isSafeInteger(value) && value >= 0;
@@ -21,6 +23,12 @@ const requireBank = p => { if (!canUseBuilding(p, bank)) throw new Error('Visit 
 const homeFor = (v, w) => {
   const slot = Math.max(0, v.workers.indexOf(w));
   return { x: home.x + slot % 2 * 1.2, z: bank.z + (Math.floor(slot / 2) - 3.5) * 1.2 };
+};
+const marketFor = (v, w) => {
+  // Four short queue rows fit wholly in front of the counter. Sales still
+  // require its actual entrance range; no side/rear unloading is possible.
+  const slot = Math.max(0, v.workers.indexOf(w)) % 16;
+  return { x: marketDoor.x - Math.floor(slot / 4) * .6, z: marketDoor.z + (slot % 4 - 1.5) * .9 };
 };
 
 export function ensureWorkers(v) {
@@ -82,7 +90,7 @@ export function workersAction(sim, v, p, action) {
     const order = { ownerId: p.id, resource: action.resource, sourcePlotId: action.sourcePlotId, destinationPlotId: action.destinationPlotId };
     if (action.sourcePlotId !== null && !sourcePlot(v, order)) throw new Error('Choose a living production building you own that supplies this resource.');
     if (action.mode === 'store' && (typeof action.destinationPlotId !== 'string' || !destinationPlot(v, order))) throw new Error('Choose one of your living buildings for storage.');
-    if (action.mode === 'sell' && action.destinationPlotId !== null) throw new Error('Treasury sales do not need a storage building.');
+    if (action.mode === 'sell' && action.destinationPlotId !== null) throw new Error('Resource Exchange sales do not need a storage building.');
     Object.assign(w, { resource: action.resource, sourcePlotId: action.sourcePlotId, mode: action.mode, destinationPlotId: action.mode === 'store' ? action.destinationPlotId : null,
       paused: false, status: 'Starting work', targetNodeId: null, gatherProgress: 0, delivering: hasCargo(w), nextSearchAt: 0 });
     return 'Worker assigned. Work resumes in daylight while you are online.';
@@ -245,11 +253,11 @@ export function workersTick(sim, v, dt) {
     if (!nodes.length && hasCargo(w)) w.delivering = true;
     if (w.delivering && hasCargo(w)) {
       const plot = w.mode === 'store' ? destinationPlot(v, w) : null;
-      const target = plot ? plotFront(PLOTS.find(m => m.id === plot.id), 1) : homeFor(v, w);
+      const target = plot ? plotFront(PLOTS.find(m => m.id === plot.id), 1) : marketFor(v, w);
       w.targetNodeId = null; w.gatherProgress = 0;
-      if (plot ? distance(w, target) > .7 : !nearBank(w)) {
+      if (plot ? distance(w, target) > .7 : !canUseBuilding(w, market)) {
         const moved = move(w, target, time, neighbors, solids, p);
-        w.status = moved ? (plot ? 'Carrying goods to storage' : 'Carrying goods to treasury') : 'Waiting for a clear delivery path';
+        w.status = moved ? (plot ? 'Carrying goods to storage' : 'Carrying goods to Resource Exchange') : 'Waiting for a clear delivery path';
       } else {
         const complete = plot ? storeCargo(v, w) : sellCargo(sim, v, w, p);
         if (complete) w.delivering = false;

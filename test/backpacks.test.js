@@ -81,7 +81,7 @@ test('upgraded capacity applies consistently to gathering, market, food, shops, 
   assert.equal(p.durability.scythe, 99, 'overweight harvest does not spend tool durability');
   assert.ok(v.resources.find(node => node.id === wheat[1].id).available);
 
-  f.fill(249); f.near('bank');
+  f.fill(249); f.near('market');
   f.act({ kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 100 });
   assert.equal(inventoryWeight(p), 250);
   const gold = p.wallet, stock = v.stock.wheat;

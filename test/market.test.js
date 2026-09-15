@@ -9,10 +9,10 @@ import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
 import { BUILDINGS } from '../shared/world.js';
 import { saleQuote, saleUnitPrice, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../shared/market.js';
-import { taxedSaleQuote } from '../shared/economy.js';
+import { maxSaleQuote, taxedSaleQuote } from '../shared/economy.js';
 
-const treasury = BUILDINGS.find(b => b.id === 'bank');
-const visitTreasury = player => Object.assign(player, buildingEntrance(treasury));
+const exchange = BUILDINGS.find(b => b.id === 'market');
+const visitExchange = player => Object.assign(player, buildingEntrance(exchange));
 
 async function fixture(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'emberwatch-market-'));
@@ -28,7 +28,7 @@ async function settlement(app, name = 'MarketDwarf') {
   const { user } = await account(app, name);
   const { id } = app.simulation.create('Marketwatch', user);
   const player = app.simulation.join(id, user), village = app.simulation.villages.get(id);
-  visitTreasury(player);
+  visitExchange(player);
   return { player, village };
 }
 function rejectedUnchanged(app, village, player, action, pattern) {
@@ -78,6 +78,39 @@ test('quote helper rejects unsupported resources and unsafe or non-whole quantit
   assert.throws(() => saleQuote('wheat', Number.MAX_SAFE_INTEGER, 1), /stock is full/);
 });
 
+test('Sell max finds the exact affordable carried bundle across stock tiers and tax rounding', () => {
+  for (const resource of ['wheat', 'timber', 'stone', 'iron', 'coal']) {
+    for (const stock of [0, 24, 99, 299, 999, 1500]) for (const percent of [0, 5, 20]) for (const funds of [0, 3, 7, 19, 51, 137, 700]) {
+      const input = Object.freeze({ resource, stock, percent, carried: 153, treasury: TREASURY_RESERVE + funds });
+      const result = maxSaleQuote(input);
+      assert.ok(result.amount >= 0 && result.amount <= input.carried);
+      assert.ok(result.quote.total <= funds);
+      assert.deepEqual(result.quote, result.amount ? taxedSaleQuote(resource, stock, result.amount, percent) : { gross: 0, tax: 0, total: 0 });
+      if (result.amount < input.carried) assert.ok(taxedSaleQuote(resource, stock, result.amount + 1, percent).total > funds, 'one more unit must exceed available treasury funds');
+    }
+  }
+  assert.equal(maxSaleQuote({ resource: 'wheat', stock: 0, carried: 20000, treasury: 100000 }).amount, MAX_TRADE_AMOUNT);
+  for (const treasury of [0, 499, 500]) assert.equal(maxSaleQuote({ resource: 'wheat', stock: 0, carried: 4, treasury }).amount, 0);
+  assert.equal(maxSaleQuote({ resource: 'wheat', stock: Number.MAX_SAFE_INTEGER, carried: 1, treasury: 1000 }).amount, 0);
+  assert.equal(maxSaleQuote({ resource: 'wheat', stock: Number.MAX_SAFE_INTEGER - 2, carried: 10, treasury: 1000 }).amount, 2);
+});
+
+test('Sell max rejects invalid finite inputs and remains a quote requiring authoritative revalidation', async t => {
+  const input = { resource: 'wheat', stock: 24, carried: 3, treasury: 511, percent: 5 };
+  for (const key of ['stock', 'carried', 'treasury', 'percent']) for (const value of [NaN, Infinity, -1, .5, '1']) assert.throws(() => maxSaleQuote({ ...input, [key]: value }));
+  assert.throws(() => maxSaleQuote({ ...input, resource: '__proto__' }), /Choose/);
+  const { app } = await fixture(t), { village, player } = await settlement(app, 'MaxSeller');
+  Object.assign(village, { treasury: input.treasury }); village.stock.wheat = input.stock; player.inventory.wheat = input.carried;
+  const before = JSON.stringify(village), result = maxSaleQuote(input);
+  assert.equal(JSON.stringify(village), before); assert.equal(result.amount, 3);
+  village.treasury--;
+  // Three wheat cost10, so the quote survives a one-gold treasury reduction.
+  app.simulation.action(village.id, player.id, { kind: 'sell', resource: 'wheat', amount: result.amount, minTotal: result.quote.total });
+  assert.equal(village.treasury, TREASURY_RESERVE); assert.equal(player.inventory.wheat, 0);
+  village.clock++; player.inventory.wheat = 1;
+  rejectedUnchanged(app, village, player, { kind: 'sell', resource: 'wheat', amount: 1, minTotal: 1 }, /essential expenses/);
+});
+
 test('market rejects invalid, remote, downed, unaffordable and stale sales atomically', async t => {
   const { app } = await fixture(t);
   const { village, player } = await settlement(app);
@@ -93,8 +126,8 @@ test('market rejects invalid, remote, downed, unaffordable and stale sales atomi
   reject({}, /essential expenses/);
   village.treasury = 2500;
   player.x = 0; player.z = 4;
-  reject({}, /Visit the Village Treasury/);
-  visitTreasury(player); player.downed = true;
+  reject({}, /Visit the Resource Exchange/);
+  visitExchange(player); player.downed = true;
   reject({}, /downed/);
   player.downed = false; player.lastAction = village.clock;
   reject({}, /next action/);
@@ -129,7 +162,7 @@ test('two real WebSocket sellers cannot both receive an out-of-date scarce-stock
   const { id } = app.simulation.create('Shared Market', first.user), village = app.simulation.villages.get(id);
   village.stock.wheat = 24;
   const a = await joinSocket(base, first.session, id), b = await joinSocket(base, second.session, id);
-  for (const p of Object.values(village.players)) { visitTreasury(p); p.inventory.wheat = 1; }
+  for (const p of Object.values(village.players)) { visitExchange(p); p.inventory.wheat = 1; }
   const firstQuote = saleQuote('wheat', a.queue.find(m => m.type === 'state').state.stock.wheat, 1);
   const secondQuote = saleQuote('wheat', b.queue.find(m => m.type === 'state').state.stock.wheat, 1);
   assert.equal(firstQuote, 4); assert.equal(secondQuote, 4);

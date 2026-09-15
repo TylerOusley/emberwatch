@@ -6,8 +6,8 @@ import { BUILDINGS, PLOTS, canStand } from '../shared/world.js';
 import { buildingEntrance, plotEntrance } from '../shared/access.js';
 
 function fixture() {
-  const point = { ...buildingEntrance(BUILDINGS.find(b => b.id === 'bank')), id: 'bank', name: 'Village Treasury', kind: 'service' };
-  const request = { id: 'request-1', destinationId: 'bank', resource: 'wheat', destinationName: 'Village Treasury', point, remaining: 12, unitGold: 5, expiresDay: 2, status: 'open', reason: 'The village needs food.', reserved: 60 };
+  const point = { ...buildingEntrance(BUILDINGS.find(b => b.id === 'market')), id: 'market', name: 'Resource Exchange', kind: 'service' };
+  const request = { id: 'request-1', destinationId: 'bank', resource: 'wheat', destinationName: 'Resource Exchange', point, remaining: 12, unitGold: 5, expiresDay: 2, status: 'open', reason: 'The village needs food.', reserved: 60 };
   const p = { id: 'alice', x: 0, z: 0, hp: 100, inventory: { wheat: 8, coal: 6 } }, state = { status: 'active', day: 1, plots: [], requests: { items: [request], reservedGold: 60 } };
   let panel = null, html = '', buttons = [], inputs = [], renders = 0, closes = 0;
   const sent = [], marks = [], dialog = { open: false, scrollTop: 0, classList: { add() {} } };
@@ -52,7 +52,10 @@ test('destination views offer only that entrance’s deliveries and cannot be op
   const watchRequest = { ...f.request, id: 'request-2', destinationId: 'barracks', destinationName: 'The Watch', point: { ...buildingEntrance(watch), id: 'barracks' } };
   const cannonRequest = { ...f.request, id: 'request-3', destinationId: site.id, destinationName: site.name, resource: 'coal', ownerId: 'bob', building: 'cannon', point: { ...plotEntrance(site, cannon), id: site.id } };
   f.state.requests.items.push(watchRequest, cannonRequest);
-  f.ui.showDestination('bank'); assert.equal(f.renders, 0); assert.equal(f.dialog.open, false); assert.equal(f.marks.at(-1).id, 'bank');
+  f.ui.showDestination('bank'); assert.equal(f.renders, 0); assert.equal(f.dialog.open, false); assert.equal(f.marks.at(-1).id, 'market');
+  Object.assign(f.p, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
+  f.ui.showDestination('bank'); assert.equal(f.renders, 0); assert.equal(f.dialog.open, false);
+  assert.equal(f.marks.at(-1).id, 'market', 'legacy bank ledger requests direct players to the new market counter');
   for (const request of [f.request, watchRequest, cannonRequest]) {
     Object.assign(f.p, request.point); f.ui.showDestination(request.destinationId);
     assert.match(f.html, /REQUESTED DELIVERIES/); assert.equal(f.inputs.length, 1); assert.equal(f.buttons.length, 1); assert.equal(f.buttons[0].disabled, false);

@@ -29,7 +29,7 @@ function rejected(v, fn, pattern) {
 
 test('taxed market transfers real items and money and buying back cannot mint gold', () => {
   const { v, p, sim } = fixture();
-  p.inventory.wheat = 60; v.stock.wheat = 24;
+  visit(p, 'market'); p.inventory.wheat = 60; v.stock.wheat = 24;
   const quote = taxedSaleQuote('wheat', 24, 60, 5);
   assert.deepEqual(quote, { gross: 181, tax: 9, total: 172 });
   const wealth = v.treasury + p.wallet, wallet = p.wallet;
@@ -45,7 +45,7 @@ test('taxed market transfers real items and money and buying back cannot mint go
 
 test('quotes, stock, carry capacity and whole numbers are validated atomically', () => {
   const { v, p, sim } = fixture();
-  p.inventory.wheat = 5;
+  visit(p, 'market'); p.inventory.wheat = 5;
   for (const amount of [0, -1, 1.2, '2', Infinity, MAX_TRADE_AMOUNT + 1]) rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount, minTotal: 1 }), /whole amount/);
   for (const resource of ['food', '__proto__', 'constructor']) rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource, amount: 1, minTotal: 1 }), /Choose/);
   rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount: 2, minTotal: 99 }), /price changed/);

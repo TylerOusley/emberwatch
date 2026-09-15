@@ -23,7 +23,7 @@ test('merchant, team and carriage appear together from authoritative presence, i
   const { createTransportWorld } = await transportModule();
   const scene = new THREE.Scene(), world = createTransportWorld(scene);
   const state = { merchant: { present: false }, stable: { stock: 1 }, horses: [], carts: [] };
-  world.update(state); assert.equal(world.root.getObjectByName('merchant-visit'), undefined);
+  world.update(state); assert.equal(world.root.getObjectByName('merchant-visit'), undefined); assert.equal(world.torchFixtures.length,0);
   state.merchant.present = true; const saved = JSON.stringify(state); world.update(state);
   const visit = world.root.getObjectByName('merchant-visit');
   assert.ok(visit?.visible); assert.ok(visit.getObjectByName('wayfarer-merchant'));
@@ -32,7 +32,7 @@ test('merchant, team and carriage appear together from authoritative presence, i
   assert.equal(JSON.stringify(state), saved, 'decorations never create purchasable horses or modify server state');
   for (const presence of [false, true, false, true]) {
     state.merchant.present = presence; world.update(state);
-    assert.equal(visit.visible, presence); assert.equal(world.root.getObjectByName('merchant-visit'), visit, 'successive visits reuse geometry');
+    assert.equal(visit.visible, presence); assert.equal(world.torchFixtures.length,presence?2:0,'flames leave with the visiting caravan'); assert.equal(world.root.getObjectByName('merchant-visit'), visit, 'successive visits reuse geometry');
     assert.ok(world.root.getObjectByName('horse-stable-stock-0').visible, 'merchant departure leaves stable stock alone');
   }
   delete state.merchant; world.update(state); assert.equal(visit.visible, false);
@@ -47,6 +47,12 @@ test('parked caravan keeps the stall frontage, streets, buildings and public min
   const resources = createHorseResources(), visit = createMerchantVisit(stall, resources);
   visit.update(1 / 60, 1); visit.group.updateMatrixWorld(true);
   const merchantBounds = bounds(visit.merchant.group);
+  for(const f of visit.getTorchFixtures()){
+    const origin=new THREE.Vector3(f.x,f.y,f.z);
+    const down=new THREE.Raycaster(origin,new THREE.Vector3(0,-1,0),0,.1).intersectObject(visit.carriage,true);
+    assert.ok(down.length>0&&down[0].distance<.02,'world-space flame is attached to its carriage torch head');
+    assert.equal(new THREE.Raycaster(origin,new THREE.Vector3(0,1,0),0,f.height).intersectObject(visit.carriage,true).length,0,'canvas canopy cannot intersect the flame');
+  }
   assert.ok(merchantBounds.min.y >= 1.275 && merchantBounds.min.y < 1.32, 'feet stand on the existing platform');
   assert.ok(merchantBounds.max.y < 3.7, 'merchant remains below the stall sign and canopy');
   assert.ok(merchantBounds.max.x < stall.x + stall.w / 2, 'merchant stays behind the front edge');

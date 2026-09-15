@@ -22,8 +22,8 @@ test('bulk quotes price every crossed stock band and cap work at ten thousand un
 });
 
 test('a full expedition backpack trades in one action with finite gold, inventory and storage', () => {
-  const bank = BUILDINGS.find(b => b.id === 'bank');
-  const player = { id: 'bulk', role: 'villager', backpackTier: 3, ...buildingEntrance(bank), online: true, wallet: 5000, inventory: { wheat: 550 }, durability: {} };
+  const market = BUILDINGS.find(b => b.id === 'market');
+  const player = { id: 'bulk', role: 'villager', backpackTier: 3, ...buildingEntrance(market), online: true, wallet: 5000, inventory: { wheat: 550 }, durability: {} };
   const village = { players: { bulk: player }, stock: { wheat: 10 }, treasury: 10000, day: 1, policies: {} };
   ensureEconomy(village);
   const run = action => economyAction({}, village, player, action);

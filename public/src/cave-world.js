@@ -34,7 +34,7 @@ export function createCaveWorld(scene){
   const interior=new THREE.Group(),roof=new THREE.Group(),mouth=new THREE.Group();interior.name='cave-interior';roof.name='cave-ceiling';mouth.name='cave-mouth';root.add(interior,roof,mouth);
   const owned=new Set(),materials=new Set(),cache=new Map(),batches=new Map(),random=seeded(127401),layout=createCaveLayout();
   const material=(name,color,extra={})=>{const m=new THREE.MeshStandardMaterial({color,roughness:.94,...extra});m.name=name;materials.add(m);return m;};
-  const rock=material('layered-cave-rock',0xffffff,{vertexColors:true}),floorMat=material('cave-floor',0xffffff,{vertexColors:true,roughness:.98}),wood=material('aged-mine-timber',0x6b5035),woodEnd=material('timber-endgrain',0x463d30),iron=material('mine-ironwork',0x4c5453,{metalness:.55,roughness:.62}),glow=material('cave-lantern-glass',0xe9b365,{emissive:0xe5a451,emissiveIntensity:1.4,roughness:.3});
+  const rock=material('layered-cave-rock',0xffffff,{vertexColors:true}),floorMat=material('cave-floor',0xffffff,{vertexColors:true,roughness:.98}),wood=material('aged-mine-timber',0x6b5035),woodEnd=material('timber-endgrain',0x463d30),iron=material('mine-ironwork',0x4c5453,{metalness:.55,roughness:.62});
   const get=(key,make)=>{if(!cache.has(key)){const g=make();cache.set(key,g);owned.add(g);}return cache.get(key);};
   const box=get('box',()=>new THREE.BoxGeometry(1,1,1)),cylinder=get('cylinder',()=>new THREE.CylinderGeometry(1,1,1,10)),dummy=new THREE.Object3D(),up=new THREE.Vector3(0,1,0);
   const add=(parent,g,mat,name)=>{owned.add(g);const mesh=new THREE.Mesh(g,mat);mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;};
@@ -83,17 +83,18 @@ export function createCaveWorld(scene){
   }
   const crown=new THREE.Group();crown.name='mouth-rock-crown';mouth.add(crown);
   for(let i=0;i<4;i++)batch(crown,outcrop,rock,[(i-1.5)*2.9,7.6,-123.0],[2.5,1.7,4.8],[0,i*.1,(i-1.5)*.06]);
-  const fixtures=[];
-  function lantern(x,z,side=1){const y=groundHeight(x,z)+2.45;batch(interior,box,iron,[x,y+.35,z],[.12,.1,.55]);batch(interior,box,glow,[x,y,z+.20],[.24,.37,.23]);for(const h of[-.23,.23])batch(interior,box,iron,[x,y+h,z+.20],[.36,.07,.35]);for(const dx of[-.14,.14])batch(interior,box,iron,[x+dx,y,z+.20],[.04,.46,.035]);fixtures.push({x:x+side*.25,y,z:z+.45});}
+  const torchFixtures=[];
+  // Underground torches remain lit through daytime for safe navigation.
+  function wallTorch(x,z,side=1){torchFixtures.push({id:`cave-torch-${torchFixtures.length}`,x:x+side*.12,y:groundHeight(x,z)+2.45,z:z+.20,mount:'wall',nx:side,nz:0,alwaysLit:true,height:.82});}
   for(const area of CAVE_AREAS){
     if(area.kind==='ramp')for(let z=area.z+area.d/2-2;z>area.z-area.d/2+1;z-=7.3){
       const y=groundHeight(area.x,z),half=area.w/2;
       for(const side of[-1,1]){const x=area.x+side*(half+.08);beam(interior,[x,y,z],[x,y+5.65,z],.32,.38);for(const h of[.35,4.85])batch(interior,box,iron,[x,y+h,z],[.37,.14,.42]);beam(interior,[x,y+4.48,z],[x-side*1.05,y+5.55,z],.20,.22);}
-      beam(interior,[area.x-half-.3,y+5.6,z],[area.x+half+.3,y+5.6,z],.33,.42);lantern(area.x-half+.40,z,1);
+      beam(interior,[area.x-half-.3,y+5.6,z],[area.x+half+.3,y+5.6,z],.33,.42);wallTorch(area.x-half+.40,z,1);
       // Cross sleepers indicate the slope without becoming collision steps.
       for(let j=0;j<3;j++){const zz=z-j*1.7;if(!caveAreaAt(area.x,zz))continue;batch(interior,box,woodEnd,[area.x,groundHeight(area.x,zz)+.029,zz],[area.w-.7,.045,.18]);}
     }
-    else for(const side of[-1,1])for(const dz of[-area.d*.30,area.d*.30])lantern(area.x+side*(area.w/2-.36),area.z+dz,-side);
+    else for(const side of[-1,1])for(const dz of[-area.d*.30,area.d*.30])wallTorch(area.x+side*(area.w/2-.36),area.z+dz,-side);
   }
   // Hand-cut drainage stones and old pick marks sit around the perimeter only.
   for(let i=0;i<layout.walls.length;i++){const e=layout.walls[i];for(let t=e.a+.65;t<e.b;t+=2.4){const x=(e.vertical?e.fixed:t)+e.nx*.16,z=(e.vertical?t:e.fixed)+e.nz*.16;batch(interior,box,woodEnd,[x,groundHeight(x-e.nx*.16,z-e.nz*.16)+.015,z],[e.vertical?.25:1.1,.03,e.vertical?1.1:.25]);}}
@@ -102,7 +103,6 @@ export function createCaveWorld(scene){
     if(mat.vertexColors&&!g.attributes.color){const values=[];for(let i=0;i<g.attributes.position.count;i++)values.push(.31,.35,.33);g.setAttribute('color',new THREE.Float32BufferAttribute(values,3));}
     const mesh=new THREE.InstancedMesh(g,mat,transforms.length);mesh.name=`cave-${mat.name}-instances`;transforms.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.castShadow=true;mesh.receiveShadow=true;mesh.computeBoundingSphere();parent.add(mesh);
   }
-  const lights=Array.from({length:4},()=>{const light=new THREE.PointLight(0xffc47b,0,15,2);light.castShadow=false;root.add(light);return light;});
   let disposed=false;
   function update(player,camera,time=0){
     if(disposed)return {inside:false,caveMix:0};
@@ -111,12 +111,10 @@ export function createCaveWorld(scene){
     const ceiling=groundHeight(p.x,p.z)+5.35,cam=camera?.position;
     const cutaway=inside&&cam&&(!caveAreaAt(cam.x,cam.z)||cam.y>groundHeight(cam.x,cam.z)+6.05);
     roof.visible=!cutaway;crown.visible=!cutaway;
-    const nearest=fixtures.map(f=>({f,d:Math.hypot(f.x-p.x,f.z-p.z)})).sort((a,b)=>a.d-b.d);
-    for(let i=0;i<lights.length;i++){const entry=nearest[i],light=lights[i];light.position.set(entry.f.x,entry.f.y,entry.f.z);light.intensity=entry.d<28?(i===0?16:12)*(1+Math.sin(time*4.1+i*2)*.035):0;}
     return {inside,caveMix,depth,tier:caveTierAt(p.x,p.z),ceilingY:ceiling,cutaway:Boolean(cutaway)};
   }
   root.userData.layout=layout;root.userData.route=CAVE_ROUTE;
   update(null,null,0);
   function dispose(){if(disposed)return;disposed=true;root.removeFromParent();root.traverse(n=>{if(n.isInstancedMesh)n.dispose();});for(const g of owned)g.dispose();for(const m of materials)m.dispose();root.clear();}
-  return {root,interior,roof,mouth,lights,update,dispose};
+  return {root,interior,roof,mouth,torchFixtures,update,dispose};
 }

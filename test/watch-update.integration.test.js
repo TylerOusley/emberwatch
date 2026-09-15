@@ -84,7 +84,7 @@ test('build 10 survives authenticated patch/legacy multiplayer, funded deliverie
   const before = { wallet: first.wallet, inventory: first.inventory.wheat, stock: village.stock.wheat, treasury: village.treasury, reserved: request.reserved };
   await command(village, modern, { kind: 'request_deliver', requestId: request.id, amount: 10, playerId: second.id }, /entrance/);
   assert.deepEqual({ wallet: first.wallet, inventory: first.inventory.wheat, stock: village.stock.wheat, treasury: village.treasury, reserved: request.reserved }, before, 'remote delivery leaves items, wallet and escrow unchanged');
-  Object.assign(first, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
+  Object.assign(first, buildingEntrance(BUILDINGS.find(b => b.id === 'market')));
   await command(village, modern, { kind: 'request_deliver', requestId: request.id, amount: 10, playerId: second.id });
   const delivered = village.requests.items.find(r => r.id === request.id), paid = 10 * delivered.unitGold;
   assert.equal(first.inventory.wheat, before.inventory - 10); assert.equal(village.stock.wheat, before.stock + 10);

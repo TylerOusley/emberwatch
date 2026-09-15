@@ -6,7 +6,7 @@ import { createPlotsWorld, mineralOutcropGeometry, mineralBedGeometry } from './
 // no downloaded models or textures are required to explore the village.
 export function createWorld(scene) {
   const root = new THREE.Group(); root.name = 'Emberwatch • world'; scene.add(root);
-  const resources = new Map(), flickers = [], wind = [], lanterns = [];
+  const resources = new Map(), wind = [], torchFixtures = [];
   const resourceEffects=createResourceEffects(root);
   const rng = seeded(9153);
   const color = (c) => new THREE.Color(c);
@@ -18,7 +18,7 @@ export function createWorld(scene) {
     glass:mat('#efbb62',{emissive:'#d58532',emissiveIntensity:.4,roughness:.35}), leaf:mat('#5d803d'), leafLight:mat('#83a24b'),
     pine:mat('#385e44'), pineLight:mat('#517748'), bark:mat('#655440'), wheat:mat('#d9b452'), wheatTip:mat('#f0d782'),
     dirt:mat('#705d3f'), fabric:mat('#ac6249'), fabricLight:mat('#dfbd7e'), blue:mat('#416c79'), purple:mat('#766080'),
-    water:mat('#648c8c',{roughness:.2,metalness:.25}), embers:mat('#f6c971',{emissive:'#ff9b36',emissiveIntensity:1.3}),
+    water:mat('#648c8c',{roughness:.2,metalness:.25}),
     geology:mat('#ffffff',{vertexColors:true,roughness:.98}),
     mountain:mat('#7b9386',{flatShading:true}), mountainLight:mat('#95a596',{flatShading:true})
   };
@@ -103,6 +103,7 @@ export function createWorld(scene) {
   road([{x:0,z:-60},{x:0,z:-129.4}],3.6);
   road([{x:0,z:-66},{x:12.4,z:-66}],2.8);
   road([{x:0,z:-67},{x:-11.4,z:-67}],2.8);
+  road([{x:0,z:-86},{x:9.45,z:-86}],3.2);
   for(const plot of PLOTS){
     const front=plotFront(plot),side=plot.x<0?-1:1;
     if(!plot.outside)road([{x:side*(Math.abs(plot.x)>60?61:39),z:plot.z},front],1.8);
@@ -269,6 +270,58 @@ export function createWorld(scene) {
       for(const side of [-1,1]){box(M.wood,x+side*w*.3,1.33,front+.4,1.15,.3,.45);for(let f=0;f<4;f++)batch(sphereG,f%2?M.fabric:M.wheatTip,x+side*w*.3-.42+f*.28,1.57,front+.42,.11,.15,.13);}
     }
   }
+  function resourceExchange(b){
+    const{x,z,w,d}=b,front=z+d/2;
+    // A permanent storehouse and sheltered weighing counter, facing the road.
+    box(M.stoneDark,x,.21,z,w+.22,.42,d+.22);
+    box(M.plasterPale,x,2.45,z,w,4.45,d);
+    for(const side of[-1,1])for(const zz of[z-d/2+.12,z,front-.12])box(M.woodDark,x+side*(w/2-.13),2.6,zz,.28,4.7,.32);
+    for(const y of[.60,3.55,4.55])box(M.woodDark,x,y,front+.07,w,.18,.18);
+    roof(x,z,w+.8,d+.65,4.8,2.7);
+    // Dark recessed serving bays, backed by visible shelves and filled bins.
+    for(const side of[-1,1]){
+      const xx=x+side*w*.235;
+      box(M.woodDark,xx,2.35,front+.095,w*.39,2.0,.085);
+      for(const h of[1.62,2.45,3.2])box(M.woodLight,xx,h,front+.30,w*.37,.095,.46);
+      for(let i=0;i<3;i++){
+        const sx=xx+(i-1)*.83;
+        batch(sphereG,i%2?M.fabricLight:M.wheat,sx,1.99,front+.32,.28,.36,.25);
+        cylinder(M.woodDark,sx,2.3,front+.32,.075,.07);
+        box(i%2?M.copper:M.stoneDark,sx,2.76,front+.31,.52,.36,.31);
+      }
+      for(const edge of[-1,1])box(M.woodLight,xx+edge*w*.195,2.42,front+.25,.13,2.05,.14);
+    }
+    const counterZ=front+1.35,counterW=w-.85;
+    box(M.woodDark,x,.65,counterZ,counterW,1.10,1.06);
+    for(let i=0;i<12;i++)box(i%3?M.wood:M.woodLight,x-counterW/2+(i+.5)*counterW/12,.67,counterZ+.56,counterW/12-.025,.94,.06);
+    box(M.woodLight,x,1.23,counterZ,counterW+.14,.18,1.24);
+    for(const h of[.18,1.06])box(M.woodDark,x,h,counterZ+.605,counterW,.075,.065);
+    // Three open resource bins and a forged balance make its purpose readable.
+    for(let i=0;i<3;i++){
+      const xx=x-2.35+i*1.22;
+      box(M.wood,xx,1.38,counterZ,1.07,.14,.77);
+      for(const side of[-1,1])box(M.woodLight,xx+side*.54,1.49,counterZ,.06,.30,.8);
+      box(M.woodLight,xx,1.47,counterZ-.39,1.1,.29,.055);
+      for(let j=0;j<5;j++)batch(sphereG,i===0?M.wheat:i===1?M.stoneLight:M.copper,xx+(j%3-1)*.27,1.58+Math.floor(j/3)*.1,counterZ+(j%2-.5)*.23,.17,i===0?.12:.16,.17,j*.7,0,0);
+    }
+    cylinder(M.iron,x+2.52,1.8,counterZ,.045,1.04);
+    beam(M.copper,[x+1.92,2.24,counterZ],[x+3.12,2.24,counterZ],.055);
+    for(const side of[-1,1]){
+      const xx=x+2.52+side*.53;beam(M.iron,[xx,2.23,counterZ],[xx,1.83,counterZ],.018);
+      batch(sphereG,M.copper,xx,1.8,counterZ,.30,.065,.27);
+    }
+    const canopyFront=front+2.0;
+    for(const side of[-1,1]){
+      box(M.woodDark,x+side*(w/2-.16),1.87,canopyFront,.16,3.74,.16);
+      beam(M.woodLight,[x+side*(w/2-.16),2.8,canopyFront],[x+side*(w/2-.16),3.8,front+.8],.11);
+    }
+    for(let i=0;i<10;i++)box(i%2?M.blue:M.fabricLight,x-w/2+(i+.5)*w/10,3.75,front+.9,w/10+.012,.095,2.4,0,0);
+    box(M.woodDark,x,3.7,canopyFront+.1,w+.16,.16,.18);
+    sign('RESOURCE EXCHANGE',x,4.32,front+.23,w-1);
+    banner(x-w*.43,5.8,front+.28,.65,1.3,M.blue);
+    // Barrel-like bundled timber stays within the shop footprint.
+    for(let i=0;i<5;i++)batch(cylinderG,M.bark,x+w/2-.55,.5+(i>2?.30:0),front-1.1+(i%3)*.29,.14,.95,.14,Math.PI/2,0,0);
+  }
   function barracks(b){
     cottage({...b,kind:'house'});sign('THE WATCH',b.x,3.54,b.z+b.d/2+.24,3.7);
     banner(b.x-3.8,4,b.z+b.d/2+.25,1.05,2.2);banner(b.x+3.8,4,b.z+b.d/2+.25,1.05,2.2);
@@ -335,7 +388,7 @@ export function createWorld(scene) {
     const yaw=b.yaw??facing[b.id]??0,quarter=Math.abs(Math.sin(yaw))>.5;
     const local={...b,x:0,z:0,w:quarter?b.d:b.w,d:quarter?b.w:b.d};
     const firstChild=root.children.length,firstInstances=new Map([...batches].map(([key,value])=>[key,value.transforms.length]));
-    if(b.kind==='keep')keep(local);else if(b.kind==='church')church(local);else if(b.kind==='barracks')barracks(local);else if(b.kind==='stable')stable(local);else if(b.kind==='merchant')merchant(local);else cottage(local);
+    if(b.kind==='keep')keep(local);else if(b.kind==='church')church(local);else if(b.kind==='barracks')barracks(local);else if(b.kind==='stable')stable(local);else if(b.kind==='merchant')merchant(local);else if(b.kind==='market')resourceExchange(local);else cottage(local);
     const group=new THREE.Group();group.name=`building-${b.id}`;group.position.set(b.x,0,b.z);group.rotation.y=yaw;group.updateMatrix();
     for(const child of root.children.slice(firstChild))group.add(child);
     const front=new THREE.Vector3(0,0,local.d/2).applyMatrix4(group.matrix);
@@ -360,16 +413,11 @@ export function createWorld(scene) {
   const wellArtwork=createWellArtwork();root.add(wellArtwork.root);
   roof(wx,wz,3.6,2.7,3.6,1.3);
 
-  function lamp(x,z,h=3.4){
-    cylinder(M.stoneDark,x,.19,z,.26,.38);box(M.woodDark,x,h/2,z,.13,h,.14);box(M.iron,x+.3,h,z,.8,.1,.1);
-    const glow=mesh(new THREE.BoxGeometry(.3,.47,.3),M.embers,root,x+.57,h-.48,z);glow.castShadow=false;
-    box(M.iron,x+.57,h-.77,z,.43,.1,.43);box(M.iron,x+.57,h-.18,z,.45,.1,.45);
-    for(const dx of [-1,1])for(const dz of [-1,1])box(M.iron,x+.57+dx*.15,h-.48,z+dz*.15,.045,.55,.045);
-    const light=new THREE.PointLight('#ffbe70',0,9,2);light.position.set(x+.57,h-.48,z);root.add(light);lanterns.push(light);
-    const halo=mesh(new THREE.SphereGeometry(.25,6,4),new THREE.MeshBasicMaterial({color:'#ffce7e',transparent:true,opacity:.07,depthWrite:false}),root,x+.57,h-.48,z,2.5,2.5,2.5);flickers.push({o:halo,phase:rng()*6});
-  }
-  for(const [x,z] of [[-4.6,13],[4.5,13],[-4.5,25],[4.5,25],[-4.8,-10],[4.6,-28],[-11,-4],[12,-5],[10,56],[20,93]])lamp(x,z);
-  for(const side of [-1,1])for(const z of [-29,-71,-113])lamp(side*36.7,z);
+  // Shared torch renderer batches holders/flames and owns one nearest-light
+  // pool for the whole map. Outdoor fixtures are dark during daytime.
+  function torch(x,z){torchFixtures.push({id:`street-torch-${torchFixtures.length}`,x,y:groundHeight(x,z)+2.65,z,mount:'standing',alwaysLit:false});}
+  for(const [x,z] of [[-4.6,13],[4.5,13],[-4.5,25],[4.5,25],[-4.8,-10],[4.6,-28],[-11,-4],[12,-5],[10,56],[20,93],[10.2,-91.7],[-4.7,-100]])torch(x,z);
+  for(const side of [-1,1])for(const z of [-29,-71,-113])torch(side*36.7,z);
   for(const side of [-1,1]){cylinder(M.woodDark,side*30,1.35,-59,.1,2.7);sign(side<0?'WEST HEARTHS':'EAST HEARTHS',side*30,2.75,-59,4.3);}
   cylinder(M.woodDark,4.5,1.4,-89,.1,2.8);sign('NORTH COMMON',4.5,2.8,-89,4.2);
 
@@ -474,8 +522,7 @@ export function createWorld(scene) {
     plotsWorld.update(state,time);details.update(time);
     const t=time,night=THREE.MathUtils.clamp(nightAmount,0,1);
     for(const item of wind){if(item.o.visible)item.o.rotation.z=Math.sin(t*1.4+item.phase)*item.amount;}
-    for(const item of flickers){item.o.material.opacity=.035+night*.1+Math.sin(t*6+item.phase)*.01;}
-    if(Math.abs(night-previousNight)>.025){M.glass.emissiveIntensity=.35+night*1.3;M.embers.emissiveIntensity=1+night*1.7;for(const l of lanterns)l.intensity=night*13;previousNight=night;}
+    if(Math.abs(night-previousNight)>.025){M.glass.emissiveIntensity=.35+night*1.3;previousNight=night;}
     const raw=state.resources;
     if(raw){
       resourceEffects.beginSnapshot(state);
@@ -504,7 +551,7 @@ export function createWorld(scene) {
     const target=nearby?1:0;
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;gateArtwork.update();
   }
-  return {root,resources,gate,ground,setCaveView(inside){for(const m of caveOccluders)m.visible=!inside;},landmarks:{gate:gateArtwork,well:wellArtwork},update,road:mainRoad,lanterns,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
+  return {root,resources,gate,ground,setCaveView(inside){for(const m of caveOccluders)m.visible=!inside;},landmarks:{gate:gateArtwork,well:wellArtwork},update,road:mainRoad,torchFixtures,details,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
 }
 
 // Build-time curb clipping uses the exact triangles of the rendered roads,

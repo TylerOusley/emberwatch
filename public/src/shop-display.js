@@ -12,6 +12,8 @@ const THEME_COLORS = Object.freeze({
   food: ['#55513b','#827654','#ae7541','#b7a266'],
   merchant: ['#4a3c49','#796279','#986548','#b7a470'],
   stable: ['#47493a','#777952','#8a6541','#a4a36b'],
+  bank: ['#343f40','#5a706e','#826745','#aab4a1'],
+  market: ['#474835','#7d7953','#9c7243','#b8a778'],
 });
 const own = (object, key) => typeof key === 'string' && Object.hasOwn(object, key);
 const poly = (points, fill, extra = '') => `<polygon points="${points}" fill="${fill}" ${extra}/>`;
@@ -80,7 +82,15 @@ function ore(kind) {
   const palette=kind==='coal'?['#354246','#526066','#202d34','#738086']:kind==='iron'?['#687b7c','#9daba5','#485a61','#c39263']:['#7b8c88','#b0b9a5','#596e70','#ced0b5'];
   return ellipse(120,147,69,8,'#213c34','opacity=".13"')+poly('51,119 75,78 122,62 166,76 190,117 174,145 81,149',palette[0])+poly('75,78 122,62 145,96 92,111 51,119',palette[1])+poly('145,96 166,76 190,117 174,145 137,140',palette[2])+poly('51,119 92,111 112,136 81,149',palette[2])+poly('92,111 145,96 137,140 112,136',palette[0])+line(79,85,116,73,palette[3],2)+(kind==='iron'?poly('91,91 103,85 115,94 110,109 98,112','#bb8b5b')+poly('91,91 102,91 104,104 98,112','#e0b781')+poly('149,116 163,108 172,119 163,128','#bb8b5b')+poly('148,80 157,83 156,93 151,98 145,94','#c39c69'):'')+poly('49,141 60,128 75,134 79,150 59,154',palette[1])+poly('173,150 187,136 201,145 195,155',palette[2]);
 }
-const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal']);
+function gold() {
+  const coin=(x,y,rx=23,ry=8)=>ellipse(x,y+5,rx,ry,'#997237')+rect(x-rx,y,rx*2,5,'#b48b3f')+ellipse(x,y,rx,ry,'#e5c470')+ellipse(x,y,rx-4,ry-2,'none','stroke="#aa873f" stroke-width="1.3"');
+  let art=ellipse(121,150,70,8,'#18352b','opacity=".12"');
+  for(const [x,bottom,count] of [[93,137,4],[144,131,6],[113,112,7]])for(let i=0;i<count;i++)art+=coin(x,bottom-i*6);
+  art+=ellipse(71,139,21,7,'#d7b35a')+ellipse(166,148,21,7,'#d7b35a')+ellipse(71,139,16,4.5,'none','stroke="#9d7938" stroke-width="1.4"')+ellipse(166,148,16,4.5,'none','stroke="#9d7938" stroke-width="1.4"');
+  art+=group('rotate(13 151 83)',ellipse(151,83,25,31,'#95703b')+ellipse(149,82,23,29,'#e4be61')+ellipse(149,82,18,24,'none','stroke="#ae873e" stroke-width="2"')+poly('149,65 159,71 157,85 149,96 141,86 139,71','#b38a3e')+path('M149 70L153 78L147 82L151 88L146 91L143 80Z','#f4d786'));
+  return art;
+}
+const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','gold']);
 
 /** Decorative catalog illustration. Callers provide accessible item names outside the SVG. */
 export function itemArt(itemId, options = {}) {
@@ -91,27 +101,40 @@ export function itemArt(itemId, options = {}) {
   const tier = own(TIERS,safe.tier) ? safe.tier : 'wood', t=TIERS[tier];
   const rawLevel=typeof safe.level==='number'?safe.level:typeof safe.tier==='number'?safe.tier:0;
   const level=Number.isFinite(rawLevel)?Math.max(0,Math.min(3,Math.floor(rawLevel))):0;
-  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal')})[id]();
+  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal'),gold})[id]();
   return `<svg xmlns="http://www.w3.org/2000/svg" class="shop-item-illustration" viewBox="0 0 240 180" width="240" height="180" aria-hidden="true" focusable="false" data-item="${id}" data-tier="${id==='backpack'?level:tier}">${ellipse(120,157,55,6,'#1a302a','opacity=".10"')}${drawing}</svg>`;
 }
 
 function keeper(theme) {
-  const color={tools:'#66705b',weapons:'#697582',tinker:'#718872',food:'#a3a076',merchant:'#857184',stable:'#88865e'}[theme];
+  const color={tools:'#66705b',weapons:'#697582',tinker:'#718872',food:'#a3a076',merchant:'#857184',stable:'#88865e',bank:'#587773',market:'#8d805a'}[theme];
   return group('translate(847 107)',
     // Broad, rounded silhouette with bent elbows, a leather apron and braided beard.
     path('M38 115Q10 107 0 131L-15 185Q-20 204 0 206L48 187L57 144Z',color)+path('M149 114Q177 108 188 134L206 184Q211 203 191 207L151 185L136 143Z',color)+path('M49 110Q93 96 143 112Q159 146 155 213L33 213Q30 150 49 110Z',color)+path('M58 115L67 142L129 142L137 114L148 213L44 213Z','#705039')+path('M69 143Q99 151 129 142L137 213L54 213Z','#8d6643')+path('M48 128L41 157M151 129L163 159','none','stroke="#c2c1a0" stroke-width="3" opacity=".28"')+path('M48 185Q69 183 78 198L72 212L39 213L5 209Q-7 202 3 191L28 193Z','#ce9c6b')+path('M151 185Q124 188 121 200L126 212L158 215L195 209Q207 199 194 191L169 194Z','#ce9c6b')+
     ellipse(42,65,11,17,'#be875b')+ellipse(153,65,11,17,'#be875b')+path('M48 38Q60 5 102 13Q145 12 152 49L149 91Q132 119 101 117Q69 114 48 91Z','#d1a06f')+path('M48 62L58 69L62 90Q80 111 100 112Q120 114 140 93L149 63L151 91Q136 125 102 128Q67 121 48 92Z','#ae764d')+path('M50 67Q43 96 59 125L77 154L100 172L128 153Q157 125 148 68L135 88L117 99L89 100L66 85Z','#6f4a31')+path('M54 92Q64 116 83 122L91 152L100 160L105 126Q132 120 144 95L141 127L120 151L100 169L78 150L61 125Z','#956640')+path('M69 104Q80 115 85 138M122 108Q113 124 112 146M101 123L101 150','none','stroke="#c48b52" stroke-width="2.8" opacity=".65"')+ellipse(100,162,9,4,'#c2a367')+path('M72 81Q86 74 101 89Q113 72 132 81L139 93Q115 100 101 92Q86 103 66 93Z','#6c452b')+path('M74 83Q91 80 100 91Q114 80 132 84','none','stroke="#a87a4a" stroke-width="3"')+path('M96 65Q90 80 96 84L108 83L110 76L105 64Z','#deb184')+ellipse(100,82,10,5,'#e0b184')+path('M65 58Q76 52 86 57M117 57Q129 51 139 57','none','stroke="#593f2b" stroke-width="5"')+ellipse(77,64,4.5,3,'#3d4134')+ellipse(127,64,4.5,3,'#3d4134')+ellipse(78,63.5,1,1,'#f4dfb3')+ellipse(128,63.5,1,1,'#f4dfb3')+
     (theme==='food'?path('M49 42Q33 28 49 13Q42-5 65-8Q79-25 99-13Q123-23 138-8Q166-4 161 17Q175 36 150 44Z','#d6cfad')+path('M49 32Q101 21 152 33L151 46Q102 34 48 46Z','#ede5c4'):
      theme==='weapons'?path('M48 42Q50 1 101 0Q149 0 153 43L146 49Q100 37 53 49Z','#748084')+path('M91 3L103 0L114 4L113 41L94 41Z','#b4b59e')+path('M46 41Q99 29 155 41L153 51Q97 42 48 52Z','#515f64'):
-     path('M47 39Q46 4 93 1Q142-2 153 39L146 44Q93 30 50 46Z',theme==='merchant'?'#8b5e67':'#64563d')+path('M46 35Q95 22 154 36L152 47Q99 35 47 49Z',theme==='merchant'?'#bea077':'#9e8557'))+
+     path('M47 39Q46 4 93 1Q142-2 153 39L146 44Q93 30 50 46Z',theme==='merchant'?'#8b5e67':theme==='bank'?'#3d5c59':'#64563d')+path('M46 35Q95 22 154 36L152 47Q99 35 47 49Z',theme==='merchant'?'#bea077':theme==='bank'?'#c7b177':'#9e8557'))+
     (theme==='tinker'?ellipse(76,62,13,11,'none','stroke="#b5a46d" stroke-width="3"')+ellipse(127,62,13,11,'none','stroke="#b5a46d" stroke-width="3"')+line(89,61,114,61,'#b5a46d',3):'')
   );
 }
 function barrel(x,y,scale=1) {
   return group(`translate(${x} ${y}) scale(${scale})`,path('M7 9Q38-1 70 9Q86 64 68 109Q37 120 7 108Q-8 61 7 9Z','#87623d')+path('M9 13Q20 7 29 7L26 110L9 107Q-3 62 9 13Z','#b18953')+path('M44 8L62 10Q77 63 62 109L44 113Z','#a47843')+[30,84].map(a=>path(`M1 ${a}Q37 ${a+11} 78 ${a}L78 ${a+10}Q38 ${a+22} 1 ${a+10}Z`,'#555d52')+rivet(16,a+9)+rivet(61,a+9)).join('')+ellipse(38,9,31,10,'#c39b60')+ellipse(38,9,25,6,'#8a643e')+line(19,8,57,8,'#ba9056',2));
 }
-function lantern(x,y) {
-  return group(`translate(${x} ${y})`,ellipse(0,10,70,95,'#eac478','opacity=".018"')+ellipse(0,10,42,62,'#ffd691','opacity=".045"')+line(0,-39,0,-20,'#332f27',4)+path('M-18-12L18-12L14 28L-14 28Z','#c08e4c')+path('M-12-8L12-8L9 23L-9 23Z','#ebc87e')+path('M-6-7L6-7L5 22L-5 22Z','#f9e4ac')+poly('-23,-12 0,-26 23,-12','#45473b')+rect(-18,25,36,7,'#41433a')+line(-17,-10,-14,25,'#6a654b',3)+line(17,-10,14,25,'#6a654b',3));
+function grainSack(x,y,scale=1) {
+  return group(`translate(${x} ${y}) scale(${scale})`,path('M20 17L14 3L32 8L51 1L48 18Q72 42 64 86Q33 100 6 85Q-2 47 20 17Z','#a58b57')+path('M20 24Q6 52 14 84L27 87Q18 51 28 25Z','#c1a96f')+path('M40 26Q59 50 57 85L66 84Q76 44 48 20Z','#7f7048')+path('M19 17Q34 24 49 17L50 25Q33 30 18 24Z','#745934')+path('M21 21L44 23','none','stroke="#d4b774" stroke-width="3"')+path('M33 45L33 75M32 52L24 48M34 57L43 51M32 63L23 58M34 68L43 62','none','stroke="#e0c482" stroke-width="2.4"')+line(13,87,11,38,'#766140',1.2));
+}
+function marketScales(x,y,scale=1) {
+  return group(`translate(${x} ${y}) scale(${scale})`,path('M47 92L106 92L115 106L38 106Z','#a58349')+path('M62 89L90 89L96 97L55 97Z','#d0b46f')+rect(72,17,8,76,'#bf9d58')+poly('68,17 76,5 85,17 76,26','#e1c174')+line(17,32,135,32,'#c6aa65',6)+line(24,34,8,73,'#a08e5a',1.8)+line(24,34,41,73,'#a08e5a',1.8)+line(126,34,109,73,'#a08e5a',1.8)+line(126,34,143,73,'#a08e5a',1.8)+path('M2 72H46Q42 87 24 88Q5 87 2 72Z','#af894b')+path('M104 72H149Q144 87 126 88Q108 87 104 72Z','#af894b')+ellipse(24,72,22,3,'#debe76')+ellipse(126,72,22,3,'#debe76')+poly('113,69 118,58 130,56 138,68','#657975')+poly('118,58 130,56 128,65 113,69','#94a196'));
+}
+function vaultDoor(x,y) {
+  return group(`translate(${x} ${y})`,path('M0 171V30Q1 0 33 0H127Q157 0 158 31V171Z','#293b3a')+path('M8 164V32Q10 9 35 9H124Q148 9 148 32V164Z','#768681')+path('M20 156V36Q20 21 39 21H121Q136 22 136 36V156Z','#435c5b')+path('M28 149V38Q29 29 43 29H118Q128 29 128 39V148Z','#57716b')+rect(35,43,82,92,'#344e4a','rx="4"')+ellipse(78,88,30,30,'#a79059')+ellipse(78,88,23,23,'#526a60')+[0,1,2,3].map(i=>{const a=i*Math.PI/2;return line(78,88,78+Math.cos(a)*25,88+Math.sin(a)*25,'#c7ad6c',5);}).join('')+ellipse(78,88,8,8,'#d6bc7b')+rect(119,48,21,12,'#b4a176','rx="2"')+rect(119,124,21,12,'#b4a176','rx="2"')+[32,57,104,129].map(yy=>rivet(25,yy)+rivet(142,yy)).join('')+rect(56,148,42,6,'#baa16b','rx="2"'));
+}
+function ledger(x,y,scale=1) {
+  return group(`translate(${x} ${y}) scale(${scale})`,poly('0,9 53,1 102,11 95,51 49,43 2,53','#5b4434')+poly('4,7 52,0 98,9 93,45 50,38 6,47','#e5d5a5')+poly('52,0 50,38 47,38 48,0','#a18a5b')+[0,1,2,3].map(i=>line(13,14+i*7,41,10+i*7,'#a7966b',1.1)+line(61,10+i*7,88,14+i*7,'#a7966b',1.1)).join('')+poly('66,28 71,28 69,51 64,48','#a15e48'));
+}
+function wallTorch(x,y) {
+  // Open flame, wrapped timber and an iron wall bracket match the village torches.
+  return group(`translate(${x} ${y})`,ellipse(2,-14,72,96,'#eac478','opacity=".025"')+ellipse(2,-14,43,63,'#ffd691','opacity=".065"')+rect(3,10,16,35,'#383d34','rx="4"')+rivet(11,16)+rivet(11,39)+path('M11 29L-3 23L-6 13','none','stroke="#272e29" stroke-width="5"')+line(-6,3,-2,43,'#8c6038',8)+line(-7,5,-5,37,'#c2914e',2)+path('M-12 2C-25-16-7-24-7-44C6-36 7-28 5-19C15-24 17-35 16-39C31-16 21 5 5 10Z','#d97837')+path('M-7 3C-17-10-4-20-3-32C7-25 9-18 5-7C12-9 14-16 14-20C20-5 12 8 2 8Z','#edb957')+path('M-3 7Q-10-5 2-17Q1-7 9-1Q11 9-3 7Z','#fff0b0')+path('M-14 1L12 3L7 13L-10 12Z','#534a36')+line(-11,5,9,6,'#b09a66',3)+line(-9,10,6,11,'#776544',2));
 }
 function insetArt(id,x,y,w=140,h=105,options={}) { return `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 240 180" aria-hidden="true">${itemArt(id,options).replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'')}</svg>`; }
 
@@ -146,16 +169,20 @@ export function shopInterior(theme='tools') {
   if(theme==='food') props=rect(426,212,226,8,'#b8925b')+[0,1,2].map(i=>insetArt('food',422+i*68,150,93,65)+insetArt(i===1?'best_food':'good_food',422+i*69,224,98,64)).join('')+barrel(1105,238,.75)+insetArt('wheat',1023,199,146,129)+insetArt('best_food',1072,300,159,110);
   if(theme==='merchant') props=rect(426,217,226,8,'#b8925b')+insetArt('backpack',428,160,111,127,{level:3})+insetArt('iron',534,221,104,72)+insetArt('good_food',547,157,98,73)+path('M1043 140L1178 140L1169 251L1153 272L1135 252L1110 275L1088 254L1067 273L1051 254Z','#886473')+path('M1054 151L1167 151L1159 243L1136 233L1110 253L1088 234L1062 248Z','#b7986d')+poly('1110,167 1148,203 1110,238 1072,203','#766678')+poly('1110,178 1137,203 1110,227 1083,203','#d1b67d')+insetArt('iron',1080,314,142,86)+barrel(1197,263,.6);
   if(theme==='stable') props=insetArt('backpack',428,154,133,137,{level:1})+insetArt('wheat',543,155,101,130)+path('M1024 295L1024 172Q1075 106 1177 154L1177 306Z','#273c33')+insetArt('horse',996,140,235,178)+rect(1022,272,183,15,'#977346')+rect(1022,309,183,12,'#785b3b')+rect(1023,229,15,97,'#b28952')+rect(1185,229,15,97,'#b28952')+insetArt('wheat',1085,302,151,110);
+  if(theme==='bank') props=rect(426,216,226,8,'#ad966a')+[0,1,2].map(i=>insetArt('gold',429+i*65,148,92,70)).join('')+insetArt('gold',429,220,116,74)+ledger(550,238,.75)+vaultDoor(1032,135)+path('M1082 128L1140 128L1140 140L1082 140Z','#b49d68');
+  if(theme==='market') props=marketScales(453,166,1.1)+grainSack(1063,228,.9)+grainSack(1120,246,.8)+barrel(1174,245,.58)+insetArt('wheat',1076,166,99,100)+insetArt('timber',1036,255,116,73)+poly('1044,291 1105,281 1131,294 1068,309','#97703f')+poly('1044,291 1068,309 1068,323 1044,311','#bb9155')+poly('1068,309 1131,294 1131,309 1068,323','#765634')+line(1069,316,1130,301,'#c29b60',3)+line(1050,295,1050,315,'#614c30',3)+line(1124,295,1124,313,'#c4a16c',3)+rect(416,276,243,17,'#a5804b')+path('M419 280H655','none','stroke="#d5b678" stroke-width="2"');
   body+=props+keeper(theme);
   // Counter spans the room; inlaid edges, drawers and forged nails give foreground scale.
   body+=poly('307,322 1161,322 1261,377 226,377','#bc915b')+poly('315,326 1157,326 1228,367 254,367','#9d794b')+line(320,335,1161,335,'#d1ad72',2)+line(297,351,1192,351,'#795b38',2)+poly('226,377 1261,377 1261,403 226,403','#6b4c33')+rect(226,378,1035,6,'#e1bc79')+poly('239,403 1248,403 1248,480 239,480','#785337')+rect(258,414,971,66,'#926b42')+[283,548,813,1078].map(x=>rect(x,423,221,57,'#674c34','rx="2"')+rect(x+5,428,211,52,'#a47a46','rx="2"')+rect(x+88,437,44,7,'#554b36','rx="3"')+rivet(x+10,431)+rivet(x+210,431)).join('')+rect(704,393,40,87,'#b08b51')+poly('708,400 740,400 740,480 708,480','#927144');
   // A balanced stock vignette on the countertop survives narrow viewport crops.
   body+=path('M540 346Q611 341 652 346T732 345M1011 359Q1083 352 1171 357','none','stroke="#67482f" stroke-width="1.6" opacity=".55"');
   body+=ellipse(598,352,13,3,'none','stroke="#61472e" stroke-width="1.2" opacity=".35"');
-  body+=insetArt(theme==='food'?'food':theme==='weapons'?'sword':theme==='tinker'?'bow':theme==='merchant'?'backpack':theme==='stable'?'wheat':'hammer',386,284,158,114,{tier:'iron',level:3});
+  body+=insetArt(theme==='food'?'food':theme==='weapons'?'sword':theme==='tinker'?'bow':theme==='merchant'?'backpack':theme==='stable'||theme==='market'?'wheat':theme==='bank'?'gold':'hammer',386,284,158,114,{tier:'iron',level:3});
   if(theme==='tinker')body+=insetArt('arrows',507,306,109,75);
+  if(theme==='bank')body+=ledger(578,337,.76)+line(664,342,681,365,'#ddcba1',2.3);
+  if(theme==='market')body+=insetArt('iron',550,308,120,76)+insetArt('timber',1063,308,135,76);
   body+=path('M761 343L804 343L816 359L769 361Z','#d9c394')+line(771,348,797,347,'#8e7f5c',1.4)+line(775,353,803,352,'#8e7f5c',1.4)+ellipse(821,353,7,3,'#d6b568')+ellipse(831,357,7,3,'#b8944b')+ellipse(821,350,7,3,'#e7c978');
-  body+=lantern(742,173)+lantern(1160,85)+path('M0 0H1400V480H0Z','none','stroke="#172d29" stroke-width="14" opacity=".22"');
+  body+=wallTorch(742,173)+wallTorch(1160,85)+path('M0 0H1400V480H0Z','none','stroke="#172d29" stroke-width="14" opacity=".22"');
   // Gentle, sparse motes. Static decoration, not a page-level animation workload.
   for(const [x,y] of [[311,291],[331,216],[383,262],[768,244],[711,212],[780,195],[1111,103],[1210,220]])body+=ellipse(x,y,1.5,1.5,'#f2dab0','opacity=".35"');
   return `<svg xmlns="http://www.w3.org/2000/svg" class="shop-interior-art" viewBox="0 0 1400 480" width="1400" height="480" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false" data-shop-theme="${theme}">${body}</svg>`;

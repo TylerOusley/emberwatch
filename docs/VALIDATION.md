@@ -1,5 +1,21 @@
 # Emberwatch build validation
 
+## Build 13: resource exchange, illustrated building plans, nearby map and torches
+
+The complete `npm test` run passes **384/384 tests**. All **65** runtime JavaScript modules pass syntax/local import checks, all local HTML assets resolve, and **76 HTML IDs** are unique.
+
+Resource commerce now requires the Resource Exchange counter; banking and loans still require the treasury. Sell max computes the exact affordable carried quantity across price bands and tax rounding while keeping the treasury reserve. Tests cover incomplete custom quantity drafts, one protected sale action, changed prices or balances, stock/carry limits, and rejected transactions without partial mutations. Existing full-backpack and real WebSocket cave-mining tests now sell at the exchange while preserving their inventory, pricing and SQLite restart assertions.
+
+The new building fits beside existing routes without changing any of the 48 plots or resource identities. Workers physically deliver sales there, including deep-cave journeys and concurrent sellers. Saved communal requests retain their identity, funding escrow, progress and withdrawal provenance while their delivery point/name migrates to the exchange. Existing saved occupants displaced by the new footprint retain cargo and gold when relocated to valid ground.
+
+UI checks cover separate illustrated bank/market views, entrance access, exact trade payloads, live affordability, focus and draft preservation. The one-building carousel shows all 11 plans and preserves role, ownership, costs, conversion confirmation and keyboard navigation rules. Nearby-map checks cover player-centered projection, surface/cave ranges, marked destinations and actual rendering. The [minimap preview](previews/minimap.png) was produced with the real Canvas renderer and visually inspected. The [counter artwork](previews/shop-counter.svg), six [actual UI fixtures](previews/shop-ui.html), and building-plan illustrations were also inspected offline.
+
+Torches use animated flame geometry and six pooled nearby lights. Checks cover outdoor daylight extinction, night lighting, cave fixtures staying lit, merchant presence, light selection, disposal and removal of old lantern fixtures. The actual flame shader compiled and rendered in Mesa OpenGL; day, dusk and two night animation frames were visually inspected in the [torch preview](previews/torches.jpg). The [Resource Exchange preview](previews/resource-exchange.jpg) uses the actual game geometry. These previews are not live browser screenshots.
+
+Interactive browser control was unavailable in this session. Automated UI, simulation, network and offline rendering checks do not establish production browser layout, sustained frame rate or long-run balance. The complete update still needs an in-game playtest. Tests used temporary data; no production player data was modified during validation.
+
+The approved crate credit prices and original item pool are recorded in [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md), along with the proposed Phoenix Ember and Rare Mining Pack. Crate opening, credits, item grants, armor and self-revival remain unimplemented.
+
 ## Build 12: descending caves and visual storefronts
 
 The complete `npm test` run passes **359/359 tests**. All **62** runtime JavaScript modules pass syntax/local import checks, all local HTML assets resolve, and **76 HTML IDs** are unique.

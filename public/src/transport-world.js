@@ -73,6 +73,7 @@ export function createTransportWorld(scene) {
   }
   return {
     root,
+    get torchFixtures(){return merchantVisit?.group.visible?merchantVisit.getTorchFixtures?.()||[]:[];},
     update(state, dt = 1 / 60, renderedRiders) {
       if (disposed) return;
       if (!state) { if (merchantVisit) merchantVisit.group.visible = false; return; }
