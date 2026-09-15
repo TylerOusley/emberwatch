@@ -13,8 +13,7 @@ export function createMerchantVisit(building, horseResources) {
   };
   const wood = mat('#805b37'), lightWood = mat('#af8553'), dark = mat('#392d26'), iron = mat('#425050', { metalness: .4 }),
     plum = mat('#79617f', { side: THREE.DoubleSide }), cream = mat('#dbc497', { side: THREE.DoubleSide }),
-    leather = mat('#5a392b'), brass = mat('#c3a263', { metalness: .5, roughness: .45 }), sacks = mat('#ad9770'),
-    lantern = mat('#ecc779', { emissive: '#e2a34a', emissiveIntensity: .6 });
+    leather = mat('#5a392b'), brass = mat('#c3a263', { metalness: .5, roughness: .45 }), sacks = mat('#ad9770');
   const box = new THREE.BoxGeometry(1, 1, 1), sphere = new THREE.SphereGeometry(1, 14, 10);
   owned.add(box); owned.add(sphere);
   function part(parent, geometry, material, position = [0, 0, 0], scale = [1, 1, 1]) {
@@ -110,15 +109,16 @@ export function createMerchantVisit(building, horseResources) {
       const angle = i / 14 * Math.PI; return [Math.cos(angle) * 1.115, 2.026 + Math.sin(angle) * 1.174, z];
     }), .027, 28);
   }
-  // Driver's bench, entry step, packed goods, lanterns and a towing pole.
+  // Driver's bench, entry step, packed goods, torch brackets and a towing pole.
   part(carriage, box, dark, [0, 1.64, 1.40], [1.88, .14, .68]);
   part(carriage, box, leather, [0, 1.72, 1.43], [1.75, .08, .56]);
   part(carriage, box, wood, [0, 1.96, 1.12], [1.87, .42, .11]);
   for (const side of [-1, 1]) {
     part(carriage, box, iron, [side * 1.20, .83, .44], [.44, .08, .58]);
-    beam(carriage, dark, [side * .97, 1.77, 1.59], [side * .97, 2.18, 1.59], .075);
-    part(carriage, box, lantern, [side * .97, 1.97, 1.66], [.14, .20, .14]);
-    for (const y of [1.85, 2.10]) part(carriage, box, iron, [side * .97, y, 1.66], [.19, .045, .19]);
+    beam(carriage, iron, [side * 1.02, 1.73, 1.4], [side * 1.20, 1.73, 1.9], .06);
+    beam(carriage, wood, [side * 1.20, 1.70, 1.9], [side * 1.20, 2.35, 1.9], .09);
+    part(carriage, new THREE.CylinderGeometry(.095,.13,.23,8), dark, [side * 1.20, 2.32, 1.9]);
+    for (const y of [2.22,2.37]) part(carriage, box, iron, [side * 1.20, y, 1.9], [.24,.045,.24]);
     part(carriage, sphere, sacks, [side * .49, 1.37, -.91], [.43, .43, .57]);
     part(carriage, sphere, dark, [side * .49, 1.78, -.91], [.095, .07, .095]);
   }
@@ -141,6 +141,11 @@ export function createMerchantVisit(building, horseResources) {
   let disposed = false;
   return {
     group, merchant, carriage, horses,
+    getTorchFixtures() {
+      if(disposed||!group.visible)return [];
+      group.updateMatrixWorld(true);
+      return [-1,1].map((side,i)=>{const p=new THREE.Vector3(7.4+side*1.20,2.44,1.9).applyMatrix4(group.matrixWorld);return {id:`merchant-torch-${i}`,x:p.x,y:p.y,z:p.z,mount:'existing',height:.64,alwaysLit:false,seed:.24+i*.31};});
+    },
     update(dt, time) {
       if (disposed || !group.visible) return;
       merchant.update(dt, time, { moving: false });

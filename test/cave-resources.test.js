@@ -7,7 +7,7 @@ import { Simulation } from '../server/simulation.js';
 import { Store } from '../server/store.js';
 import { ensureCaves } from '../server/caves.js';
 import { BUILDINGS, RESOURCES, SOLIDS, caveResourceType, groundHeight, canStand, resolveResource } from '../shared/world.js';
-import { buildingEntrance } from '../shared/access.js';
+import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 
 function fixture() {
   const saved = new Map(), account = { id: 'miner', name: 'Miner', bank: 73 };
@@ -101,6 +101,7 @@ test('a hired worker mines the current rolled mineral and carries it physically 
   }
   assert.ok(entered && returned); assert.ok(deepest <= -13); assert.equal(node.remaining, 0); assert.equal(village.stock.coal, coal + 1); assert.equal(village.stock.iron, iron);
   assert.equal(worker.cargo.coal, 0); assert.equal(worker.cargo.iron, 0);
+  assert.ok(canUseBuilding(worker, BUILDINGS.find(b => b.id === 'market')), 'cave cargo reaches the exchange counter before sale');
 });
 
 test('SQLite migration preserves old depletion, account gold and plot ownership while persisting cave rolls across restart', async t => {

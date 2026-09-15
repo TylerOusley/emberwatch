@@ -9,6 +9,7 @@ import { BUILDINGS, PLOTS } from '../shared/world.js';
 import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { NOTICEBOARD_POINT } from '../public/src/noticeboard.js';
 import { foodQuote } from '../shared/economy.js';
+import { requestDestinations } from '../shared/requests.js';
 
 const root = new URL('../', import.meta.url), output = new URL('docs/previews/',root);
 const read = p => readFileSync(new URL(p,root),'utf8');
@@ -16,13 +17,16 @@ const esc = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const textOf = value => String(value??'').replace(/<[^>]*>/g,'').replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&quot;','"').replaceAll('&#39;',"'");
 const fixturePlayer = () => ({ id:'preview-dwarf',name:'Rowan',role:'guard',x:0,z:0,hp:100,maxHp:100,hunger:42,wallet:140,bank:80,backpackTier:1,inventory:{wheat:12,timber:18,stone:0,iron:0,coal:0},durability:{},tiers:{} });
 function fixtureState(player) {
-  const point = id => ({...buildingEntrance(BUILDINGS.find(b=>b.id===id)),id,name:BUILDINGS.find(b=>b.id===id).name,kind:'service'});
-  const requests=[
-    {id:'preview-wheat',destinationId:'bank',resource:'wheat',destinationName:'Village Treasury',point:point('bank'),remaining:24,unitGold:5,expiresDay:5,status:'open',reason:'The village needs wheat for meals before the next watch.',reserved:120},
-    {id:'preview-timber',destinationId:'bank',resource:'timber',destinationName:'Village Treasury',point:point('bank'),remaining:30,unitGold:4,expiresDay:5,status:'open',reason:'Replenish timber for repairs before the gate faces another siege.',reserved:120},
-  ];
-  return {id:'preview-village',status:'active',day:4,phase:'day',players:[player],plots:[],guards:[],beds:[],workers:[],stock:{wheat:100,timber:90,stone:75,iron:24,coal:20},treasury:20000,barracks:{wheat:10},policies:{guardWage:25,priestWage:25,tradeTax:10,landTax:2,exportPriority:'balanced'},proposals:[],merchant:{present:true,stock:{iron:5},prices:{iron:9}},stable:{stock:3},loan:{debt:0,credit:0,availablePool:500},foodQuotes:Object.fromEntries(['food','good_food','best_food'].map(id=>[id,foodQuote(100,id)])),requests:{items:requests,reservedGold:240}};
+  const state={id:'preview-village',status:'active',day:4,phase:'day',players:[player],plots:[],guards:[],beds:[],workers:[],stock:{wheat:100,timber:90,stone:75,iron:24,coal:20},treasury:20000,barracks:{wheat:10},policies:{guardWage:25,priestWage:25,tradeTax:10,landTax:2,exportPriority:'balanced'},proposals:[],merchant:{present:true,stock:{iron:5},prices:{iron:9}},stable:{stock:3},loan:{debt:0,credit:0,availablePool:500},foodQuotes:Object.fromEntries(['food','good_food','best_food'].map(id=>[id,foodQuote(100,id)]))};
+  // Destination names and entrances are derived from the actual request resolver.
+  const destinations=requestDestinations(state),requests=[
+    {id:'preview-wheat',destinationId:'bank',resource:'wheat',remaining:24,unitGold:5,expiresDay:5,status:'open',reason:'The village needs wheat for meals before the next watch.',reserved:120},
+    {id:'preview-timber',destinationId:'bank',resource:'timber',remaining:24,unitGold:4,expiresDay:5,status:'open',reason:'Replenish timber for repairs before the gate faces another siege.',reserved:96},
+  ].map(request=>{const target=destinations.find(d=>d.destinationId===request.destinationId&&d.resource===request.resource);if(!target)throw new Error('Missing preview request destination');return {...request,destinationName:target.name,point:target.point};});
+  state.requests={items:requests,reservedGold:requests.reduce((sum,r)=>sum+r.reserved,0)};
+  return state;
 }
+
 function renderFixture(kind) {
   const player=fixturePlayer(),state=fixtureState(player);
   let html='',activePanel=null;
@@ -54,8 +58,8 @@ function renderFixture(kind) {
   return {html,player,state};
 }
 
-const fixtures=Object.fromEntries(['tools','weapons','food','board'].map(id=>[id,renderFixture(id)]));
-const labels={tools:'Starter tools',weapons:'Player sword shop',food:'Food counter',board:'Village request board'};
+const fixtures=Object.fromEntries(['tools','weapons','food','board','bank','market'].map(id=>[id,renderFixture(id)]));
+const labels={tools:'Starter tools',weapons:'Player sword shop',food:'Food counter',board:'Village request board',bank:'Village bank',market:'Resource Exchange'};
 let css=['public/style.css','public/chat.css','public/settlement.css','public/watch.css'].map(read).join('\n');
 css=css.replace(/url\((['"]?)(\/fonts\/[^)'"\s]+)\1\)/g,(_all,_quote,url)=>`url(data:font/ttf;base64,${readFileSync(new URL('public'+url,root)).toString('base64')})`);
 if(/url\((?!data:)/.test(css))throw new Error('Unexpected external CSS dependency in self-contained fixture');
@@ -83,7 +87,7 @@ function parseCards(markup) {
 }
 const cards=parseCards(fixtures.weapons.html);
 if(cards.length!==3||cards.some(c=>!c.art||!c.facts.length))throw new Error('Sword shop preview card extraction failed');
-let svg='<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1090" viewBox="0 0 1600 1090">'+rectangle(0,0,1600,1090,'#11251e');
+let svg='<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1680" viewBox="0 0 1600 1680">'+rectangle(0,0,1600,1680,'#11251e');
 svg+=svgText(30,38,'EMBERWATCH · THE VILLAGE COUNTERS',20,'#ecd3a0','letter-spacing="2"')+svgText(30,67,'Artwork/layout preview — not a browser screenshot. Actual shop art and current UI fixture facts.',14,'#aebfa8');
 svg+=rectangle(30,90,910,940,'#203228','rx="8" stroke="#a88c55" stroke-width="2"')+`<svg x="31" y="91" width="908" height="305" viewBox="0 0 1400 480" preserveAspectRatio="xMidYMid slice">${shopInterior('weapons').replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'')}</svg>`;
 svg+=svgText(60,432,'BRAM IRONHAND’S SWORD SHOP',13,'#ccae70','letter-spacing="2"')+svgText(60,470,'Crafted to order.',30,'#f0d9a7')+svgText(60,500,'Choose a sword. Inspect its damage, durability and required materials.',15,'#bbcab5');
@@ -110,8 +114,28 @@ fixtures.board.state.requests.items.forEach((r,i)=>{
  }
  svg+=svgText(x+18,y+492,`Expires at dawn on day ${r.expiresDay}.`,11,'#6d5233')+rectangle(x+18,y+542,w-36,43,'#685132','stroke="#89653a"')+svgText(x+w/2,y+568,'Mark delivery entrance',12,'#ffeac0','text-anchor="middle"')+'</g>';
 });
-svg+=textLines('Mark a destination here. Deliver supplies at that entrance to collect the posted payment.',994,986,65,12,'#d8c4a3',18)+svgText(30,1061,'Offline fixtures preserve the game’s prices, stock shortages and posted rewards. No purchases or deliveries occur here.',13,'#aabc9f')+'</svg>';
-mkdirSync(output,{recursive:true});writeFileSync(new URL('shop-ui.html',output),html);writeFileSync(new URL('shop-counter.svg',output),svg);
+svg+=textLines('Mark a destination here. Deliver supplies at that entrance to collect the posted payment.',994,986,65,12,'#d8c4a3',18);
+svg+=svgText(30,1073,'SEPARATE SERVICE COUNTERS',17,'#ddc48d','letter-spacing="2"');
+for(const [i,theme] of ['bank','market'].entries()){
+ const x=30+i*785,y=1100,w=755,markup=fixtures[theme].html;
+ svg+=rectangle(x,y,w,510,'#23372b','rx="6" stroke="#a88c55"')+`<svg x="${x+1}" y="${y+1}" width="${w-2}" height="258" viewBox="0 0 1400 480">${shopInterior(theme).replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'')}</svg>`;
+ svg+=svgText(x+24,y+292,theme==='bank'?'VILLAGE BANK':'RESOURCE EXCHANGE',12,'#d5b573','letter-spacing="2"');
+ svg+=svgText(x+24,y+326,textOf(markup.match(/<h2>(.*?)<\/h2>/)?.[1]),23,'#efd7a4');
+ if(theme==='bank'){
+  svg+=art(itemArt('gold'),x+22,y+340,164,130)+svgText(x+206,y+372,`Wallet · ${fixtures.bank.player.wallet} gold`,16,'#e6d0a2')+svgText(x+206,y+404,`Protected savings · ${fixtures.bank.player.bank} gold`,16,'#e6d0a2')+textLines('Deposit and withdraw savings. Arrange purchase credit with the vault keeper.',x+206,y+439,49,14,'#bbcab2',22);
+ }else{
+  const card=markup.match(/<section class="market-resource-card"[^>]*data-market-resource="wheat"[^>]*>([\s\S]*?)<\/section>/)?.[1];if(!card)throw new Error('Missing actual market wheat card');
+  const quote=id=>textOf(card.match(new RegExp(`id="${id}"[^>]*>(.*?)<\\/p>`))?.[1]);
+  const sell=quote('trade-sell-quote-wheat'),buy=quote('trade-buy-quote-wheat');if(!sell||!buy)throw new Error('Missing actual market bundle quotes');
+  svg+=art(itemArt('wheat'),x+19,y+342,145,130)+svgText(x+187,y+366,'WHEAT · QUANTITY 10',13,'#e0c58f','letter-spacing="1"')+textLines(sell,x+187,y+395,66,13,'#bfccb4',20)+textLines(buy,x+187,y+443,66,13,'#bfccb4',20);
+ }
+}
+svg+=svgText(30,1650,'Offline fixtures preserve the game’s prices, stock shortages and posted rewards. No purchases or deliveries occur here.',13,'#aabc9f')+'</svg>';
+let catalog='<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1740" viewBox="0 0 1440 1740">'+rectangle(0,0,1440,1740,'#e3d5ad')+rectangle(0,0,1440,1110,'#182d29');
+['tools','weapons','tinker','food','merchant','stable','bank','market'].forEach((theme,i)=>{const x=i%2*720,y=Math.floor(i/2)*275;catalog+=svgText(x+17,y+21,theme.toUpperCase(),15,'#e3d5ad')+`<g transform="translate(${x} ${y+28}) scale(.5142857143)">${shopInterior(theme)}</g>`;});
+['axe','pickaxe','scythe','hammer','sword','bow','arrows','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','gold'].forEach((id,i)=>{const x=i%7*(1440/7),y=1117+Math.floor(i/7)*205;catalog+=art(itemArt(id,{tier:'iron',level:3}),x,y,1440/7,155)+svgText(x+1440/14,y+181,id.replaceAll('_',' '),15,'#294138','text-anchor="middle"');});
+catalog+='</svg>';
+mkdirSync(output,{recursive:true});writeFileSync(new URL('shop-ui.html',output),html);writeFileSync(new URL('shop-counter.svg',output),svg);writeFileSync(new URL('shop-art.svg',output),catalog);
 console.log(`Generated ${fileURLToPath(new URL('shop-ui.html',output))} (${html.length} characters)`);
 console.log(`Generated ${fileURLToPath(new URL('shop-counter.svg',output))} (${svg.length} characters)`);
-console.log('Fixtures: tools, weapons, food, board. Actual UI modules rendered; no game actions dispatched.');
+console.log('Fixtures: tools, weapons, food, board, bank, market. Actual UI modules rendered; no game actions dispatched.');

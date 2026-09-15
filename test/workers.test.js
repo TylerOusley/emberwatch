@@ -9,6 +9,7 @@ import { ensureOwnership } from '../server/ownership.js';
 import { ensureWorkers, workersAction, workersTick, workersSnapshot } from '../server/workers.js';
 
 const bank = BUILDINGS.find(b => b.id === 'bank'), home = buildingEntrance(bank);
+const exchange = buildingEntrance(BUILDINGS.find(b => b.id === 'market'));
 const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 function fixture() {
@@ -124,7 +125,7 @@ test('cargo is delivered physically, fills only available storage, and survives 
 test('automatic sales use current bulk tax quotes and the normal debt income path', () => {
   const { v, owner, sim, hire, assign, advance } = fixture();
   const w = hire(); w.cargo.stone = 5; v.stock.stone = 24;
-  assign(w); Object.assign(w, home);
+  assign(w); Object.assign(w, exchange);
   const quote = taxedSaleQuote('stone', 24, 5, 5), wallet = owner.wallet, treasury = v.treasury;
   let awarded = null;
   sim.awardIncome = (v, p, amount) => { awarded = amount; p.wallet += amount - 2; v.treasury += 2; };
@@ -133,10 +134,20 @@ test('automatic sales use current bulk tax quotes and the normal debt income pat
   assert.equal(owner.wallet, wallet + quote.total - 2); assert.equal(v.treasury, treasury - quote.total + 2);
 });
 
+test('workers keep cargo at the old treasury and behind the exchange until they physically reach its counter', () => {
+  const { v, hire, assign, advance } = fixture(), w = hire(); w.cargo.stone = 1; assign(w);
+  const stock = v.stock.stone; Object.assign(w, home); advance(.1);
+  assert.equal(w.cargo.stone, 1); assert.equal(v.stock.stone, stock);
+  const market = BUILDINGS.find(b => b.id === 'market'); Object.assign(w, { x: market.x + market.w / 2 + 1, z: market.z });
+  advance(.1); assert.equal(w.cargo.stone, 1); assert.equal(v.stock.stone, stock);
+  for (let i = 0; i < 600 && w.cargo.stone; i++) advance(.1);
+  assert.equal(w.cargo.stone, 0); assert.equal(v.stock.stone, stock + 1);
+});
+
 test('partial sales preserve the treasury reserve and unsold cargo without idle wage drain', () => {
   const { v, owner, hire, assign, advance } = fixture();
   const w = hire(); w.cargo.iron = 5; v.stock.iron = 0; v.treasury = 514;
-  assign(w, { resource: 'iron' }); Object.assign(w, home);
+  assign(w, { resource: 'iron' }); Object.assign(w, exchange);
   const wallet = owner.wallet;
   advance(.1);
   assert.equal(v.stock.iron, 2); assert.equal(v.treasury, 500); assert.equal(w.cargo.iron, 3);
@@ -260,7 +271,7 @@ test('unreachable sidewall woodland is left for players instead of trapping hire
   assert.match(w.status, /Waiting for resources/);
 });
 
-test('sixteen hired workers can all deliver at the treasury without sharing one arrival point', () => {
+test('sixteen hired workers can all deliver at the Resource Exchange without sharing one arrival point', () => {
   const { v, owner, act, advance } = fixture();
   for (let i = 0; i < 8; i++) {
     const p = { ...owner, id: `employer-${i}`, name: `Employer ${i}`, wallet: 1000, inventory: {}, durability: {} }; v.players[p.id] = p;

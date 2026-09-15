@@ -112,7 +112,7 @@ test('two authenticated cave miners share depletion and weighted regrowth across
   app.simulation.tick(1); assert.equal(node.roll, 1, 'an available slot never rerolls on ordinary ticks');
   // Real trade uses the type that was harvested, even if that slot has since
   // regenerated as another mineral. The resource identity is not a currency.
-  Object.assign(p, buildingEntrance(BUILDINGS.find(building => building.id === 'bank')));
+  Object.assign(p, buildingEntrance(BUILDINGS.find(building => building.id === 'market')));
   const stock = { ...village.stock }, wallet = p.wallet, quote = taxedSaleQuote(initialType, stock[initialType], 1, village.policies.tradeTax);
   a.ws.send(JSON.stringify({ type: 'action', kind: 'sell', resource: initialType, amount: 1, minTotal: quote.total }));
   await waitFor(() => p.inventory[initialType] === 3);

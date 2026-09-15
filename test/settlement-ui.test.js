@@ -21,13 +21,13 @@ function fixture(t, options = {}) {
   const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
     html = next; activePanel = panel; openCount++; fields.clear();
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
-      const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
+      const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[1].match(/aria-label="([^"]*)"/)?.[1] || match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
       const focusKey = match[1].match(/data-shop-focus="([^"]+)"/)?.[1]; if (focusKey) { button.dataset.shopFocus = focusKey; button.focus = () => { document.activeElement = button; }; }
       const id = match[1].match(/\bid="([^"]+)"/)?.[1]; if (id) fields.set(id, button);
       return button;
     });
     for (const match of html.matchAll(/<(input|select)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) fields.set(match[3], { tagName: match[1].toUpperCase(), value: match[2].match(/\bvalue="([^"]*)"/)?.[1] || '', max: match[2].match(/\bmax="([^"]*)"/)?.[1] || '' });
-    for (const match of html.matchAll(/<(p|span)\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/\1>/gs)) fields.set(match[2], { tagName: match[1].toUpperCase(), textContent: match[3] });
+    for (const match of html.matchAll(/<(p|span|strong)\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/\1>/gs)) fields.set(match[2], { tagName: match[1].toUpperCase(), textContent: match[3] });
     details = [...html.matchAll(/<details\b([^>]*)>/g)].map(match => ({ tagName: 'DETAILS', dataset: { shopInspect: match[1].match(/data-shop-inspect="([^"]+)"/)[1] }, open: /\sopen(?:\s|$)/.test(match[1]) }));
     summaries = [...html.matchAll(/<summary\b([^>]*)>/g)].map(match => ({ tagName: 'SUMMARY', dataset: { shopFocus: match[1].match(/data-shop-focus="([^"]+)"/)[1] }, focus() { document.activeElement = this; } }));
     nodes = [...buttons, ...fields.values(), ...details, ...summaries];
@@ -40,13 +40,60 @@ function fixture(t, options = {}) {
 }
 
 test('market buttons send the tax-inclusive quotes displayed to the player', t => {
-  const f = fixture(t); f.visit('bank');
+  const f = fixture(t); f.visit('market');
   const sale = taxedSaleQuote('wheat', 100, 10, 10).total;
   const purchase = taxedPurchaseQuote('wheat', 100, 10, 10).total;
   f.click(`Sell 10 · ${sale}g`);
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'sell', resource: 'wheat', amount: 10, minTotal: sale });
   f.click(`Buy 10 · ${purchase}g`);
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyResource', resource: 'wheat', amount: 10, maxTotal: purchase });
+});
+
+test('bank keeps personal gold separate from the illustrated resource market and its delivery counter', t => {
+  const delivered = [], f = fixture(t, { showDeliveries: id => delivered.push(id) });
+  f.state.requests = { items: [{ id: 'supply', destinationId: 'bank', status: 'open' }] };
+  f.visit('bank');
+  assert.match(f.html, /data-shop-theme="bank"/); assert.match(f.html, /data-item="gold"/);
+  assert.match(f.html, /Protected savings/); assert.match(f.html, /Purchase credit/);
+  assert.doesNotMatch(f.html, /trade-amount-|Donate carried resources|>Requested deliveries</);
+  f.fields.get('bank-amount').value = '37'; f.click('Deposit');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'deposit', amount: 37 });
+  f.click('Withdraw'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'withdraw', amount: 37 });
+  f.fields.get('loan-amount').value = '65'; f.click('Borrow purchase credit');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'loan', amount: 65 });
+  f.click('Find resource market'); assert.equal(f.ui.getWaypoint().id, 'market');
+  f.ui.show('market'); assert.match(f.html, /BUILDING ENTRANCE/); assert.equal(f.fields.has('trade-amount-wheat'), false);
+  f.visit('market'); assert.match(f.html, /data-shop-theme="market"/);
+  assert.equal((f.html.match(/class="market-resource-card"/g) || []).length, 5);
+  assert.doesNotMatch(f.html, /id="bank-amount"|id="loan-amount"|>Deposit</);
+  f.click('Requested deliveries'); assert.deepEqual(delivered, ['bank'], 'saved request destination keys remain compatible');
+  f.click('Donate carried resources'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'donate' });
+});
+
+test('Sell max makes one protected sale, ignores custom quantity drafts and refreshes affordability without losing focus', t => {
+  const f = fixture(t); f.player.inventory = { wheat: 40 }; f.player.durability = {}; f.visit('market');
+  const input = f.fields.get('trade-amount-wheat'); input.value = '37'; input.oninput();
+  const full = taxedSaleQuote('wheat', 100, 40, 10);
+  f.state.stock.wheat = 1000; // A snapshot may arrive before the next rendered refresh.
+  f.fields.get('trade-max-wheat').onclick();
+  assert.equal(f.sent.length, 1);
+  assert.deepEqual(f.sent[0], { type: 'action', kind: 'sell', resource: 'wheat', amount: 40, minTotal: full.total });
+  assert.equal(input.value, '37');
+  document.activeElement = input; const renders = f.openCount;
+  f.state.stock.wheat = 100; f.state.treasury = 518; f.player.wallet = 70; f.ui.refresh();
+  assert.equal(f.openCount, renders); assert.equal(document.activeElement, input); assert.equal(input.value, '37');
+  assert.equal(f.fields.get('trade-max-wheat').textContent, 'Sell max · 10 for 18g');
+  assert.match(f.fields.get('trade-max-quote-wheat').textContent, /20g value − 2g tax = 18g received/);
+  assert.equal(f.fields.get('market-wallet').textContent, '70 gold'); assert.equal(f.fields.get('market-treasury').textContent, '518 gold');
+  f.fields.get('trade-max-wheat').onclick(); assert.equal(f.sent.length, 2);
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'sell', resource: 'wheat', amount: 10, minTotal: 18 });
+  input.value = ''; input.oninput(); assert.equal(f.fields.get('trade-max-wheat').disabled, false, 'Sell max is independent of an unfinished custom amount');
+  f.state.treasury = 500; f.ui.refresh(); assert.equal(f.fields.get('trade-max-wheat').disabled, true);
+  f.fields.get('trade-max-wheat').onclick(); assert.equal(f.sent.length, 2);
+  f.state.treasury = 2500; f.player.inventory.wheat = 0; f.ui.refresh(); assert.equal(f.fields.get('trade-max-wheat').disabled, true); assert.equal(f.fields.get('market-donate').disabled, true);
+  f.player.inventory.wheat = 4; f.ui.refresh(); const stale = f.fields.get('trade-max-wheat');
+  Object.assign(f.player, buildingEntrance(BUILDINGS.find(b => b.id === 'bank'))); stale.onclick();
+  assert.equal(f.sent.length, 2); assert.match(f.html, /BUILDING ENTRANCE/);
 });
 
 test('illustrated storefronts keep price, gear effects and materials accessible without hover', t => {
@@ -94,18 +141,18 @@ test('food, stable and traveling wares use illustrated cards while preserving cu
   f.ui.show('atlas'); f.click('Find mountain mine'); assert.deepEqual({ x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z }, { x: CAVE_ENTRANCE.x, z: CAVE_ENTRANCE.z }); assert.match(f.html, /stone on the upper level · mixed iron and coal below/);
 });
 
-test('treasury, public Watch and cannon entrances expose destination-specific requested delivery counters', t => {
+test('market, public Watch and cannon entrances expose destination-specific requested delivery counters', t => {
   const destinations = [], f = fixture(t, { showDeliveries: id => destinations.push(id) }), site = PLOTS.find(p => p.id === 'outpost-1');
   const cannon = { id: site.id, ownerId: 'bob', ownerName: 'Bob', building: 'cannon', hp: 500, maxHp: 500, storage: {} };
   f.state.plots = [cannon];
   f.state.requests = { items: [{ id: 'one', status: 'open', destinationId: 'bank' }, { id: 'two', status: 'open', destinationId: 'barracks' }, { id: 'three', status: 'open', destinationId: site.id }] };
-  for (const [kind, id] of [['bank', null], ['barracks', null], ['plot', site.id]]) {
-    f.visit(kind, id); assert.match(f.html, /1 funded delivery for this destination/); f.click('Requested deliveries'); assert.equal(destinations.at(-1), id || kind);
+  for (const [kind, id] of [['market', null], ['barracks', null], ['plot', site.id]]) {
+    f.visit(kind, id); assert.match(f.html, /1 funded delivery for this destination/); f.click('Requested deliveries'); assert.equal(destinations.at(-1), id || (kind === 'market' ? 'bank' : kind));
   }
-  f.visit('bank'); const stale = f.buttons.find(b => b.text === 'Requested deliveries'); const before = destinations.length;
+  f.visit('market'); const stale = f.buttons.find(b => b.text === 'Requested deliveries'); const before = destinations.length;
   Object.assign(f.player, { x: 0, z: 0 }); stale.onclick(); assert.equal(destinations.length, before); assert.match(f.html, /BUILDING ENTRANCE/);
   assert.ok(!f.buttons.some(b => b.text === 'Requested deliveries'), 'remote service navigation cannot open a delivery counter');
-  f.visit('bank'); f.state.requests.items.push({ id: 'four', status: 'open', destinationId: 'bank' }); f.ui.refresh(); assert.match(f.html, /2 funded deliveries for this destination/);
+  f.visit('market'); f.state.requests.items.push({ id: 'four', status: 'open', destinationId: 'bank' }); f.ui.refresh(); assert.match(f.html, /2 funded deliveries for this destination/);
   cannon.building = 'barracks'; f.visit('plot', site.id); assert.ok(!f.buttons.some(b => b.text === 'Requested deliveries'), 'owned barracks are not public request destinations');
   cannon.building = 'cannon'; cannon.hp = 0; f.visit('plot', site.id); assert.ok(!f.buttons.some(b => b.text === 'Requested deliveries'), 'ruined destinations offer no turn-in counter');
   f.ui.show('atlas'); f.click('Find request board'); assert.deepEqual(f.ui.getWaypoint(), NOTICEBOARD_POINT);
@@ -117,8 +164,35 @@ test('empty owned land exposes storage and construction can use staged materials
   f.visit('plot', id);
   assert.match(f.html, /Materials stored on an empty plot/);
   assert.ok(f.buttons.some(b => b.text === 'Store'));
-  const barracks = f.html.match(/<section class="building-card"><strong>Barracks<\/strong>(.*?)<\/section>/s)?.[1];
-  assert.ok(barracks); assert.doesNotMatch(barracks, /\sdisabled/);
+  for (let i = 0; i < 11 && !f.html.includes('data-building-art="barracks"'); i++) f.click('Next building');
+  assert.match(f.html, /data-building-art="barracks"/); assert.equal(f.buttons.find(b => b.text === 'Build barracks').disabled, false);
+  assert.equal((f.html.match(/class="build-carousel-slide"/g) || []).length, 1);
+  f.click('Build barracks'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_build', plotId: id, building: 'barracks' });
+});
+
+test('building carousel retains its plan and keyboard focus, rechecks stale funds, and confirms conversions', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  f.player.inventory = { timber: 500, stone: 500, iron: 500, coal: 500 };
+  const plot = { id, ownerId: 'alice', ownerName: 'Alice', building: null, storage: {}, hp: 0 };
+  f.state.plots = [plot]; f.visit('plot', id);
+  for (let i = 0; i < 11 && !f.html.includes('data-building-art="archer_tower"'); i++) f.click('Next building');
+  assert.match(f.html, /no ammunition required/);
+  const next = f.buttons.find(b => b.text === 'Next building'); next.focus(); f.player.wallet++; f.ui.refresh();
+  assert.match(f.html, /data-building-art="archer_tower"/);
+  assert.equal(document.activeElement, f.buttons.find(b => b.text === 'Next building'));
+  const construct = f.buttons.find(b => b.text === 'Build archer tower');
+  document.activeElement = f.fields.get('storage-amount'); f.player.wallet = 0; f.ui.refresh();
+  construct.onclick(); assert.equal(f.sent.length, 0); assert.match(f.html, /more gold/);
+  f.player.wallet = 2000; plot.building = 'house'; plot.hp = 600; plot.maxHp = 600;
+  f.visit('plot', id); assert.match(f.html, /data-building-art="archer_tower"/);
+  plot.storage.wheat = 1; f.ui.refresh();
+  assert.equal(f.buttons.find(b => b.text === 'Convert to archer tower').disabled, true); assert.match(f.html, /Empty this building/);
+  plot.storage = {}; f.ui.refresh(); f.click('Convert to archer tower');
+  assert.equal(f.sent.length, 0); assert.match(f.html, /Replace this building/); assert.match(f.html, /removes your House/);
+  f.click('Confirm change');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_build', plotId: id, building: 'archer_tower', confirm: true });
+  f.ui.clear(); plot.building = null; f.visit('plot', id);
+  assert.match(f.html, /data-building-art="tool_shop"/); assert.doesNotMatch(f.html, /data-building-art="archer_tower"/);
 });
 
 test('crafting asks before destroying equipped durability and confirms the exact recipe', t => {
@@ -155,7 +229,7 @@ test('snapshot refresh preserves an edited amount and escapes resident names', t
 
 test('all service and plot panel branches render from a complete expansion snapshot', t => {
   const f = fixture(t);
-  for (const kind of ['inventory', 'bank', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant', 'policies', 'roles', 'atlas']) {
+  for (const kind of ['inventory', 'bank', 'market', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant', 'policies', 'roles', 'atlas']) {
     f.visit(kind, kind === 'church' ? 'church' : null); assert.match(f.html, /<h2>/);
   }
   for (const building of ['tool_shop', 'tinker_shop', 'sword_shop', 'house', 'mine', 'tree_farm', 'wheat_farm', 'barracks', 'church', 'archer_tower', 'cannon']) {
@@ -197,7 +271,7 @@ test('resource purchase controls allow upgraded backpack capacity and stop at it
   const f = fixture(t);
   f.player.inventory = { wheat: 150 }; f.player.durability = {}; f.player.backpackTier = 1;
   const price = taxedPurchaseQuote('wheat', 100, 10, 10).total;
-  f.visit('bank');
+  f.visit('market');
   assert.ok(!f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled);
   f.player.inventory.wheat = 195; f.ui.refresh();
   assert.ok(f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled);
@@ -241,10 +315,10 @@ test('automatic defenses explain ammunition, server firing status, range, and re
   assert.match(f.html, /Coal stored/); assert.match(f.html, /Stone stored/);
 });
 
-test('treasury accepts a full-pack quantity and displays exact tax before submitting its quote', t => {
+test('market accepts a full-pack quantity and displays exact tax before submitting its quote', t => {
   const f = fixture(t);
   f.player.inventory = { wheat: 325 }; f.player.durability = {}; f.player.backpackTier = 2;
-  f.visit('bank');
+  f.visit('market');
   const input = f.fields.get('trade-amount-wheat'), sale = taxedSaleQuote('wheat', 100, 325, 10);
   input.value = '325'; input.oninput();
   assert.equal(f.fields.get('trade-sell-quote-wheat').textContent, `Sell: receive ${sale.total}g (${sale.gross}g value − ${sale.tax}g tax).`);
@@ -258,8 +332,8 @@ test('treasury accepts a full-pack quantity and displays exact tax before submit
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyResource', resource: 'wheat', amount: 137, maxTotal: purchase.total });
 });
 
-test('treasury quantity stays focused while live stock changes refresh displayed quotes', t => {
-  const f = fixture(t); f.player.inventory.wheat = 40; f.visit('bank');
+test('market quantity stays focused while live stock changes refresh displayed quotes', t => {
+  const f = fixture(t); f.player.inventory.wheat = 40; f.visit('market');
   const input = f.fields.get('trade-amount-wheat'); input.value = '37'; input.oninput();
   document.activeElement = input;
   const before = f.openCount; f.state.stock.wheat = 20; f.ui.refresh();
@@ -273,8 +347,8 @@ test('treasury quantity stays focused while live stock changes refresh displayed
   assert.equal(f.fields.get('trade-amount-wheat').value, '37');
 });
 
-test('treasury rejects invalid quantities and prevents buying beyond pack, wallet, or stock', t => {
-  const f = fixture(t); f.player.inventory = { wheat: 95 }; f.player.durability = {}; f.visit('bank');
+test('market rejects invalid quantities and prevents buying beyond pack, wallet, or stock', t => {
+  const f = fixture(t); f.player.inventory = { wheat: 95 }; f.player.durability = {}; f.visit('market');
   const input = f.fields.get('trade-amount-wheat');
   for (const raw of ['', '0', '-1', '1.5', '10001', 'Infinity']) {
     input.value = raw; input.oninput();
@@ -319,7 +393,7 @@ test('starter tools can use approved purchase credit and role cards explain thei
 
 test('services and owned buildings require their entrances, while the atlas remains remote', t => {
   const f = fixture(t);
-  for (const kind of ['bank', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant']) {
+  for (const kind of ['bank', 'market', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant']) {
     const site = BUILDINGS.find(b => b.id === kind);
     Object.assign(f.player, { x: site.x, z: site.z });
     f.ui.show(kind, kind === 'church' ? 'church' : null);

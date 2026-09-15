@@ -16,8 +16,10 @@ export function createRequestsUI({ getState, getMe, getActivePanel, openPanel, c
   const active = () => view && getActivePanel() === 'requests';
   const standing = () => getState()?.status === 'active' && getMe() && !getMe().downed && !(getMe().hp <= 0) && !getMe().bedPlotId && !getMe().mountedHorseId && !getMe().carriedBy;
   function destination(id) {
-    const service = ['bank', 'barracks'].includes(id) && BUILDINGS.find(b => b.id === id);
-    if (service) return { id, name: service.name, point: { ...buildingEntrance(service), id, name: service.name, kind: 'service' }, allowed: canUseBuilding(getMe(), service) };
+    // The saved request ledger retains its 'bank' destination key. Shared
+    // supplies now physically arrive at the Resource Exchange counter.
+    const service = ['bank', 'barracks'].includes(id) && BUILDINGS.find(b => b.id === (id === 'bank' ? 'market' : id));
+    if (service) return { id, name: service.name, point: { ...buildingEntrance(service), id: service.id, name: service.name, kind: 'service' }, allowed: canUseBuilding(getMe(), service) };
     const plot = getState()?.plots?.find(p => p.id === id && p.building === 'cannon' && p.ownerId && p.hp > 0), site = plot && PLOTS.find(p => p.id === id);
     return site ? { id, name: site.name, point: { ...plotEntrance(site, plot), id, name: site.name, kind: 'plot' }, allowed: canUsePlot(getMe(), site, plot) } : null;
   }

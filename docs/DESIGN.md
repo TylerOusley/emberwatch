@@ -4,6 +4,20 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
+## Build 13: resource exchange, building plans and nearby map
+
+The permanent Resource Exchange stands north of the stables at (18, -86) with a west-facing counter at (9.45, -86). It handles public resource purchases, sales, donations and communal-stock requested deliveries. The treasury remains the place for personal savings, purchase loans, repayments, worker hiring/dismissal and council access. Prices, public stock and treasury funding retain their existing ledgers. Existing communal requests keep their internal bank identity and withdrawal history; only their physical delivery point/name changes, so saved escrow and progress remain valid. Workers travel to the exchange for sales and return to the treasury for shelter and management. Saved occupants displaced by the new building move to valid ground without losing cargo or balances.
+
+Each illustrated resource card offers a one-click Sell max alongside custom buy/sell quantities. Its shared calculation follows unit-by-unit stock prices and tax, fits the carried quantity and 10,000-unit action limit, and preserves the 500-gold reserve. It submits the displayed amount and minimum payout as one sale; changed funds, inventory, access or an unfavorable quote reject without partial mutation. The remaining resources stay carried when the treasury cannot afford the whole pack.
+
+Owned plots display one illustrated building plan with previous/next arrows, keyboard access, current costs, benefits and role/building limits. Eligible plans come first; role-locked plans remain inspectable with their requirements. Current funds and materials are rechecked on selection, and destructive conversion retains confirmation. The selection and inspection focus survive state snapshots.
+
+The circular minimap stays centered on the player with a 42-meter surface radius and 25-meter underground radius. North stays up; nearby landmarks use colored silhouettes, roads use the actual world curves, and available resources have distinct colors/shapes. Gold marks the player, blue allies and red enemies. Marked destinations outside the view receive an edge pointer; destinations in another level route through the cave entrance. Hover exposes POI names and distance, with an accessible text description of nearby landmarks.
+
+Standing and wall torches replace outdoor, cave and carriage lanterns. Outdoor flames kindle with the authoritative dusk lighting and extinguish at dawn. Cave torches remain lit during the day for navigation. Procedural animated flame shapes and a bounded pool of six warm, flickering, shadowless lights avoid one light per fixture; visiting carriage flames follow the merchant's actual presence. Shop interior illustrations also use torches.
+
+Crate credit prices and the original item pool are approved in the design proposal. The Phoenix Ember self-revive item and Rare Mining Pack are proposed additions with balance choices recorded in [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md). All crate gameplay remains unimplemented pending the user's instruction to build it.
+
 ## Build 12: the Deepworks and visual storefronts
 
 The public surface quarry and fixed iron/coal patches move into a mountain cave entered from inside the northern village at (0, -118). A continuous passage descends through upper, middle and deep chambers at 3, 8 and 14 meters below the surface. The 44 existing public mineral identities are preserved; individual stored depletion, accounts, plots and village economies migrate in place.

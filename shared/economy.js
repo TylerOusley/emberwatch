@@ -1,4 +1,4 @@
-import { saleQuote, purchaseQuote } from './market.js';
+import { saleQuote, purchaseQuote, saleUnitPrice, MAX_TRADE_AMOUNT, TREASURY_RESERVE } from './market.js';
 export { MAX_TRADE_AMOUNT } from './market.js';
 
 export const POLICIES = Object.freeze({
@@ -35,6 +35,23 @@ export function tradeTax(total, percent) {
 export function taxedSaleQuote(resource, stock, amount, percent = 5) {
   const gross = saleQuote(resource, stock, amount), tax = tradeTax(gross, percent);
   return { gross, tax, total: gross - tax };
+}
+
+/** Largest carried sale the current treasury can fund, using the server's exact
+ * unit prices and whole-bundle tax. This is a quote only; it never moves goods. */
+export function maxSaleQuote({ resource, stock, carried, treasury, percent = 5 }) {
+  saleUnitPrice(resource, stock); tradeTax(0, percent);
+  if (!Number.isSafeInteger(carried) || carried < 0) throw new Error('Carried stock is unavailable.');
+  if (!Number.isSafeInteger(treasury) || treasury < 0) throw new Error('Village treasury is unavailable.');
+  let low = 0, high = Math.min(carried, MAX_TRADE_AMOUNT, Number.MAX_SAFE_INTEGER - stock);
+  const funds = Math.max(0, treasury - TREASURY_RESERVE);
+  // Net whole-gold proceeds are monotonic, even at price and rounding bands.
+  while (low < high) {
+    const amount = Math.ceil((low + high) / 2);
+    if (taxedSaleQuote(resource, stock, amount, percent).total <= funds) low = amount;
+    else high = amount - 1;
+  }
+  return { amount: low, quote: low ? taxedSaleQuote(resource, stock, low, percent) : { gross: 0, tax: 0, total: 0 } };
 }
 
 export function taxedPurchaseQuote(resource, stock, amount, percent = 5) {

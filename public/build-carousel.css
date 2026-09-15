@@ -1,0 +1,38 @@
+/* One illustrated building plan at a time; native buttons support mouse,
+   touch, Enter/Space, and the optional carousel Left/Right key handler. */
+.build-carousel{margin:18px 0 25px;border:1px solid #9b9e7059;border-radius:12px;overflow:hidden;background:#142820;box-shadow:0 12px 30px #06130d33}
+.build-carousel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:#24372c;border-bottom:1px solid #bfac6a33}
+.settlement-panel .build-carousel-heading p{margin:0;font-size:9px;line-height:1.5;letter-spacing:1.8px;color:#c6c2a0;font-weight:600}
+.build-carousel-heading>span{font:600 12px Cinzel,Georgia,serif;color:#e7cc87;white-space:nowrap}
+.build-carousel-stage{display:grid;grid-template-columns:46px minmax(0,1fr) 46px;align-items:center;gap:6px;padding:0 10px;background:radial-gradient(ellipse at 50% 40%,#36524477,transparent 70%)}
+.build-carousel-slide{min-width:0;margin:0;position:relative}
+.build-carousel-art{position:relative;isolation:isolate}
+.build-carousel-art>svg{display:block;width:100%;height:auto;max-height:260px;filter:drop-shadow(0 9px 9px #071b1230)}
+.build-carousel-art>span{position:absolute;left:14px;top:14px;padding:5px 9px;border:1px solid #c4c7a535;border-radius:12px;background:#0e271ee0;font-size:9px;color:#d6d9ba;letter-spacing:.5px}
+.settlement-panel .build-carousel-slide h4{position:relative;margin:-9px 0 15px;text-align:center;font:600 23px Cinzel,Georgia,serif;line-height:1.25;color:#f0dca8;text-shadow:0 2px 8px #03120bc0}
+.settlement-panel button.build-carousel-arrow{display:grid;place-items:center;width:44px;height:52px;min-width:0;padding:8px;margin:0;border-radius:9px;border:1px solid #bca9706e;background:#304937aa;color:#e3d1a0;box-shadow:none;cursor:pointer;transition:background .15s,border-color .15s,transform .15s}
+.settlement-panel button.build-carousel-arrow svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.settlement-panel button.build-carousel-arrow:hover{background:#52633d;border-color:#d5be7f;transform:translateY(-1px)}
+.settlement-panel .build-carousel button:focus-visible{outline:3px solid #f0d598;outline-offset:3px}
+.build-carousel-body{padding:0 22px 20px}
+.build-carousel-tags{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-bottom:18px}
+.build-carousel-tags>span{font-size:9px;line-height:1.4;color:#c7d0b7;padding:4px 7px;border:1px solid #b6b78c2e;border-radius:4px;background:#29433255}
+.settlement-panel .build-carousel-description{margin:0;font-size:13px;line-height:1.65;color:#e1e2cb}
+.settlement-panel .build-carousel-benefit{margin:8px 0 0;font-size:11px;line-height:1.7;color:#bfcdb4}
+.settlement-panel .build-carousel-location{margin:12px 0 16px;padding-left:9px;border-left:2px solid #aeb8766b;font-size:10px;line-height:1.6;color:#b4c3a9}
+.settlement-panel .build-carousel h5{margin:0 0 9px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:#d8c993}
+.build-carousel-costs{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:0}
+.build-carousel-costs>div{padding:10px 12px;border:1px solid #9aa57533;border-radius:5px;background:#233a2c}
+.build-carousel-costs dt{font-size:10px;color:#b9c9ac;margin-bottom:4px}
+.build-carousel-costs dd{margin:0;font:600 18px Cinzel,Georgia,serif;color:#e7d5a0}
+.build-carousel-costs small{display:block;margin-top:3px;font:10px/1.4 Inter,Arial,sans-serif;color:#b7c8b1}
+.build-carousel-costs .short{border-color:#ce957764;background:#493b2b66}
+.build-carousel-costs .short dd,.build-carousel-costs .short small{color:#edbfa1}
+.settlement-panel .build-carousel-funding{margin:9px 0 16px;font-size:9px;line-height:1.6;color:#a3b69f}
+.build-carousel-footer{display:flex;gap:14px;align-items:center;border-top:1px solid #9daa7433;padding-top:15px}
+.settlement-panel .build-carousel-status{margin:0;flex:1;font-size:10px;line-height:1.6}
+.build-carousel-status.ready{color:#bfd3a9}.build-carousel-status.unavailable{color:#dfbe99}
+.build-carousel-footer>button{flex-shrink:0;max-width:48%;margin:0;font-size:11px;line-height:1.5;white-space:normal}
+.build-carousel-footer>button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:520px){.build-carousel-heading{padding:12px 14px}.build-carousel-stage{grid-template-columns:36px minmax(0,1fr) 36px;padding:0 5px;gap:1px}.settlement-panel button.build-carousel-arrow{width:34px;height:44px;padding:5px}.build-carousel-art>span{left:5px;top:10px;font-size:8px;padding:4px 6px}.settlement-panel .build-carousel-slide h4{font-size:18px;margin-top:-3px}.build-carousel-body{padding:0 15px 17px}.build-carousel-tags{gap:5px;margin-bottom:13px}.build-carousel-tags>span{font-size:8px}.build-carousel-costs{grid-template-columns:repeat(2,minmax(0,1fr))}.build-carousel-footer{align-items:stretch;flex-direction:column;gap:10px}.build-carousel-footer>button{max-width:none;width:100%}}
+@media(prefers-reduced-motion:reduce){.settlement-panel button.build-carousel-arrow{transition:none}.settlement-panel button.build-carousel-arrow:hover{transform:none}}

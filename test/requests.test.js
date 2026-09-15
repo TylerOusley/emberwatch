@@ -16,7 +16,7 @@ function fixture() {
   const sim = { store: { account: id => accounts[id], repayDebt(id, amount, remainder) { accounts[id].debt -= amount; accounts[id].repayment_remainder = remainder; } },
     awardIncome(v, p, gold) { const net = repayIncome(this, v, p, gold); p.wallet += net; return net; } };
   ensureEconomy(v); ensureRequests(v);
-  Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'bank'))); Object.assign(q, { x: p.x, z: p.z });
+  Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'market'))); Object.assign(q, { x: p.x, z: p.z });
   return { v, p, q, sim, accounts };
 }
 const open = v => v.requests.items.filter(r => r.status === 'open');
@@ -43,6 +43,27 @@ test('requests reflect shortages, reserve actual gold and conserve resources thr
   assert.equal(v.requests.items.length, 1, 'same shortage has no repeat bounty that day');
 });
 
+test('legacy communal request ledgers keep escrow and withdrawal history when their delivery moves to the exchange', () => {
+  const f = fixture(), { v, p, sim } = f; v.stock.wheat = 0; requestsTick(sim, v);
+  const original = open(v)[0], oldBank = BUILDINGS.find(b => b.id === 'bank');
+  v.requests.version = 1; v.requests.ledger['bank:wheat'].withdrawn = 5;
+  original.destinationName = oldBank.name; original.point = { ...buildingEntrance(oldBank), id: 'bank', name: oldBank.name, kind: 'service' };
+  const saved = JSON.parse(JSON.stringify(v)), fundsBefore = funds(v), before = structuredClone(v.requests);
+  ensureRequests(saved); const migrated = saved.requests.items.find(r => r.id === original.id);
+  assert.equal(saved.requests.version, 2); assert.equal(migrated.destinationId, 'bank'); assert.equal(migrated.key, original.key);
+  assert.equal(migrated.destinationName, 'Resource Exchange'); assert.equal(migrated.point.id, 'market');
+  assert.deepEqual({ x: migrated.point.x, z: migrated.point.z }, buildingEntrance(BUILDINGS.find(b => b.id === 'market')));
+  for (const key of ['spent', 'issued', 'nextId', 'ledger']) assert.deepEqual(saved.requests[key], before[key]);
+  for (const key of ['reserved', 'unitGold', 'quantity', 'remaining', 'delivered', 'status']) assert.equal(migrated[key], original[key]);
+  assert.equal(funds(saved), fundsBefore);
+  const once = structuredClone(saved); ensureRequests(saved); assert.deepEqual(saved, once, 'migration is repeatable without payment or reissue');
+  Object.assign(p, buildingEntrance(oldBank)); ensureRequests(v);
+  unchanged(v, () => deliver(f, original, 1), /entrance/);
+  Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'market'))); deliver(f, original, 1);
+  assert.equal(original.delivered, 1); assert.equal(v.requests.ledger['bank:wheat'].withdrawn, 5);
+  assert.equal(v.requests.items.length, 1); assert.equal(funds(v), fundsBefore);
+});
+
 test('delivery authentication, front-door position, alive state, finite quantities and concurrent quotas are authoritative', () => {
   const f = fixture(), { v, p, sim } = f; v.stock.wheat = 0; requestsTick(sim, v); const r = open(v)[0];
   for (const amount of [0, -1, 1.5, '2', Infinity, NaN, 25]) unchanged(v, () => deliver(f, r, amount), /positive whole/);
@@ -50,7 +71,7 @@ test('delivery authentication, front-door position, alive state, finite quantiti
   unchanged(v, () => requestsAction(sim, v, { ...p }, action), /Join this village/);
   p.online = false; unchanged(v, () => requestsAction(sim, v, p, action), /Join/); p.online = true;
   for (const property of ['downed', 'bedPlotId', 'mountedHorseId']) { p[property] = true; unchanged(v, () => requestsAction(sim, v, p, action), /Stand/); p[property] = false; }
-  const bank = BUILDINGS.find(b => b.id === 'bank'); Object.assign(p, { x: bank.x, z: bank.z });
+  const bank = BUILDINGS.find(b => b.id === 'market'); Object.assign(p, { x: bank.x, z: bank.z });
   unchanged(v, () => deliver(f, r, 1), /entrance/); Object.assign(p, buildingEntrance(bank));
   deliver(f, r, 20); unchanged(v, () => deliver(f, r, 5), /remaining need changed/);
   p.inventory.wheat = 0; unchanged(v, () => deliver(f, r, 1), /enough wheat/);
@@ -141,7 +162,7 @@ test('Simulation delivery transactions roll back escrow and loan payments togeth
   const store = new Store(directory); t.after(async () => { store.close(); await rm(directory, { recursive: true, force: true }); });
   const auth = await store.authenticate('register', 'Delivery Dwarf', 'delivery-test-only');
   const account = store.account(auth.playerId), sim = new Simulation(store), { id } = sim.create('Supply watch', account), p = sim.join(id, account), v = sim.villages.get(id);
-  v.stock.wheat = 0; p.inventory.wheat = 24; Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
+  v.stock.wheat = 0; p.inventory.wheat = 24; Object.assign(p, buildingEntrance(BUILDINGS.find(b => b.id === 'market')));
   requestsTick(sim, v); store.db.prepare('UPDATE accounts SET debt=20 WHERE id=?').run(p.id); store.saveVillage(v);
   const r = open(v)[0], action = { kind: 'request_deliver', requestId: r.id, amount: 10 }, before = structuredClone(v), awardIncome = sim.awardIncome;
   sim.awardIncome = function (...args) { awardIncome.apply(this, args); throw new Error('Simulated payment failure'); };

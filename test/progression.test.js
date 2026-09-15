@@ -67,7 +67,7 @@ test('guide checks successful purchases, harvesting, trade and arrival; clients 
   const f=await fixture(t),{v,p,store}=f;assert.equal(store.progression(p.id).guide.dismissed,false);
   assert.throws(()=>f.act({kind:'buyTool',tool:'pickaxe'}),/Visit/);assert.deepEqual(store.progression(p.id).guide.done,[]);
   f.near('tools');f.act({kind:'buyTool',tool:'pickaxe'});const node=RESOURCES.find(n=>n.type==='stone');Object.assign(p,{x:node.x,z:node.z});f.act({kind:'gather',targetId:node.id});
-  f.near('bank');f.act({kind:'sell',resource:'stone',amount:1,minTotal:1});p.wallet=100;f.near('food');f.act({kind:'buyFood',tier:'food'});
+  f.near('market');f.act({kind:'sell',resource:'stone',amount:1,minTotal:1});p.wallet=100;f.near('food');f.act({kind:'buyFood',tier:'food'});
   Object.assign(p,{x:0,z:12.1});f.advance(.2);assert.deepEqual(new Set(store.progression(p.id).guide.done),new Set(['tool','gather','sell','food','gate']));
   f.act({kind:'guide_visibility',dismissed:true,done:['forged'],nights:99});assert.equal(store.progression(p.id).nights,0);assert.equal(store.progression(p.id).guide.dismissed,true);
   p.downed=true;f.act({kind:'guide_visibility',dismissed:false});assert.equal(store.progression(p.id).guide.dismissed,false);

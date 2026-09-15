@@ -265,7 +265,7 @@ export class Simulation {
         message = `${player.inventory.wheat} wheat delivered to the barracks.`;
         player.inventory.wheat = 0;
       } else {
-        if (!canUseBuilding(player, building('bank'))) throw new Error('Bring your materials to the Village Treasury.');
+        if (!canUseBuilding(player, building('market'))) throw new Error('Bring your materials to the Resource Exchange.');
         const total = player.inventory.timber + player.inventory.stone + player.inventory.wheat;
         if (!total) throw new Error('You have no materials to donate.');
         for (const id of ['timber', 'stone', 'wheat']) { village.stock[id] += player.inventory[id]; player.inventory[id] = 0; }

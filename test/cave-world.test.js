@@ -57,12 +57,12 @@ test('mining feedback stays underground instead of snapping particles to the sur
   world.update(1.55,0,{id:'underground-effects',clock:1.55,resources:[{...row,remaining:7}]});for(let i=0;i<pool.count;i++){pool.getMatrixAt(i,matrix);p.setFromMatrixPosition(matrix);assert.ok(p.y< -10,'particlegravity never teleports chips onto y=0');}
 });
 
-test('cave cutaway, lantern pool and geometry stay bounded and dispose cleanly',()=>{
+test('cave cutaway, always-lit torch anchors and geometry stay bounded and dispose cleanly',()=>{
   const scene=new THREE.Scene(),cave=createCaveWorld(scene),camera=new THREE.PerspectiveCamera();
   const outside=cave.update({x:0,z:-110},camera,0);assert.equal(outside.inside,false);assert.equal(outside.caveMix,0);assert.equal(cave.roof.visible,true);
   camera.position.set(0,-9,-217);const inside=cave.update({x:0,z:-217},camera,1);assert.equal(inside.inside,true);assert.equal(inside.caveMix,1);assert.equal(cave.roof.visible,true,'the real ceiling remains visible from inside');
   camera.position.y=3;assert.equal(cave.update({x:0,z:-217},camera,1).cutaway,true);assert.equal(cave.roof.visible,false,'above-ceiling camera can see its player without opaque roof obstruction');
-  assert.equal(cave.lights.length,4);assert.ok(cave.lights.every(l=>l.castShadow===false&&l.intensity>=0));let calls=0,triangles=0;const resources=new Set();
+  assert.ok(cave.torchFixtures.length>12);assert.ok(cave.torchFixtures.every(f=>f.alwaysLit&&f.mount==='wall'));assert.equal(cave.root.children.filter(n=>n.isPointLight).length,0,'the shared torch system owns the only nearest-light pool');let calls=0,triangles=0;const resources=new Set();
   cave.root.traverse(m=>{if(!m.isMesh)return;calls++;triangles+=(m.geometry.index?.count??m.geometry.attributes.position.count)/3*(m.isInstancedMesh?m.count:1);for(const a of Object.values(m.geometry.attributes))assert.ok(a.array.every(Number.isFinite));resources.add(m.geometry);resources.add(m.material);});
   assert.ok(calls<28,`${calls} cave draw calls`);assert.ok(triangles<130000,`${triangles} cave triangles`);let disposed=0;for(const resource of resources)resource.addEventListener('dispose',()=>disposed++);
   cave.dispose();assert.equal(disposed,resources.size);cave.dispose();assert.equal(disposed,resources.size);assert.ok(!scene.children.includes(cave.root));

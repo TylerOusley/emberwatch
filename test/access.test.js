@@ -44,7 +44,7 @@ test('every authored entrance is collision-accessible and rejects sides, rear an
   }
 });
 
-test('treasury transactions recheck the doorway on every request and remain atomic after walking away', () => {
+test('bank and market transactions recheck their own doorway on every request and remain atomic after walking away', () => {
   const cases = [
     { kind: 'deposit', amount: 1 }, { kind: 'withdraw', amount: 1 },
     { kind: 'sell', resource: 'wheat', amount: 1, minTotal: 1 },
@@ -53,11 +53,28 @@ test('treasury transactions recheck the doorway on every request and remain atom
     { kind: 'propose_policy', policy: 'tradeTax', value: 10 }, { kind: 'worker_hire' }
   ];
   for (const action of cases) {
-    const f = fixture(), bank = building('bank'), entrance = buildingEntrance(bank);
+    const f = fixture(), bank = building(['sell', 'buyResource', 'donate'].includes(action.kind) ? 'market' : 'bank'), entrance = buildingEntrance(bank);
     Object.assign(f.p, opposite(bank, entrance)); rejectedWithoutMutation(f, action);
     Object.assign(f.p, entrance); assert.doesNotThrow(() => f.act(action), action.kind);
     Object.assign(f.p, { x: bank.x, z: bank.z + bank.d / 2 + 1 });
     rejectedWithoutMutation(f, action);
+  }
+});
+
+test('bank finance and exchange resource services cannot be used from each other’s entrance', () => {
+  for (const action of [
+    { kind: 'sell', resource: 'wheat', amount: 1, minTotal: 1 },
+    { kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 100 },
+    { kind: 'donate' }, { kind: 'donate', targetId: 'bank' }
+  ]) {
+    const f = fixture(); Object.assign(f.p, buildingEntrance(building('bank')));
+    rejectedWithoutMutation(f, action, /Resource Exchange/);
+    Object.assign(f.p, buildingEntrance(building('market'))); assert.doesNotThrow(() => f.act(action));
+  }
+  for (const action of [{ kind: 'deposit', amount: 1 }, { kind: 'withdraw', amount: 1 }, { kind: 'loan', amount: 10 }, { kind: 'repayLoan', amount: 10 }, { kind: 'worker_hire' }]) {
+    const f = fixture(); Object.assign(f.p, buildingEntrance(building('market')));
+    rejectedWithoutMutation(f, action, /Treasury/);
+    Object.assign(f.p, buildingEntrance(building('bank'))); assert.doesNotThrow(() => f.act(action));
   }
 });
 

@@ -21,7 +21,7 @@ function inFront(player, site, depth, point, range) {
 }
 export function buildingEntrance(building) {
   if (!building) return null;
-  const counter = building.kind === 'shop' || building.kind === 'food';
+  const counter = building.kind === 'shop' || building.kind === 'food' || building.kind === 'market';
   return approach(building, frontDepth(building), counter ? 2.55 : .9);
 }
 export function canUseBuilding(player, building, range = INTERACTION_RANGE) {

@@ -2,13 +2,14 @@ import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carry
 import { BUILDINGS, PLOTS, CAVE_ENTRANCE } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
-import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote } from '../../shared/economy.js';
+import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote } from '../../shared/economy.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS } from '../../shared/defense.js';
 import { ROLE_STATS } from '../../shared/roles.js';
 import { WORKER_RULES, WORKER_RESOURCES } from '../../shared/workers.js';
 import { NOTICEBOARD_POINT } from './noticeboard.js';
 import { itemArt, shopInterior } from './shop-display.js';
 import { TRANSPORT } from '../../shared/transport.js';
+import { createBuildCarousel, buildingAvailability } from './build-carousel.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -24,6 +25,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const workerDrafts = new Map();
   const inspections = new Set();
+  const buildCarousel = createBuildCarousel({ button, onChange: () => render(), onBuild: buildSelected });
   const content = () => document.getElementById('panel-content');
   const me = () => getMe();
   const state = () => getState();
@@ -49,7 +51,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return '<div class="shop-materials"><strong>Workshop materials</strong><p>' + esc(costText(cost)) + '</p><div>' + Object.entries(cost).map(([id, amount]) => `<span class="shop-material ${(stored?.[id] || 0) < amount ? 'short' : ''}">${itemArt(id)}<span>${num(amount)} ${esc(id)}<small>${num(stored?.[id])} stored</small></span></span>`).join('') + '</div></div>';
   }
   function shopTheme() {
-    if (['tools', 'food', 'stable'].includes(current?.kind)) return current.kind;
+    if (['tools', 'food', 'stable', 'bank', 'market'].includes(current?.kind)) return current.kind;
     if (current?.kind === 'merchant') return state()?.merchant?.present ? 'merchant' : null;
     if (current?.kind === 'plot') return { tool_shop: 'tools', sword_shop: 'weapons', tinker_shop: 'tinker' }[plots().find(p => p.id === current.id)?.building] || null;
     return null;
@@ -84,6 +86,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     for (const detail of content().querySelectorAll('[data-shop-inspect]')) detail.ontoggle = () => {
       if (detail.open) inspections.add(detail.dataset.shopInspect); else inspections.delete(detail.dataset.shopInspect);
     };
+    buildCarousel.bind(content());
     for (const resource of Object.keys(RESOURCE_MARKET)) {
       const input = document.getElementById(`trade-amount-${resource}`);
       if (input) input.oninput = () => { tradeAmounts.set(resource, input.value); updateTrade(resource); };
@@ -121,7 +124,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       return { allowed: atDoor || treatment, entrance: atDoor, treatment: Boolean(treatment && (!atDoor || panel.kind === 'church' || me().bedPlotId)),
         point: { ...plotEntrance(site, plot), id: site.id, name: site.name || site.id, kind: 'plot' } };
     }
-    if (['bank', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant'].includes(panel.kind)) return serviceAccess(panel.kind);
+    if (['bank', 'market', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant'].includes(panel.kind)) return serviceAccess(panel.kind);
     return null;
   }
   function serviceAccess(id) {
@@ -136,7 +139,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function render() {
     if (!current || !me() || !state()) return;
     handlers = [];
-    const builders = { inventory: pack, bank, food, tools, workers, barracks: watch, church, stable, merchant, policies, roles, plot, cart, horse, atlas, confirm: confirmation };
+    const builders = { inventory: pack, bank, market, food, tools, workers, barracks: watch, church, stable, merchant, policies, roles, plot, cart, horse, atlas, confirm: confirmation };
     const access = panelAccess();
     renderedAccess = accessMode(access);
     const body = access && !access.allowed ? entranceGuidance(access) : access?.treatment && current.kind !== 'confirm' ? church(current.id) : builders[current.kind]?.(current.id) || '';
@@ -144,7 +147,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const dialog = document.getElementById('panel-dialog'), theme = (!access || access.allowed) && shopTheme();
     const focus = content()?.contains?.(document.activeElement) ? document.activeElement?.dataset?.shopFocus : null;
     const scroll = dialog.scrollTop;
-    openPanel(theme ? `<div class="settlement-panel storefront" data-shop-theme="${theme}"><div class="storefront-scene">${shopInterior(theme)}<span class="shop-scene-caption">Step inside · Browse the counter</span></div><div class="storefront-content">${body}</div></div>` : `<div class="settlement-panel">${body}</div>`, 'settlement');
+    openPanel(theme ? `<div class="settlement-panel storefront" data-shop-theme="${theme}"><div class="storefront-scene">${shopInterior(theme)}<span class="shop-scene-caption">${theme === 'bank' ? 'The vault · Your gold, kept safe' : 'Step inside · Browse the counter'}</span></div><div class="storefront-content">${body}</div></div>` : `<div class="settlement-panel">${body}</div>`, 'settlement');
     dialog.classList.add('settlement-dialog'); wire(); dialog.scrollTop = scroll;
     if (focus) content().querySelector?.(`[data-shop-focus="${focus}"]`)?.focus({ preventScroll: true });
   }
@@ -154,7 +157,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
     // Network snapshots must not reset a quantity or selection while it is being edited.
     if (content().contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-      if (current.kind === 'bank') for (const resource of Object.keys(RESOURCE_MARKET)) updateTrade(resource);
+      if (current.kind === 'market') { for (const resource of Object.keys(RESOURCE_MARKET)) updateTrade(resource); updateMarketSummary(); }
       return;
     }
     const p = me(), s = state();
@@ -183,25 +186,39 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return html;
   }
   function bank() {
-    const p = me(), s = state(), tax = s.policies?.tradeTax || 0, loan = s.loan || {};
-    let html = head('VILLAGE TREASURY', 'A village built on shared supplies.', 'Trade prices follow the stock in the village. Quotes include the price change across the whole bundle.') + stats([['Wallet', `${num(p.wallet)} gold`], ['Protected savings', `${num(p.bank)} gold`], ['Treasury', `${num(s.treasury)} gold`]]);
+    const p = me(), s = state(), loan = s.loan || {};
+    let html = head('VILLAGE BANK', 'Keep something for tomorrow.', 'Protect your savings between runs or arrange purchase credit with the vault keeper.') + stats([['Wallet', `${num(p.wallet)} gold`], ['Protected savings', `${num(p.bank)} gold`]]);
+    html += '<section class="bank-counter"><div class="bank-counter-art">' + itemArt('gold') + '</div><div><h3>Your savings</h3><p>Deposited gold carries into another run. Withdraw it when you need it; gold in your wallet remains at risk.</p><label for="bank-amount">Gold to transfer</label><div class="transfer-form">' + quantity('bank-amount', Math.max(p.wallet, p.bank), 10) + button('Deposit', () => send({ type: 'action', kind: 'deposit', amount: amount('bank-amount') }), p.wallet < 1) + button('Withdraw', () => send({ type: 'action', kind: 'withdraw', amount: amount('bank-amount') }), p.bank < 1) + '</div></div></section>';
+    html += '<section class="bank-credit"><h3>Purchase credit</h3><p>Credit pays for eligible purchases. It cannot be withdrawn or deposited as savings. Debt follows your account between runs; ' + num(loan.repaymentPercent ?? 20) + '% of earnings repays it.</p>' + stats([['Debt', `${num(loan.debt)} gold`], ['Unspent credit', `${num(loan.credit)} gold`], ['Credit limit', `${num(loan.maxDebt || 200)} gold`]]) + '<label for="loan-amount">Gold to borrow or repay</label><div class="transfer-form">' + quantity('loan-amount', loan.maxDebt || 200, 100) + button('Borrow purchase credit', () => send({ type: 'action', kind: 'loan', amount: amount('loan-amount') }), (loan.debt || 0) >= (loan.maxDebt || 200) || (loan.availablePool || 0) < 1) + button('Repay from wallet', () => send({ type: 'action', kind: 'repayLoan', amount: amount('loan-amount') }), !loan.debt || !p.wallet) + '</div></section>';
+    if (s.landDebt) html += `<p class="settlement-warning">Outstanding land tax: ${num(s.landDebt)} gold.</p>` + command('Pay land tax from wallet', 'pay_land_debt', {}, wallet() < 1);
+    html += '<p>Buy, sell and donate resources at the Resource Exchange. Funded village supply requests are delivered there too.</p><div class="panel-actions">' + button('Find resource market', () => markService('market')) + button('Hire & manage workers', () => show('workers')) + button('Village policies & votes', () => show('policies')) + '</div>';
+    return html;
+  }
+  function market() {
+    const p = me(), s = state(), tax = s.policies?.tradeTax || 0;
+    let html = head('RESOURCE EXCHANGE', 'Bring your haul to the counter.', 'Trade shared village supplies with the market keeper. Prices follow village stock; every bundle includes its changing unit prices and tax.');
+    html += '<div class="settlement-stats market-summary">' + [['Wallet', 'market-wallet', `${num(p.wallet)} gold`], ['Village treasury', 'market-treasury', `${num(s.treasury)} gold`], ['Carried weight', 'market-carry', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Trading tax', 'market-tax', `${num(tax)}%`]].map(([name, id, text]) => `<div><span>${esc(name)}</span><strong id="${id}">${esc(text)}</strong></div>`).join('') + '</div>';
     html += deliveries('bank');
-    html += '<p>Your bank savings carry into another run. Trading tax: ' + num(tax) + '%. Emergency purchase reserve: ' + TREASURY_RESERVE + ' gold.</p><div class="transfer-form">' + quantity('bank-amount', Math.max(p.wallet, p.bank), 10) + button('Deposit', () => send({ type: 'action', kind: 'deposit', amount: amount('bank-amount') }), p.wallet < 1) + button('Withdraw', () => send({ type: 'action', kind: 'withdraw', amount: amount('bank-amount') }), p.bank < 1) + '</div><h3>Buy and sell resources</h3>';
-    html += '<p>Enter any whole quantity. Quotes include the changing price of every unit and the village tax. You can sell a full pack in one trade.</p>';
+    html += `<p>Enter a whole quantity to buy or sell. “Sell max” sells the largest bundle of that resource the treasury can currently afford, preserving its ${TREASURY_RESERVE} gold reserve.</p><div class="market-resource-grid">`;
     for (const [resource, info] of Object.entries(RESOURCE_MARKET)) {
       if (!tradeAmounts.has(resource)) tradeAmounts.set(resource, '10');
       const trade = quoteTrade(resource); displayedTrades.set(resource, trade);
-      html += `<section class="market-row"><div class="market-heading"><strong>${esc(info.label)}</strong><span id="trade-stock-${resource}">${esc(trade.stockText)}</span></div>`;
+      html += `<section class="market-resource-card" data-market-resource="${resource}"><div class="market-resource-art">${itemArt(resource)}<span>${RESOURCE_WEIGHTS[resource]} weight each</span></div><div class="market-resource-body"><div class="market-heading"><h3>${esc(info.label)}</h3><span id="trade-stock-${resource}">${esc(trade.stockText)}</span></div>`;
       html += `<label class="trade-quantity" for="trade-amount-${resource}">Quantity ${quantity(`trade-amount-${resource}`, trade.maxAmount, tradeAmounts.get(resource)).replace('aria-label="Amount"', `aria-label="${esc(info.label)} quantity" aria-describedby="trade-limit-${resource}"`)}</label><p class="trade-limit" id="trade-limit-${resource}">${esc(trade.limitText)}</p>`;
       html += `<div class="trade-quotes"><p id="trade-sell-quote-${resource}">${esc(trade.sellText)}</p><p id="trade-buy-quote-${resource}">${esc(trade.buyText)}</p></div><div class="market-buttons">`;
-      for (const direction of ['sell', 'buy']) html += button(trade[direction + 'Button'], () => submitTrade(resource, direction), !trade[direction + 'Allowed'], trade[direction + 'Reason']).replace('<button ', `<button id="trade-${direction}-${resource}" `);
-      html += '</div></section>';
+      for (const direction of ['sell', 'buy']) html += button(trade[direction + 'Button'], () => submitTrade(resource, direction), !trade[direction + 'Allowed'], trade[direction + 'Reason']).replace('<button ', `<button id="trade-${direction}-${resource}" data-shop-focus="trade-${direction}-${resource}" `);
+      html += button(trade.maxButton, () => submitMaxTrade(resource), !trade.maxAllowed, trade.maxReason, 'secondary-button market-sell-max').replace('<button ', `<button id="trade-max-${resource}" data-shop-focus="trade-max-${resource}" `);
+      html += `</div><p class="trade-max-quote" id="trade-max-quote-${resource}">${esc(trade.maxText)}</p></div></section>`;
     }
-    html += '<h3>Support the village</h3><p>Donate all the raw resources in your pack without payment.</p>' + command('Donate carried resources', 'donate', {}, !resources.some(id => p.inventory?.[id] > 0));
-    html += '<h3>Purchase credit</h3><p>Credit pays for eligible purchases. It cannot be withdrawn or deposited as savings. Debt follows your account between runs; ' + num(loan.repaymentPercent ?? 20) + '% of earnings repays it.</p>' + stats([['Debt', `${num(loan.debt)} gold`], ['Unspent credit', `${num(loan.credit)} gold`], ['Credit limit', `${num(loan.maxDebt || 200)} gold`]]) + '<div class="transfer-form">' + quantity('loan-amount', 200, 100) + button('Borrow purchase credit', () => send({ type: 'action', kind: 'loan', amount: amount('loan-amount') }), (loan.debt || 0) >= (loan.maxDebt || 200) || (loan.availablePool || 0) < 1) + button('Repay from wallet', () => send({ type: 'action', kind: 'repayLoan', amount: amount('loan-amount') }), !loan.debt || !p.wallet) + '</div>';
-    if (s.landDebt) html += `<p class="settlement-warning">Outstanding land tax: ${num(s.landDebt)} gold.</p>` + command('Pay land tax from wallet', 'pay_land_debt', {}, wallet() < 1);
-    html += '<div class="panel-actions">' + button('Hire & manage workers', () => show('workers')) + button('Village policies & votes', () => show('policies')) + '</div>';
-    return html;
+    html += '</div><section class="market-donation"><h3>Support the village</h3><p>Donate all raw resources in your pack without payment. For a posted reward, use “Requested deliveries” before making a donation.</p>' + command('Donate carried resources', 'donate', {}, !resources.some(id => p.inventory?.[id] > 0)).replace('<button ', '<button id="market-donate" ') + '</section>';
+    return html + '<div class="panel-actions">' + button('Find bank', () => markService('bank')) + '</div>';
+  }
+  function updateMarketSummary() {
+    const p = me(), s = state();
+    for (const [id, text] of [['market-wallet', `${num(p.wallet)} gold`], ['market-treasury', `${num(s.treasury)} gold`], ['market-carry', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['market-tax', `${num(s.policies?.tradeTax || 0)}%`]]) {
+      const node = document.getElementById(id); if (node) node.textContent = text;
+    }
+    const donate = document.getElementById('market-donate'); if (donate) donate.disabled = !resources.some(id => p.inventory?.[id] > 0);
   }
   const ownWorkers = () => (state()?.workers || []).filter(worker => worker.ownerId === me()?.id);
   const atTreasury = player => canUseBuilding(player, BUILDINGS.find(b => b.id === 'bank'));
@@ -272,7 +289,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const p = me(), s = state(), stock = s.stock?.[resource] || 0, carried = p.inventory?.[resource] || 0;
     const count = Number(tradeAmounts.get(resource)), valid = Number.isSafeInteger(count) && count >= 1 && count <= MAX_TRADE_AMOUNT;
     const room = Math.max(0, Math.floor((carryCapacity(p) - inventoryWeight(p)) / RESOURCE_WEIGHTS[resource]));
-    const sellMax = Math.min(carried, MAX_TRADE_AMOUNT), buyMax = Math.min(stock, room, MAX_TRADE_AMOUNT);
+    let maximum = { amount: 0, quote: { gross: 0, tax: 0, total: 0 } };
+    try { maximum = maxSaleQuote({ resource, stock, carried, treasury: s.treasury, percent: s.policies?.tradeTax || 0 }); } catch {}
+    const sellMax = maximum.amount, buyMax = Math.min(stock, room, MAX_TRADE_AMOUNT);
     let sale = null, purchase = null;
     if (valid) {
       try { sale = taxedSaleQuote(resource, stock, count, s.policies?.tradeTax || 0); } catch {}
@@ -281,9 +300,12 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const invalidReason = `Enter a whole quantity from 1 to ${num(MAX_TRADE_AMOUNT)}.`;
     const sellReason = !valid ? invalidReason : count > carried ? `You carry only ${num(carried)} ${resource}.` : !sale ? 'A sale quote is unavailable.' : sale.total > s.treasury - TREASURY_RESERVE ? 'The treasury cannot pay this amount while preserving its reserve.' : '';
     const buyReason = !valid ? invalidReason : count > stock ? `The village has only ${num(stock)} ${resource}.` : count > room ? `Your pack has room for ${num(room)} more ${resource}.` : !purchase ? 'A purchase quote is unavailable.' : purchase.total > wallet() ? 'You do not have enough gold for this quantity.' : '';
+    const maxReason = carried < 1 ? `You carry no ${resource}.` : !sellMax ? 'The treasury cannot buy any while preserving its reserve.' : '';
     return {
       count, sale, purchase, maxAmount: Math.max(1, sellMax, buyMax), sellAllowed: !sellReason, buyAllowed: !buyReason, sellReason, buyReason,
-      stockText: `${num(carried)} carried · ${num(stock)} in village`, limitText: `Can sell up to ${num(sellMax)} · Can buy up to ${num(buyMax)} with current stock and pack space.`,
+      maximum, maxAllowed: !maxReason, maxReason, maxButton: sellMax ? `Sell max · ${num(sellMax)} for ${num(maximum.quote.total)}g` : 'Sell max',
+      maxText: sellMax ? `Max sale: ${num(sellMax)} ${resource} · ${num(maximum.quote.gross)}g value − ${num(maximum.quote.tax)}g tax = ${num(maximum.quote.total)}g received.${sellMax < carried ? ' Treasury funds or the trade limit leave the rest in your pack.' : ''}` : maxReason,
+      stockText: `${num(carried)} carried · ${num(stock)} in village`, limitText: `Can sell up to ${num(sellMax)} with treasury funds · Can buy up to ${num(buyMax)} with current stock and pack space.`,
       sellText: (sale ? `Sell: receive ${num(sale.total)}g (${num(sale.gross)}g value − ${num(sale.tax)}g tax).` : 'Sell: no quote.') + (sellReason ? ' ' + sellReason : ''),
       buyText: (purchase ? `Buy: pay ${num(purchase.total)}g (${num(purchase.subtotal)}g price + ${num(purchase.tax)}g tax).` : 'Buy: no quote.') + (buyReason ? ' ' + buyReason : ''),
       sellButton: sale ? `Sell ${num(count)} · ${num(sale.total)}g` : 'Sell', buyButton: purchase ? `Buy ${num(count)} · ${num(purchase.total)}g` : 'Buy'
@@ -300,6 +322,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const control = document.getElementById(`trade-${direction}-${resource}`);
       if (control) { control.textContent = trade[direction + 'Button']; control.disabled = !trade[direction + 'Allowed']; control.title = trade[direction + 'Reason']; }
     }
+    write(`trade-max-quote-${resource}`, trade.maxText);
+    const maximum = document.getElementById(`trade-max-${resource}`);
+    if (maximum) { maximum.textContent = trade.maxButton; maximum.disabled = !trade.maxAllowed; maximum.title = trade.maxReason; }
   }
   function submitTrade(resource, direction) {
     // Submit the exact quote that was displayed. A newer, less favorable server
@@ -307,6 +332,13 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const trade = displayedTrades.get(resource);
     if (!trade?.[direction + 'Allowed'] || Number(value(`trade-amount-${resource}`)) !== trade.count) return;
     send({ type: 'action', kind: direction === 'sell' ? 'sell' : 'buyResource', resource, amount: trade.count, ...(direction === 'sell' ? { minTotal: trade.sale.total } : { maxTotal: trade.purchase.total }) });
+  }
+  function submitMaxTrade(resource) {
+    // This is one quoted sale, independent of the custom quantity draft.
+    // Keep its displayed minimum payout so a stale quote cannot pay less.
+    const trade = displayedTrades.get(resource);
+    if (!trade?.maxAllowed || !trade.maximum.amount) return;
+    send({ type: 'action', kind: 'sell', resource, amount: trade.maximum.amount, minTotal: trade.maximum.quote.total });
   }
   function food() {
     const s = state(), p = me();
@@ -458,6 +490,17 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (owner) html += button('Take', () => send({ type: 'action', kind: isCart ? 'cartWithdraw' : 'plot_withdraw', ...(isCart ? { targetId: id } : { plotId: id }), resource: value('storage-resource'), amount: amount('storage-amount') }));
     return html + '</div>';
   }
+  function buildOptions(id) {
+    const site = PLOTS.find(p => p.id === id), plot = plots().find(p => p.id === id);
+    return { plotId: id, site, plot, player: me(), plots: plots(), funds: money(), atEntrance: Boolean(site && plot && canUsePlot(me(), site, plot)), patients: state().beds?.find(bed => bed.plotId === id)?.patients || [] };
+  }
+  function buildSelected(building) {
+    if (current?.kind !== 'plot') return;
+    const options = buildOptions(current.id), p = options.plot, info = BUILDING_TYPES[building];
+    if (!p || !info || !buildingAvailability(building, options).available) { render(); return; }
+    if (p.building) confirm('Replace this building?', `This removes your ${BUILDING_TYPES[p.building].name} and any deployed troops. Empty storage and finish church treatments first. Building the ${info.name} costs ${costText(info.cost)}.`, 'plot_build', { plotId: p.id, building, confirm: true });
+    else send({ type: 'action', kind: 'plot_build', plotId: p.id, building });
+  }
   function plot(id) {
     const place = PLOTS.find(p => p.id === id), p = plots().find(p => p.id === id) || { id }, mine = p.ownerId === me().id;
     if (!place) return head('LAND REGISTRY', 'That plot is unavailable.');
@@ -517,16 +560,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if(mine && DEFENSE_UPGRADES[p.building]) {const upgrade=DEFENSE_UPGRADES[p.building];html+='<h3>Building upgrade</h3><p>'+costText({gold:upgrade.gold,...upgrade.resources})+'</p>'+command((p.level||1)>=2?'Fully upgraded':p.building==='church'?'Upgrade to four beds':'Upgrade to level 2','upgradeDefense',{plotId:id},(p.level||1)>=2||wallet()<upgrade.gold||!hasCost(p.storage,upgrade.resources)||p.hp<=0);}
     if (mine || p.building) html += '<h3>Building storage</h3><p>Capacity: ' + num(inventoryWeight(p.storage||{})) + ' / 1,500 weight. Materials stored on an empty plot can fund its construction.</p>' + storage(p.storage || {}, id, false, mine);
     if (mine) {
-      html += '<h3>' + (p.building ? 'Convert this plot' : 'Choose a building') + '</h3><p>Construction consumes gold, uses this plot’s stored materials first, then any remaining materials from your pack. Converting removes the existing building; first empty its storage and finish treatments.</p><div class="building-catalog">';
-      for (const [building, info] of Object.entries(BUILDING_TYPES)) {
-        const wrongRole = info.role && info.role !== me().role;
-        const atLimit = info.limit && owned().filter(v => v.building === building).length >= info.limit;
-        html += `<section class="building-card"><strong>${esc(info.name)}</strong><p>${esc(costText(info.cost))}${building === 'archer_tower' ? '<br>No ammunition required' : ''}</p>${info.role ? `<small>${esc(label(info.role))} only${info.limit ? ` · limit ${info.limit}` : ''}</small>` : '<small>Every role</small>'}` + button(p.building === building ? 'Already built' : p.building ? 'Convert plot' : 'Build', () => {
-          if (p.building) confirm('Replace this building?', `This removes your ${type.name} and any deployed troops. Empty storage and finish church treatments first. Building the ${info.name} costs ${costText(info.cost)}.`, 'plot_build', { plotId: id, building, confirm: true });
-          else send({ type: 'action', kind: 'plot_build', plotId: id, building });
-        }, wrongRole || atLimit || p.building === building || money() < info.cost.gold || !hasCost(Object.fromEntries(resources.map(r=>[r,(me().inventory?.[r]||0)+(p.storage?.[r]||0)])), info.cost)) + '</section>';
-      }
-      html += '</div>';
+      html += '<h3>' + (p.building ? 'Convert this plot' : 'Choose a building') + '</h3><p>Browse one building plan at a time. Construction uses gold and this plot’s materials before supplies in your pack. Converting removes the existing structure.</p>' + buildCarousel.render(buildOptions(id));
       if(p.building)html+='<h3>Remove this building</h3><p>Demolition retains your land. Empty storage and finish treatments first. There is no refund.</p>'+button('Demolish building',()=>confirm('Remove this building?',`Your ${type.name} and deployed troops will be removed without a refund. The plot remains yours.`,'plot_demolish',{plotId:id,confirm:true}));
     }
     return html;
@@ -554,5 +588,5 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     return waypoint;
   }
-  return { show, refresh, getWaypoint, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); } };
+  return { show, refresh, getWaypoint, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
 }
