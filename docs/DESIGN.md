@@ -119,7 +119,7 @@ Exterior archer towers and cannon defenses require construction resources, ammun
 
 ## Treasury, pay, and resource markets
 
-Each new village starts with **2,500 gold in a public treasury**, once per run rather than per arriving player. Initial planning allocations are 750 for payroll, 1,250 for resource purchases, and 500 for defense/emergencies.
+Each new village starts with **20,000 gold in a public treasury**, once per run rather than per arriving player. This larger starting reserve funds payroll, resource purchases, and defense costs under the existing payment rules. Saved villages continue from their current treasury balance; loading or rejoining never grants the starting reserve again.
 
 | Earnings | Starting target | Payment timing |
 | --- | --- | --- |

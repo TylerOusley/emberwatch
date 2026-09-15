@@ -41,13 +41,13 @@ test('backpacks enforce shop access, exact prices and one-way upgrades without a
   }
   p.wallet = 39;
   assert.throws(() => f.act({ kind: 'buyBackpack', tier: 1 }), /more wallet/);
-  assert.equal(p.wallet, 39); assert.equal(v.treasury, 2500);
+  assert.equal(p.wallet, 39); assert.equal(v.treasury, 20000);
   p.wallet = 240;
   f.act({ kind: 'buyBackpack', tier: 1, price: 0, capacity: 999999 });
-  assert.equal(p.wallet, 200); assert.equal(v.treasury, 2540); assert.equal(carryCapacity(p), 250);
+  assert.equal(p.wallet, 200); assert.equal(v.treasury, 20040); assert.equal(carryCapacity(p), 250);
   assert.throws(() => f.act({ kind: 'buyBackpack', tier: 1 }), /already have/);
   f.act({ kind: 'buyBackpack', tier: 3 });
-  assert.equal(p.wallet, 0); assert.equal(v.treasury, 2740); assert.equal(carryCapacity(p), 550);
+  assert.equal(p.wallet, 0); assert.equal(v.treasury, 20240); assert.equal(carryCapacity(p), 550);
   assert.throws(() => f.act({ kind: 'buyBackpack', tier: 2 }), /already have/);
   assert.equal(inventoryWeight(p), 0, 'equipped backpacks do not consume their own storage');
   const snapshot = f.sim.snapshot(v, p.id);

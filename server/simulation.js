@@ -26,7 +26,7 @@ export function createVillage(name, creatorId, options = {}) {
   const village = {
     id: randomUUID(), name, creatorId, day: 1, phase: 'day', phaseRemaining: options.daySeconds ?? CONFIG.daySeconds,
     clock: 0, status: 'active', gate: { hp: CONFIG.gateMax, maxHp: CONFIG.gateMax }, keep: { hp: CONFIG.keepMax, maxHp: CONFIG.keepMax },
-    treasury: 2500, stock: { timber: 60, stone: 40, wheat: 40 }, barracks: { wheat: 12 }, players: {},
+    treasury: 20000, stock: { timber: 60, stone: 40, wheat: 40 }, barracks: { wheat: 12 }, players: {},
     resources: RESOURCES.map(makeResource), zombies: [], guards: [0, 1].map(i => ({ id: `watch-${i}`, x: GUARD_ROAD[0].x, z: GUARD_ROAD[0].z + (i - .5) * 1.4, yaw: Math.PI / 2, hp: 160, maxHp: 160, anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false })),
     nextSpawn: 0, spawned: 0, waveCount: 0, nightParticipants: [], warningSent: false
   };

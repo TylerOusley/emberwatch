@@ -1,5 +1,9 @@
 # Emberwatch build validation
 
+## Starting treasury balance adjustment
+
+The initial public treasury is now **20,000 gold** for newly created village runs. The grant is made only by village creation; saved villages keep their current balances on reload or rejoin. Personal starting wallets remain separate. After the balance adjustment, all **33 existing starter, backpack, backend, economy and market tests pass**, including real WebSocket sales and SQLite treasury recovery. Only the default-dependent expected balances were updated; scenario-specific liquidity fixtures retain their original values. The server module also passes its syntax check.
+
 ## Tool-grip follow-up
 
 After the screenshot of the sideways pickaxe, the shared straight-handle grip, carrying elbow pose and tool strokes were corrected. The full automated suite passes **151/151 tests**. New geometry regressions check all working tools, three material tiers and three jobs, actual finger alignment, upright shafts and forward heads, animation continuity, stowing, ore-height mining contact, a level scythe blade and forward bow aim. Existing sword, character, horse and multiplayer tests also pass. Front, side, quarter and working-stroke renders were inspected from the actual Three.js geometry. This follow-up changes character visuals and preview tooling, with no server rules or save migration.

@@ -44,7 +44,7 @@ Create an account, create or join a village, and select Guard, Priest, or Villag
 
 ## Starting a village
 
-A village starts with 2,500 treasury gold, 60 timber, 40 stone, 40 wheat, and two public watch guards with 12 wheat in their barracks. A new resident receives 10 wallet gold once per village run, with no tools, weapons, food or backpack. Rejoining never grants more. Visit Oak & Iron to choose the first wooden tool; existing residents retain their earned inventory and wallet. Join a village, gather and trade supplies, buy a plot, and establish the businesses and defenses the residents need.
+A village starts with 20,000 treasury gold, 60 timber, 40 stone, 40 wheat, and two public watch guards with 12 wheat in their barracks. A new resident receives 10 wallet gold once per village run, with no tools, weapons, food or backpack. Rejoining never grants more. Visit Oak & Iron to choose the first wooden tool; existing residents retain their earned inventory and wallet. Join a village, gather and trade supplies, buy a plot, and establish the businesses and defenses the residents need.
 
 Each account has one active village. Its resident place, plots and stored property remain reserved while offline. Villages hold eight saved residents, including offline members; a single player can start alone. When nobody is online, the simulation pauses. Eight-minute days alternate with four-minute nights, and zombie difficulty grows every five nights. The keep’s destruction ends the run.
 
