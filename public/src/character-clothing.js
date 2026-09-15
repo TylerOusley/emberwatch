@@ -131,13 +131,16 @@ function mergeOnBone(parent, own) {
   }
 }
 
-function skinSkirt(geometry, rig, mat) {
+function skinSkirt(geometry, rig, mat, fittedHem = false) {
   rig.body.updateWorldMatrix(true, true);
   const skeleton = new THREE.Skeleton([rig.body, rig.leftLeg, rig.leftShin, rig.rightLeg, rig.rightShin]);
   const p = geometry.attributes.position, indices = [], weights = [];
   for (let i = 0; i < p.count; i++) {
     const y = p.getY(i), x = p.getX(i);
-    const hip = ease((-y - .18) / .62) * .76;
+    // Fitted layers start moving below the rigid shirt, and use the same
+    // weights for the tunic, apron, and pocket so they cannot pull through
+    // one another. Long priest robes retain their looser drape.
+    const hip = fittedHem ? ease((-y - .29) / .15) * .94 : ease((-y - .18) / .62) * .76;
     const leg = .5 + .5 * Math.tanh(x * 7);
     indices.push(0, 1, 3, 0); weights.push(1 - hip, hip * leg, hip * (1 - leg), 0);
   }
@@ -174,6 +177,44 @@ function skinSleeve(geometry, arm, fore, mat) {
   return mesh;
 }
 
+// Keep the boot's stitching and leather together by material before skinning;
+// an articulated boot should not require a draw call for every lace.
+function joinSurfaces(parts) {
+  if (parts.length === 1) return parts[0];
+  const count = parts.reduce((n, g) => n + g.attributes.position.count, 0);
+  const geometry = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'uv', 'color']) {
+    const size = parts[0].attributes[name].itemSize, data = new Float32Array(count * size);
+    let offset = 0;
+    for (const g of parts) { data.set(g.attributes[name].array, offset); offset += g.attributes[name].array.length; }
+    geometry.setAttribute(name, new THREE.BufferAttribute(data, size));
+  }
+  const indices = [], sizes = parts.map(g => g.attributes.position.count);
+  let offset = 0;
+  parts.forEach((g, i) => { for (const index of g.index.array) indices.push(index + offset); offset += sizes[i]; g.dispose(); });
+  geometry.setIndex(indices); geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function skinLimb(geometry, upper, lower, mat, influence, anchor = null) {
+  upper.updateWorldMatrix(true, true);
+  const skeleton = new THREE.Skeleton(anchor ? [upper, lower, anchor.bone] : [upper, lower]);
+  const positions = geometry.attributes.position, indices = [], weights = [];
+  for (let i = 0; i < positions.count; i++) {
+    const y = positions.getY(i), weight = clamp(influence(y), 0, 1);
+    const pinned = anchor ? clamp(anchor.influence(y), 0, 1) : 0;
+    indices.push(0, 1, anchor ? 2 : 0, 0);
+    weights.push((1 - weight) * (1 - pinned), weight * (1 - pinned), pinned, 0);
+  }
+  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(indices, 4));
+  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weights, 4));
+  const mesh = new THREE.SkinnedMesh(geometry, mat);
+  upper.add(mesh); mesh.updateWorldMatrix(true, false); mesh.bind(skeleton, mesh.matrixWorld);
+  mesh.userData.tailored = true; mesh.castShadow = mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 /** Add original fitted clothing to the supplied natural-proportion dwarf rig. */
 export function buildClothing(rig, { role = 'villager', variation = 0, palette = {}, own = new Set() } = {}) {
   const touched = new Set(), skins = [];
@@ -192,9 +233,18 @@ export function buildClothing(rig, { role = 'villager', variation = 0, palette =
     m.userData.tailored = true; m.castShadow = m.receiveShadow = true;
     bone.add(m); return m;
   };
-  const robe = (geometry, mat) => {
+  const robe = (geometry, mat, part = '') => {
     if (zombie) geometry.scale(.75, 1, .82);
-    own.add(geometry); const m = skinSkirt(geometry, rig, mat); skins.push(m); own.add(m.skeleton); return m;
+    own.add(geometry); const m = skinSkirt(geometry, rig, mat, Boolean(part));
+    if (part) m.userData.clothingPart = part;
+    skins.push(m); own.add(m.skeleton); return m;
+  };
+  const limb = (geometry, upper, lower, mat, influence, part, anchor = null) => {
+    if (zombie) geometry.scale(.85, 1, .9);
+    own.add(geometry);
+    const m = skinLimb(geometry, upper, lower, mat, influence, anchor);
+    m.userData.clothingPart = part;
+    skins.push(m); own.add(m.skeleton); return m;
   };
 
   // A chest cut to the shoulder and neck rather than a capsule placed on a belt.
@@ -206,7 +256,7 @@ export function buildClothing(rig, { role = 'villager', variation = 0, palette =
     add(rig.body, garment(torsoSections, { folds: .009, seed: variation, hem: zombie ? .055 : .004 }), shirt);
     // The short tunic hangs over, rather than terminating at, the trouser waist.
     if (!guard) robe(garment([[-.44,.379,.251],[-.29,.373,.248],[-.15,.364,.246]],
-      { rows: 10, folds: .009, seed: variation, hem: zombie ? .055 : .008 }), shirt);
+      { rows: 10, folds: .009, seed: variation, hem: zombie ? .055 : .008 }), shirt, 'shortTunic');
   }
 
   // Soft standing collar and a narrow opening below the throat.
@@ -215,6 +265,7 @@ export function buildClothing(rig, { role = 'villager', variation = 0, palette =
   for (let side of [-1,1]) {
     const arm = side > 0 ? rig.leftArm : rig.rightArm, fore = side > 0 ? rig.leftFore : rig.rightFore;
     const leg = side > 0 ? rig.leftLeg : rig.rightLeg, shin = side > 0 ? rig.leftShin : rig.rightShin;
+    const foot = side > 0 ? rig.leftFoot : rig.rightFoot;
     const shoulderSections = [[-.23,.127,.119],[-.08,.144,.136],[.012,.133,.130],[.060,.09,.094],[.086,.012,.013],[.089,.001,.001]];
     const sleeveSections = [[-.306,.113,.11],...shoulderSections];
     if (priest || guard) {
@@ -229,24 +280,38 @@ export function buildClothing(rig, { role = 'villager', variation = 0, palette =
         { rows: 7, segments: 24, folds: .002 }), shirt);
       add(arm, garment([[-.297,.129,.123],[-.290,.128,.122]], { rows: 2, segments: 24, folds: .001 }), seam);
     }
-    add(leg, garment([[-.385,.115,.112],[-.31,.129,.128],[-.13,.149,.151],[.065,.159,.151]],
-      { rows: 12, segments: 22, folds: .006, seed: variation + side, front: .005 }), trouser);
-    add(shin, garment([[-.11,.097,.104],[.025,.115,.115],[.08,.116,.118]],
-      { rows: 6, segments: 24, folds: .005, seed: side }), trouser);
+    // One fabric surface crosses the knee. Overlapping rigid thigh/calf tubes
+    // pull apart as soon as a walking knee bends far enough to lift the foot.
+    limb(garment([[-.48,.097,.104],[-.40,.110,.113],[-.35,.117,.119],[-.31,.129,.128],[-.13,.149,.151],[.065,.159,.151]],
+      { rows: 28, segments: 24, folds: .006, seed: variation + side, front: .005 }),
+      leg, shin, trouser, y => ease((-.265 - y) / .16), 'trousers',
+      { bone: rig.body, influence: y => 1 - ease((-.02 - y) / .15) });
 
     // Fitted leather footwear: shaft, ankle, instep, asymmetric toe, and welt.
+    const bootParts = new Map();
+    const boot = (geometry, mat) => {
+      const parts = bootParts.get(mat) || [];
+      parts.push(geometry); bootParts.set(mat, parts);
+    };
     const bootSections = [[-.391,.142,.221,.101],[-.369,.147,.226,.103],[-.322,.145,.226,.106],[-.268,.132,.198,.084],[-.196,.112,.139,.038],[-.10,.107,.119,.012],[.015,.126,.125,0]];
-    add(shin, garment(bootSections, { rows: 18, segments: 28, folds: .002, power: .82, seed: variation }), darkLeather);
-    add(shin, garment([[-.402,.145,.225,.101],[-.394,.151,.231,.101],[-.370,.15,.231,.102],[-.36,.145,.227,.103]],
+    boot(garment(bootSections, { rows: 24, segments: 28, folds: .002, power: .82, seed: variation }), darkLeather);
+    boot(garment([[-.402,.145,.225,.101],[-.394,.151,.231,.101],[-.370,.15,.231,.102],[-.36,.145,.227,.103]],
       { rows: 5, segments: 32, folds: 0, power: .8 }), leather);
-    add(shin, garment([[-.009,.13,.129],[.016,.135,.133],[.026,.13,.128]],
+    boot(garment([[-.009,.13,.129],[.016,.135,.133],[.026,.13,.128]],
       { rows: 5, segments: 28, folds: .001 }), leather);
-    add(shin, ribbon([[-.077,-.329,.272],[-.069,-.23,.187],[-.056,-.12,.126],[-.049,.006,.124]], .006), seam);
-    add(shin, ribbon([[.077,-.329,.272],[.069,-.23,.187],[.056,-.12,.126],[.049,.006,.124]], .006), seam);
+    boot(ribbon([[-.077,-.329,.272],[-.069,-.23,.187],[-.056,-.12,.126],[-.049,.006,.124]], .006), seam);
+    boot(ribbon([[.077,-.329,.272],[.069,-.23,.187],[.056,-.12,.126],[.049,.006,.124]], .006), seam);
     for (let i = 0; i < 4; i++) {
       const y = -.03 - i * .044, z = .13 + Math.max(0,-y-.08)*.40;
-      add(shin, ribbon([[-.048,y,z],[0,y-.012,z+.006],[.048,y-.025,z+.008]], .009), leather);
-      add(shin, ribbon([[.048,y,z],[0,y-.012,z+.009],[-.048,y-.025,z+.008]], .009), leather);
+      boot(ribbon([[-.048,y,z],[0,y-.012,z+.006],[.048,y-.025,z+.008]], .009), leather);
+      boot(ribbon([[.048,y,z],[0,y-.012,z+.009],[-.048,y-.025,z+.008]], .009), leather);
+    }
+    for (const [mat, parts] of bootParts) {
+      const geometry = joinSurfaces(parts);
+      // The tall shaft follows the calf. A broad ankle transition bends into
+      // the instep, while the sole and toe follow the foot without distortion.
+      if (foot) limb(geometry, shin, foot, mat, y => ease((-.14 - y) / .15), 'boot');
+      else add(shin, geometry, mat);
     }
   }
 
@@ -305,15 +370,15 @@ export function buildClothing(rig, { role = 'villager', variation = 0, palette =
       const x=(u*2-1)*width, z=.296+Math.sin(v*Math.PI)*.006-.02*(1-ease(v*2))-.025*(2*u-1)**2;
       return[x,y+.009*Math.cos(u*TAU*2)*(1-ease(v*9)),z+.008*Math.sin(u*TAU*4+v)*Math.sin(v*Math.PI)];
     },(u,v)=>.95+.035*Math.cos(u*TAU*4+v));
-    robe(apron,leather);
+    robe(apron,leather,'apron');
     for(let side of [-1,1]) add(rig.body,ribbon([[side*.192,.28,.270],[side*.213,.41,.218],[side*.19,.485,.162],[side*.18,.50,.035],[side*.195,.444,-.153],[side*.253,.17,-.241]],.046),leather);
-    robe(ribbon([[-.255,-.294,.295],[-.15,-.28,.311],[0,-.275,.317],[.15,-.28,.311],[.255,-.294,.295]],.009),seam);
+    robe(ribbon([[-.255,-.294,.295],[-.15,-.28,.311],[0,-.275,.317],[.15,-.28,.311],[.255,-.294,.295]],.009),seam,'apronTrim');
     // A shallow stitched pocket follows the apron surface rather than floating.
     robe(surface(9,12,(u,v)=>{
       const x=(u*2-1)*.153,y=-.34+v*.155;
       return[x,y,.327+.006*Math.sin(u*Math.PI)*Math.sin(v*Math.PI)];
-    }),darkLeather);
-    robe(ribbon([[-.15,-.19,.332],[0,-.183,.336],[.15,-.19,.332]],.01),seam);
+    }),darkLeather,'apronPocket');
+    robe(ribbon([[-.15,-.19,.332],[0,-.183,.336],[.15,-.19,.332]],.01),seam,'apronTrim');
   }
 
   // Belt with shaped buckle. This is a narrow strip, not a torus at the waist.
