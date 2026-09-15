@@ -503,7 +503,7 @@ export function createWorld(scene) {
     const raw=state.resources;
     if(raw){
       resourceEffects.beginSnapshot(state);
-      const harvesters=Array.isArray(state.players)?state.players:Object.values(state.players||{});
+      const harvesters=[...(Array.isArray(state.players)?state.players:Object.values(state.players||{})),...(state.workers||[])];
       const entries=Array.isArray(raw)?raw:Object.entries(raw).map(([id,value])=>typeof value==='object'?{id,...value}:{id,available:value});
       const plotEntries=Array.isArray(state.plotResources)?state.plotResources:[];
       const dynamicIds=new Set();
@@ -522,7 +522,7 @@ export function createWorld(scene) {
     const gateHP=state.gateHp??state.gateHP??state.gate?.hp??state.gateHealth??1200;
     gate.visible=gateHP>0;
     const players=Array.isArray(state.players)?state.players:Object.values(state.players||{}),guards=Array.isArray(state.guards)?state.guards:Object.values(state.guards||{});
-    const nearby=[...players,...guards].some(p=>Math.abs((p.x??p.position?.x??999))<6.2&&Math.abs((p.z??p.position?.z??999)-18)<7);
+    const nearby=[...players,...guards,...(state.workers||[])].some(p=>Math.abs((p.x??p.position?.x??999))<6.2&&Math.abs((p.z??p.position?.z??999)-18)<7);
     const target=nearby?1:0;
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;
   }

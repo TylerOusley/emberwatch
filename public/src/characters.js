@@ -7,6 +7,7 @@ import { buildClothing } from './character-clothing.js';
 // garments deform around the existing gameplay rig. Tools retain rigid batching.
 const geometryCache = new Map();
 const materialCache = new Map();
+const backpackCache = new Map();
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
 const smooth = t => t * t * (3 - 2 * t);
@@ -14,27 +15,29 @@ const smooth = t => t * t * (3 - 2 * t);
 // Additive shoulder, elbow, wrist, torso, and support-arm poses. Each action
 // eases from the current gait through anticipation, contact, and recovery.
 // Wrist rotation lets the working end of a tool travel forward at contact.
+const WORK_TOOLS = new Set(['axe','pickaxe','hammer','scythe']);
+const UPRIGHT_TOOLS = new Set([...WORK_TOOLS,'bow','staff','heal']);
 const REST_ACTION = new Array(12).fill(0);
 const ACTION_POSES = {
   axe: [
-    [-1.85,-.15,-.20,-.45,-.15,0,-.12,-.035,-.22,-.035,-.38,-.24],
-    [-.78,.14,-.06,-.05,1.30,0,.12,.10,.23,.025,-.56,-.16],
-    [-.42,.18,.05,.04,.85,0,.16,.07,.16,.015,-.28,-.08],
+    [-1.85,-.15,-.20,1.15,-.15,0,-.12,-.035,-.22,-.035,-.38,-.24],
+    [-.78,.14,-.06,.60,1.30,0,.12,.10,.23,.025,-.56,-.16],
+    [-.42,.18,.05,.60,.85,0,.16,.07,.16,.015,-.28,-.08],
   ],
   pickaxe: [
-    [-2.0,-.05,-.12,-.42,-.10,0,-.08,-.055,-.10,0,-.68,-.36],
-    [-.82,.04,-.03,-.04,1.38,0,.05,.16,.10,0,-.72,-.20],
-    [-.42,.06,.01,.04,.86,0,.08,.10,.08,0,-.35,-.12],
+    [-2.0,-.05,-.12,1.35,-.10,0,-.08,-.055,-.10,0,-.68,-.36],
+    [-.82,.04,-.03,.85,1.38,0,.05,.16,.10,0,-.72,-.20],
+    [-.42,.06,.01,.92,.86,0,.08,.10,.08,0,-.35,-.12],
   ],
   hammer: [
-    [-.78,-.06,-.08,-.72,-.23,0,-.05,-.02,-.09,0,-.20,-.12],
-    [-.60,.04,-.03,-.12,1.18,0,.03,.065,.09,0,-.27,-.08],
-    [-.36,.05,.02,-.04,.58,0,.06,.035,.06,0,-.14,-.05],
+    [-.78,-.06,-.08,.45,-.23,0,-.05,-.02,-.09,0,-.20,-.12],
+    [-.60,.04,-.03,.65,1.18,0,.03,.065,.09,0,-.27,-.08],
+    [-.36,.05,.02,.50,.58,0,.06,.035,.06,0,-.14,-.05],
   ],
   scythe: [
-    [-.40,-.50,-.32,-.26,.88,-.25,.62,.035,-.48,-.035,-.38,-.24],
-    [-.55,.45,.22,-.08,1.15,.26,.62,.085,.42,.04,-.58,-.14],
-    [-.34,.64,.36,-.02,.87,.36,.48,.06,.55,.035,-.35,-.08],
+    [-.40,-.50,-.22,1.12,.88,-.12,.10,.035,-.48,-.035,-.38,-.24],
+    [-.25,.32,.15,.92,1.30,.12,.10,.085,.42,.04,-.58,-.14],
+    [-.25,.46,.22,1.00,1.12,.16,.10,.06,.55,.035,-.35,-.08],
   ],
   sword: [
     [-1.18,-.26,-.38,-.40,-.18,0,-.35,-.025,-.20,-.025,-.28,-.22],
@@ -42,9 +45,9 @@ const ACTION_POSES = {
     [-.42,.37,.35,.03,.65,.15,.48,.045,.34,.025,-.22,-.10],
   ],
   bow: [
-    [-1.55,-.18,-.1,-.20,.35,0,.05,-.02,-.25,0,-1.1,-1.0],
-    [-1.55,.04,-.1,-.05,.32,0,.05,.025,.1,0,-.72,-.35],
-    [-1.20,.04,-.08,-.12,.26,0,.04,0,.08,0,-.65,-.45],
+    [-1.23,-.04,-.04,1.16,0,0,0,-.02,-.08,0,-1.1,-1.0],
+    [-1.23,.04,-.04,1.18,0,0,0,.025,.04,0,-.72,-.35],
+    [-.95,.04,-.04,.94,0,0,0,0,.04,0,-.65,-.45],
   ],
   zombie: [
     [.16,-.08,-.08,-.16,0,0,0,-.045,-.10,-.02,.13,-.08],
@@ -155,8 +158,8 @@ function makeTool(id, tier=1) {
     mesh(g,'box',grain,0,.45,.047,.015,.51,.012);
   } else if (id === 'axe' || id === 'pickaxe' || id === 'scythe' || id === 'hammer') {
     const height = id === 'scythe' ? 1.32 : .95;
-    mesh(g,'cylinder',wood,0,height*.24,0,.037,height,.037,0,0,-.025);
-    mesh(g,'cylinder',grip,0,-.08,0,.046,.24,.046);
+    mesh(g,'cylinder',wood,0,height*.24,0,.031,height,.031);
+    mesh(g,'cylinder',grip,0,-.08,0,.032,.24,.032);
     if (id === 'axe') {
       mesh(g,'axe',head,-.025,.64,-.035);
       mesh(g,'box',grip,0,.66,.015,.12,.17,.115);
@@ -183,15 +186,15 @@ function makeTool(id, tier=1) {
       mesh(g,'cylinder',wood,(x1+x2)/2,(y1+y2)/2,0,.032,Math.hypot(x2-x1,y2-y1),.032,0,0,-Math.atan2(x2-x1,y2-y1));
     }
     mesh(g,'cylinder',material(0xe1d5b5),0,0,0,.009,1.3,.009);
-    mesh(g,'cylinder',grip,.28,0,0,.045,.23,.045);
-    mesh(g,'cylinder',grain,.10,0,.20,.012,.70,.012,Math.PI/2);
-    mesh(g,'cone',head,.10,0,.56,.035,.12,.035,Math.PI/2);
+    mesh(g,'cylinder',grip,.28,0,0,.032,.23,.032);
+    mesh(g,'cylinder',grain,.35,0,.025,.012,.70,.012,0,0,-Math.PI/2);
+    mesh(g,'cone',head,.76,0,.025,.035,.12,.035,0,0,-Math.PI/2);
   } else if (id === 'food') {
     mesh(g,'round',material(0xc6863f),0,.08,.03,.17,.1,.32);
     for(let i=0;i<3;i++) mesh(g,'box',material(0xf1c580),0,.17,-.10+i*.11,.19,.018,.02,0,.3,0);
   } else if (id === 'heal' || id === 'staff') {
     const brass=material(0xc3a360,.45,.5), glow=material(0x97eac6,.1,.4,0x438d6b);
-    mesh(g,'cylinder',wood,0,.26,0,.033,1.48,.033);
+    mesh(g,'cylinder',wood,0,.26,0,.031,1.48,.031);
     mesh(g,'cylinder',brass,0,.81,0,.045,.14,.045);
     mesh(g,'ring',brass,0,1.02,0,.16,.2,.16);
     mesh(g,'chunk',glow,0,1.02,0,.072,.11,.072);
@@ -200,11 +203,124 @@ function makeTool(id, tier=1) {
   return g;
 }
 
+// Soft baggage is modeled from curved sewn panels, rather than boxes strapped
+// to the torso. A small cached template per tier/armor fit is shared by actors;
+// equipping a pack never rebuilds the skinned body or allocates per-frame meshes.
+function makeBackpack(tier, armored=false) {
+  const key=`${tier}/${armored}`;
+  if(backpackCache.has(key))return backpackCache.get(key).clone(true);
+  const root=new THREE.Group(), resources=new Set();
+  root.name='worn-backpack';root.userData.backpackTier=tier;
+  const canvas=material(tier===1?0x886044:tier===2?0x69704d:0x465f62,0,.97);
+  const leather=material(0x684833,0,.86),edging=material(0xb39366,0,.90);
+  const brass=material(0xb8934d,.55,.47),bedroll=material(0x84917b,0,.98);
+  // Double-sided panels retain their sewn edges from both shoulder views.
+  const panelLeather=new THREE.MeshStandardMaterial({color:0x78523a,roughness:.9,side:THREE.DoubleSide});
+  const width=[0,.48,.58,.64][tier],height=[0,.56,.68,.77][tier],depth=[0,.24,.30,.36][tier];
+  const centerY=tier===1?.09:.08,centerZ=-.29-depth/2-(armored?.035:0);
+  const add=(g,mat,x=0,y=0,z=0)=>{
+    resources.add(g);const m=new THREE.Mesh(g,mat);m.position.set(x,y,z);
+    m.castShadow=m.receiveShadow=true;root.add(m);return m;
+  };
+  const surface=(rows,columns,sample,reverse=false)=>{
+    const p=[],uv=[],ix=[];
+    for(let row=0;row<=rows;row++)for(let col=0;col<=columns;col++) {
+      const u=col/columns,v=row/rows;p.push(...sample(u,v));uv.push(u,v);
+    }
+    for(let row=0;row<rows;row++)for(let col=0;col<columns;col++) {
+      const a=row*(columns+1)+col,b=a+columns+1;
+      if(reverse)ix.push(a,b,a+1,a+1,b,b+1);else ix.push(a,a+1,b,a+1,b+1,b);
+    }
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(ix);g.computeVertexNormals();g.computeBoundingSphere();return g;
+  };
+  const sack=(w,h,d,phase=0)=>surface(20,32,(u,v)=>{
+    const angle=u*TAU,round=Math.pow(Math.max(.0001,Math.sin(v*Math.PI)),.30);
+    const gathered=1-.13*Math.exp(-Math.pow((v-.91)/.08,2));
+    const folds=1+.025*Math.sin(angle*7+v*5+phase)*Math.sin(v*Math.PI);
+    const ca=Math.cos(angle),sa=Math.sin(angle);
+    return [Math.sign(ca)*Math.pow(Math.abs(ca),.78)*w*.5*round*gathered*folds,(v-.5)*h,
+      Math.sign(sa)*Math.pow(Math.abs(sa),.83)*d*.5*round*folds];
+  },true);
+  const line=(points,radius,mat,closed=false)=>{
+    const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)),closed,'centripetal');
+    return add(new THREE.TubeGeometry(curve,Math.max(12,points.length*2),radius,6,closed),mat);
+  };
+  const strap=(points,w=.065,mat=leather)=>{
+    const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
+    const sample=(u,v)=>{
+      const p=curve.getPoint(v),t=curve.getTangent(v);
+      let across=new THREE.Vector3(1,0,0).addScaledVector(t,-t.x);
+      if(across.lengthSq()<.05)across=new THREE.Vector3(0,1,0).addScaledVector(t,-t.y);
+      across.normalize();return p.addScaledVector(across,(u-.5)*w).toArray();
+    };
+    const m=add(surface(30,3,sample),mat);m.material=mat===leather?panelLeather:mat;
+    for(const edge of [.08,.92])line(Array.from({length:14},(_,i)=>sample(edge,i/13)),.0025,edging);
+  };
+  const buckle=(x,y,z)=>{
+    mesh(root,'ring',brass,x,y,z,.028,.038,.026);
+    mesh(root,'box',brass,x,y,z-.003,.007,.053,.009);
+  };
+  add(sack(width,height,depth,tier),canvas,0,centerY,centerZ);
+  const top=centerY+height*.44,rear=centerZ-depth*.5-.008;
+  // A curved leather flap folds over the gathered opening and hangs down the
+  // outward-facing panel. Its hem bows slightly between the closing straps.
+  add(surface(12,24,(u,v)=>{
+    const across=u*2-1;
+    return [across*width*.47*(1-.07*v),top-v*height*.34-(1-across*across)*.025*v,
+      rear+.10*(1-v)*(1-v)+.035*across*across-.014*Math.sin(v*Math.PI)];
+  }),panelLeather);
+  line(Array.from({length:17},(_,i)=>{const a=i/8-1;return [a*width*.437,top-height*.34-(1-a*a)*.025,rear+.035*a*a-.002];}),.003,edging);
+  for(const side of [-1,1]) {
+    const x=side*width*.24;
+    strap([[x,top-.025,rear+.02],[x,top-.16,rear-.023],[x,top-height*.40,rear-.02]],.037);
+    buckle(x,top-height*.32,rear-.034);
+    // Shoulder webbing runs from the bag, over the shirt and down the chest;
+    // the armored fit clears the guard's breastplate and back plate.
+    const front=armored?.27:.23;
+    strap([[side*.22,-.14,-.30],[side*.25,.20,-.285],[side*.27,.43,-.16],
+      [side*.27,.485,-.035],[side*.25,.44,.12],[side*.23,.26,front],
+      [side*.235,.06,front],[side*.28,-.13,.19],[side*.35,-.19,.04],
+      [side*.31,-.13,-.25]],tier===1?.052:.067);
+    buckle(side*.235,.12,front+.01);
+  }
+  if(tier>=2) {
+    for(const side of [-1,1]) {
+      const x=side*(width*.5+.055);
+      add(sack(tier===3?.17:.14,.29,.18,side),leather,x,-.025,centerZ+.015);
+      line([[x-.04,.08,centerZ-.075],[x,.055,centerZ-.085],[x+.04,.08,centerZ-.075]],.003,edging);
+      buckle(x,.028,centerZ-.085);
+    }
+    // Leather base reinforcement follows the lower sack instead of forming a
+    // separate rigid crate under it.
+    add(surface(7,32,(u,v)=>{
+      const a=u*TAU,y=-height*.48+v*height*.15,r=Math.pow(Math.sin((.02+v*.15)*Math.PI),.30);
+      return [Math.sign(Math.cos(a))*Math.pow(Math.abs(Math.cos(a)),.78)*(width*.5+.004)*r,
+        centerY+y,centerZ+Math.sign(Math.sin(a))*Math.pow(Math.abs(Math.sin(a)),.83)*(depth*.5+.004)*r];
+    },true),leather);
+  }
+  if(tier===3) {
+    const rollY=top+.105,rollZ=centerZ+.015;
+    const roll=add(new THREE.CapsuleGeometry(.096,.57,5,20),bedroll,0,rollY,rollZ);
+    roll.rotation.z=Math.PI/2;
+    for(const side of [-1,1]) {
+      for(const r of [.064,.042,.021]) {
+        const seam=add(new THREE.TorusGeometry(r,.0035,5,20),edging,side*.379,rollY,rollZ);
+        seam.rotation.y=Math.PI/2;
+      }
+      line(Array.from({length:16},(_,i)=>[side*.19,rollY+Math.cos(i/16*TAU)*.101,rollZ+Math.sin(i/16*TAU)*.101]),.014,leather,true);
+    }
+  }
+  mergeRigid(root,resources);
+  backpackCache.set(key,root);
+  return root.clone(true);
+}
+
 export function createCharacter(kind='villager', seed=1) {
   const group = new THREE.Group();
   const visual = pivot(group);
   const owned = new Set();
-  let rig, role=kind, toolId='', toolTier=1, heldTool, attackClock=9, previousAttack=false, disposed=false;
+  let rig, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, disposed=false;
   let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0;
   const actionOffsets = new Float64Array(12);
   const variation = Math.abs(Math.trunc(Number(seed)||1)) % 4;
@@ -245,6 +361,8 @@ export function createCharacter(kind='villager', seed=1) {
     }
     toolId=''; heldTool=null;
     if(!zombie) setTool(role==='priest'?'heal':'sword');
+    backpack=null;
+    if(backpackTier>0&&!zombie){backpack=makeBackpack(backpackTier,role==='guard');rig.body.add(backpack);}
   }
 
   function setTool(tool) {
@@ -256,12 +374,13 @@ export function createCharacter(kind='villager', seed=1) {
     toolId=id; toolTier=tier;
     heldTool=makeTool(id,tier);
     heldTool.name=`held-${id || 'empty'}`;
-    if(id==='sword') {
-      // The sculpted fingers curl around a transverse grip. Put the hilt
-      // through that opening, with the pommel past the little finger and the
-      // crossguard beyond the thumb, instead of piercing the palm lengthwise.
-      heldTool.position.set(0,-.104,.050);
-      heldTool.rotation.set(0,0,-Math.PI/2);
+    if(id==='sword' || UPRIGHT_TOOLS.has(id)) {
+      // Align every shaft with the finger curl, then offset the actual grip
+      // (working handles at y=-.08; bow at x=.28) into the closed hand.
+      // The elbow and wrist turn together below; rotating only a tool head
+      // would still leave its handle cutting through the sculpted fingers.
+      heldTool.position.set(WORK_TOOLS.has(id)?.08:0,id==='bow'?.176:-.104,.050);
+      heldTool.rotation.set(0,0,-Math.PI/2,'ZYX');
     } else {
       heldTool.position.set(-.025,-.045,.07);
       heldTool.rotation.set(.65,0,id==='staff'||id==='heal'?.16:.28);
@@ -275,14 +394,24 @@ export function createCharacter(kind='villager', seed=1) {
     role=next; build();
     if(previousTool && next!=='zombie') setTool({id:previousTool,tier:previousTier});
   }
+  function setBackpackTier(value) {
+    if(disposed)return;
+    const next=Number.isInteger(value)&&value>=0&&value<=3?value:0;
+    if(next===backpackTier)return;
+    backpackTier=next;
+    if(backpack)backpack.removeFromParent();
+    backpack=null;
+    if(next>0&&!rig.zombie){backpack=makeBackpack(next,role==='guard');rig.body.add(backpack);}
+  }
   build();
 
   function update(dt,time, options={}) {
     if(disposed) return;
-    const {moving=false,speed=5.4,attack=false,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1}=options;
+    const {moving=false,speed=5.4,attack=false,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,backpackTier:requestedBackpackTier}=options;
     dt=clamp(Number(dt)||0,0,.1);
     idleTime+=dt;
     if(tool!==undefined) setTool(typeof tool==='object'?tool:{id:tool,tier});
+    if(requestedBackpackTier!==undefined)setBackpackTier(requestedBackpackTier);
     if(heldTool) heldTool.visible=!mounted&&!carrying;
     mountAmount+=((mounted&&!downed?1:0)-mountAmount)*(1-Math.exp(-dt*12));
     carryAmount+=((carrying&&!downed?1:0)-carryAmount)*(1-Math.exp(-dt*12));
@@ -320,6 +449,14 @@ export function createCharacter(kind='villager', seed=1) {
     const attackWeight=active?Math.sin(Math.PI*clamp(attackClock/duration,0,1)):0;
     const armStride=stride*(1-attackWeight*.85)*(1-spellAmount*.85);
     const settle=1-Math.exp(-dt*25);
+    if(toolId==='scythe' && heldTool) {
+      // Roll around the circular shaft while reaping, so the cutting blade
+      // sweeps parallel to the field. ZYX keeps this roll about the shaft's
+      // own axis and leaves its grip centered inside the fingers.
+      const phase=clamp(attackClock/duration,0,1);
+      const reap=active?smooth(clamp(phase/.30,0,1))*(1-smooth(clamp((phase-.72)/.28,0,1))):0;
+      heldTool.rotation.y+=(Math.PI/2*reap-heldTool.rotation.y)*settle;
+    }
     visual.rotation.z=-Math.PI*.49*downAmount;
     visual.position.y=.70*downAmount;
     visual.position.z=0;
@@ -346,12 +483,13 @@ export function createCharacter(kind='villager', seed=1) {
       poseJoint(rig.leftArm,(-s*.32*armStride-.06+a[10]-spellAmount*.70-.9*carryAmount-.65*mountAmount)*alive,spellAmount*.14,.09+spellAmount*.08,settle);
       poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65-.9*carryAmount-.65*mountAmount)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
       poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
-      poseJoint(rig.rightFore,(-.14+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
-      // Turn the sword hand along the forearm so the blade leads forward in
-      // a low guard. This rotation moves the skinned fingers with the hilt;
-      // a tool-only tilt would leave the handle outside the closed grip.
-      const swordTwist=toolId==='sword'?-Math.PI/2:0;
-      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+swordTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
+      const uprightGrip=UPRIGHT_TOOLS.has(toolId);
+      const elbowRest=-.14-(uprightGrip?1.26*(1-mountAmount)*(1-carryAmount):0);
+      poseJoint(rig.rightFore,(elbowRest+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
+      // The same forearm twist seats each shaft through the fingers. Tools
+      // use a bent elbow for an upright carry, sword keeps its low guard.
+      const gripTwist=toolId==='sword'||uprightGrip?-Math.PI/2:0;
+      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+gripTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
     }
   }
   function dispose() {
@@ -360,5 +498,5 @@ export function createCharacter(kind='villager', seed=1) {
   }
   update(0,0);
   group.name=`${kind}-character`;
-  return {group,update,setRole,setTool,dispose};
+  return {group,update,setRole,setTool,setBackpackTier,dispose};
 }

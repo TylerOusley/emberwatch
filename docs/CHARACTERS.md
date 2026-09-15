@@ -1,5 +1,30 @@
 # Natural character redesign
 
+## Visible backpack upgrades
+
+Purchased backpack tiers now appear on the dwarf’s back in both local and remote player models. Simple leather, reinforced canvas with side pouches, and expedition packs with a bedroll have different silhouettes. Tier zero adds no backpack. Straps fit around the torso; the guard receives roomier straps for the armor. The pack follows the body during movement, riding, carrying and downed poses, survives job changes, and disappears when manual respawn removes the upgrade.
+
+The model uses cached, curved sewn panels and batches details into four, five or six extra meshes by tier. Changing an actor’s tier or disposing another character does not destroy shared equipment geometry. `scripts/preview-backpacks.mjs` exports the actual game meshes for the existing CPU renderer.
+
+![Actual backpack tiers](previews/backpacks.png)
+
+This image is an offline render of game geometry. Browser lighting and motion still require a live playtest.
+
+## Follow-up: sideways tool grips
+
+The sword correction did not update the gathering tools' legacy attachment. Axe, pickaxe, hammer, scythe and staff handles now pass through the sculpted finger opening. A bent elbow carries them upright with their working heads facing forward. The bow is held at its actual handle, and its arrow runs along the bow's firing plane. Sword poses retain their established grip.
+
+Working strokes were adjusted for the new arm position: the pickaxe reaches low ore, the hammer and axe descend ahead, and the scythe rolls around its shaft to sweep a level blade through the stalks. The grip stays fixed during walking and striking; equipment is stowed while riding or carrying another player.
+
+[Corrected tool preview](previews/tool-grips.jpg) uses actual game geometry with preview lighting. The full suite passes **151 tests**, including three new tool-grip regression tests across roles and tiers, stable grips through motion, low mining contact, horizontal scythe cutting and forward bow aim. The previous sword tests also pass. Actual WebGL playback still requires a live playtest.
+
+To reproduce this four-tool lineup:
+
+```sh
+node scripts/preview-characters.mjs public/src/characters.js /tmp/tools.json -.5 idle tools
+python scripts/render-character-preview.py /tmp/tools.json /tmp/tools.jpg 'EMBERWATCH / CORRECTED TOOL GRIPS'
+```
+
 This replaces the previous smoothing-only proposal after Tyler's feedback that the characters still looked assembled from obvious shapes. It uses more natural adult proportions, continuous facial surfaces, connected wrists and hands, fitted clothing, and formed armor. It remains a proposed visual direction awaiting Tyler's review and has not been deployed.
 
 ![Villager, guard, priest and zombie redesign](previews/characters.jpg)

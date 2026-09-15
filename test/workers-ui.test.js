@@ -1,0 +1,105 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createSettlementUI } from '../public/src/settlement-ui.js';
+import { WORKER_RULES } from '../shared/workers.js';
+import { PLOTS } from '../shared/world.js';
+
+// Exercise actual control handlers without a WebGL scene. The small DOM adapter
+// preserves selected values and focus so incoming worker snapshots are covered.
+function fixture(t) {
+  const previous = globalThis.document;
+  let html = '', buttons = [], activePanel = null, opens = 0;
+  const fields = new Map(), sent = [];
+  const player = { id: 'alice', name: 'Alice', role: 'guard', x: -10, z: -23, wallet: 200, bank: 50, hp: 100, maxHp: 100, hunger: 70, inventory: {}, durability: {}, tiers: {} };
+  const worker = { id: 'hired-one', ownerId: 'alice', name: 'Alice’s worker', x: -10, z: -23, resource: 'timber', sourcePlotId: null, mode: 'sell', destinationPlotId: null, status: 'Waiting for orders', paused: true, cargo: {} };
+  const state = { workers: [worker], players: [player], plots: [], guards: [], stock: {}, treasury: 20000, policies: {}, loan: { credit: 500 } };
+  const content = { contains: element => [...fields.values()].includes(element), querySelectorAll: selector => selector === '[data-settlement-button]' ? buttons : [] };
+  const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
+  globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
+  t.after(() => { globalThis.document = previous; });
+  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, getHotbar: () => [], setHotbar() {}, toast() {}, send: payload => sent.push(payload), openPanel(next, kind) {
+    html = next; activePanel = kind; opens++; fields.clear();
+    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(([, attributes, text]) => ({ text, dataset: { settlementButton: attributes.match(/data-settlement-button="(\d+)"/)[1] }, disabled: /\sdisabled(?:\s|$)/.test(attributes) }));
+    for (const [, id, options] of html.matchAll(/<select\b[^>]*id="([^"]+)"[^>]*>(.*?)<\/select>/gs)) {
+      const selected = [...options.matchAll(/<option value="([^"]*)"([^>]*)>/g)].find(([, , attributes]) => /\bselected\b/.test(attributes));
+      fields.set(id, { tagName: 'SELECT', value: selected?.[1] ?? options.match(/value="([^"]*)"/)?.[1] ?? '' });
+    }
+    for (const [, id, attributes] of html.matchAll(/<input\b[^>]*id="([^"]+)"([^>]*)>/g)) fields.set(id, { tagName: 'INPUT', value: attributes.match(/value="([^"]*)"/)?.[1] || '' });
+  } });
+  return { ui, player, worker, state, fields, sent, get html() { return html; }, get opens() { return opens; }, get buttons() { return buttons; }, button(text) { const found = buttons.find(b => b.text === text); assert.ok(found, `Missing button: ${text}`); return found; }, click(text) { const control = this.button(text); assert.equal(control.disabled, false, `Disabled button: ${text}`); control.onclick(); }, select(id, selected) { const control = fields.get(id); assert.ok(control, `Missing select: ${id}`); control.value = selected; control.onchange(); } };
+}
+
+test('worker management is discoverable from the pack and treasury and shows only the owner’s crew', t => {
+  const f = fixture(t);
+  f.state.workers.push({ ...f.worker, id: 'other-worker', ownerId: 'bob', name: 'Hidden Bob worker', cargo: { iron: 10 } });
+  f.ui.show('inventory'); f.click('Manage workers');
+  assert.match(f.html, /1 \/ 2/); assert.match(f.html, /1 gold \/ 30 working seconds/);
+  assert.match(f.html, /Hiring and wages use your wallet/); assert.doesNotMatch(f.html, /Hidden Bob worker/);
+  f.click(`Hire a worker · ${WORKER_RULES.hireCost}g`);
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_hire' });
+  f.ui.show('bank'); f.click('Hire &amp; manage workers'); assert.match(f.html, /HIRED HANDS/);
+});
+
+test('worker orders submit the chosen resource, owned source, and destination or treasury sale', t => {
+  const f = fixture(t), mineId = PLOTS[0].id, storeId = PLOTS[1].id, foreignId = PLOTS[2].id;
+  f.state.plots = [{ id: mineId, ownerId: 'alice', building: 'mine', hp: 300 }, { id: storeId, ownerId: 'alice', building: 'house', hp: 300 }, { id: foreignId, ownerId: 'bob', building: 'mine', hp: 300 }];
+  f.ui.show('workers');
+  f.select('worker-0-resource', 'iron'); f.select('worker-0-sourcePlotId', mineId);
+  assert.doesNotMatch(f.html, new RegExp(`value="${foreignId}"`));
+  f.select('worker-0-mode', 'store'); assert.equal(f.button('Apply orders').disabled, true);
+  f.select('worker-0-destinationPlotId', storeId); f.click('Apply orders');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, resource: 'iron', sourcePlotId: mineId, mode: 'store', destinationPlotId: storeId });
+  f.select('worker-0-sourcePlotId', ''); f.select('worker-0-mode', 'sell'); f.click('Apply orders');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, resource: 'iron', sourcePlotId: null, mode: 'sell', destinationPlotId: null });
+});
+
+test('worker drafts survive status snapshots and incoming movement does not replace the form', t => {
+  const f = fixture(t); f.ui.show('workers'); f.ui.refresh();
+  const opens = f.opens; f.worker.x += .1; f.worker.z += .1; f.ui.refresh(); assert.equal(f.opens, opens);
+  f.select('worker-0-resource', 'coal');
+  const resource = f.fields.get('worker-0-resource'); document.activeElement = resource;
+  f.worker.status = 'Returning to treasury'; f.player.wallet--; f.ui.refresh();
+  assert.equal(document.activeElement, resource); assert.equal(resource.value, 'coal');
+  document.activeElement = null; f.ui.refresh(); assert.equal(f.fields.get('worker-0-resource').value, 'coal');
+  assert.match(f.html, /Returning to treasury/); assert.match(f.html, /Order changes have not been applied/);
+  f.click('Apply orders'); assert.equal(f.sent.at(-1).resource, 'coal');
+  f.worker.resource = 'coal'; f.ui.refresh(); assert.doesNotMatch(f.html, /Order changes have not been applied/);
+});
+
+test('missing or incompatible buildings retain the selected order and require an explicit replacement', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  f.worker.resource = 'stone'; f.worker.sourcePlotId = id; f.worker.mode = 'store'; f.worker.destinationPlotId = id;
+  f.state.plots = [{ id, ownerId: 'alice', building: 'mine', hp: 300 }]; f.ui.show('workers');
+  f.select('worker-0-resource', 'wheat');
+  assert.equal(f.fields.get('worker-0-sourcePlotId').value, id); assert.equal(f.button('Apply orders').disabled, true);
+  assert.match(f.html, /Unavailable ·/);
+  f.select('worker-0-sourcePlotId', ''); assert.equal(f.button('Apply orders').disabled, false);
+  f.state.plots[0].hp = 0; f.ui.refresh();
+  assert.equal(f.fields.get('worker-0-destinationPlotId').value, id); assert.equal(f.button('Apply orders').disabled, true);
+  assert.equal(f.sent.length, 0);
+});
+
+test('worker controls enforce wallet hiring, crew limits, proximity, partial collection and reviewed dismissal', t => {
+  const f = fixture(t); f.ui.show('workers');
+  f.player.wallet = WORKER_RULES.hireCost - 1; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
+  f.player.wallet = 200; f.state.workers.push({ ...f.worker, id: 'second' }); f.ui.refresh(); assert.equal(f.button('Worker limit reached').disabled, true);
+  f.state.workers.pop(); f.player.x = 10; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
+  f.click('Mark the treasury'); assert.equal(f.ui.getWaypoint().id, 'bank');
+  f.click('Find worker'); assert.deepEqual(f.ui.getWaypoint(), { kind: 'worker', id: f.worker.id, name: f.worker.name, x: f.worker.x, z: f.worker.z });
+  f.player.x = -10; f.worker.paused = false; f.worker.cargo = { stone: 10 }; f.player.inventory = { wheat: 97 }; f.ui.refresh();
+  f.click('Collect carried supplies'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_collect', workerId: f.worker.id });
+  assert.equal(f.button('Dismiss worker').disabled, true);
+  f.player.inventory.wheat = 100; f.ui.refresh(); assert.equal(f.button('Collect carried supplies').disabled, true);
+  f.worker.cargo = {}; f.worker.x = 20; f.ui.refresh(); assert.equal(f.button('Dismiss worker').disabled, true);
+  f.click('Pause &amp; return to treasury'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_pause', workerId: f.worker.id, paused: true });
+  f.worker.x = -10; f.worker.paused = true; f.ui.refresh(); f.click('Dismiss worker');
+  assert.match(f.html, /no hiring refund/); assert.notEqual(f.sent.at(-1).kind, 'worker_dismiss');
+  f.click('Confirm change'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_dismiss', workerId: f.worker.id });
+});
+
+test('worker names and statuses are escaped and clearing the UI drops an old village’s drafts', t => {
+  const f = fixture(t); f.worker.name = '<img src=x onerror=alert(1)>'; f.worker.status = '<script>bad</script>';
+  f.ui.show('workers'); assert.doesNotMatch(f.html, /<img src=x|<script>/); assert.match(f.html, /&lt;img src=x/);
+  f.select('worker-0-resource', 'iron'); f.ui.clear(); f.ui.show('workers');
+  assert.equal(f.fields.get('worker-0-resource').value, 'timber');
+});

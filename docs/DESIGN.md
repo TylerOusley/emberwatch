@@ -4,7 +4,7 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
-## Build 05: feedback refinements
+## Build 06: equipment, workers and village lifecycle
 
 Build 04 implements the forty internal and eight exposed plots, ownership and construction, private harvesting, stocked crafting shops, upgraded equipment, the treasury market and policies, merchant trade, owned defenses, church care, and horses/carts with protected loans. The Watch now faces the street; its guard exit and road agree with that entrance. Existing villages and account savings migrate without resetting the run.
 
@@ -13,6 +13,8 @@ This is the first integrated playtest implementation of the accepted plan. “Im
 Builds 01–03 established the original village art, third-person multiplayer, authoritative gathering/combat, priest revival, protected banking, stock-priced selling, a persistent hunger meter, village chat with overhead bubbles, and clearer quarry access. Those features remain in this expansion.
 
 Build 05 adds the accepted feedback: empty-handed starts with one tool’s purchase price, backpacks, role traits, custom treasury quantities, wheat-funded replacement guards, clear tower ammunition status, death-camera control, corrected sword grip, sculpted horses with aligned riders, natural mineral beds and harvest effects. Successful harvest/attack/repair notices are suppressed and other notices move to the corner.
+
+Build 06 corrects the working-tool hand poses, gives each backpack upgrade a visible worn model, increases newly founded treasuries to 20,000 gold, adds paid gathering workers, and removes fallen runs from public browsing. Existing runs retain their saved treasury balances and bank accounts remain independent of a village’s survival.
 
 ### Current implementation choices
 
@@ -23,6 +25,7 @@ The values below resolve earlier provisional details for this playtest and remai
 | Land | Forty plots inside and eight outside; five total deeds per resident. Successive plot prices are 100, 200, 350, 550 and 800 gold. Each plot holds one structure or resource land use. |
 | Tax scaling | Starting daily land tax is `2 × number of owned plots²`, prorated by active cycle participation and rounded up. The policy sets the base multiplier. No participation means no new land tax; unpaid tax becomes in-run arrears. |
 | Carrying and storage | Guard/Priest capacity is 100 and Villager capacity is 150, including equipped tools with durability remaining. Backpack upgrades add 100/250/400 for 40/100/200 gold at Oak & Iron; building stores hold 1,500 weight. A deployed cart holds 300 weight. Inventory transfers are checked before mutation. |
+| Workers | Up to two per resident. Hire at the treasury for 75 wallet gold; pay one wallet gold per 30 seconds of work. Gather one unit every four seconds with provided basic tools, carry 40 weight, and deliver to an owned building or sell at the treasury. Daytime work while the employer is online; return to shelter at night or on pause. Cargo and paid work time survive saves. No automatic use of savings or purchase credit. |
 | Troops | Recruitment is 35 gold plus five timber and two iron from that barracks. Two barracks per Guard, three recruited slots each, including pending replacements. Troops consume one wheat per night. Fallen recruited troops respawn after 30 active seconds if the barracks has one wheat; that wheat covers the current night. Replacements preserve recruitment investment and wait when wheat is absent. |
 | Church care | Player-owned churches begin with two beds and upgrade to four. Bed healing is eight gold for ten seconds; revival is twenty gold for twenty seconds, returning at 45 HP. Cancelled or interrupted paid treatment refunds its payer. The permanent Sanctuary guides residents to priest care and owned churches. |
 | Defense | New archer towers include 20 arrows; existing empty towers must be restocked. Archer towers spend one arrow per shot; cannon shots spend one stone and one coal. Paid level-two upgrades and shared-stock hammer repairs keep defenses useful. |
@@ -46,7 +49,7 @@ The values below resolve earlier provisional details for this playtest and remai
 - A day lasts eight minutes and a night lasts four. Difficulty increases after each five-night band, with a warning before the stronger wave.
 - When a village has no online players, freeze its clock, enemies, resource consumption, wages, and rewards. Resume the same run rather than resetting its attacks.
 - Dawn stops new night-wave spawns. Existing zombies remain until defeated. A living keep at dawn counts as a survived night.
-- Keep destruction ends the run. A downed party does not immediately end a run while the keep still stands.
+- Keep destruction ends the run and removes the village from the selection list. Current residents can still view the loss result, and account savings are retained for the next run. A downed party does not immediately end a run while the keep still stands.
 
 ## Map and visual direction
 
@@ -119,7 +122,7 @@ Exterior archer towers and cannon defenses require construction resources, ammun
 
 ## Treasury, pay, and resource markets
 
-Each new village starts with **2,500 gold in a public treasury**, once per run rather than per arriving player. Initial planning allocations are 750 for payroll, 1,250 for resource purchases, and 500 for defense/emergencies.
+Each new village starts with **20,000 gold in a public treasury**, once per run rather than per arriving player. This larger starting reserve funds payroll, resource purchases, and defense costs under the existing payment rules. Saved villages continue from their current treasury balance; loading or rejoining never grants the starting reserve again.
 
 | Earnings | Starting target | Payment timing |
 | --- | --- | --- |

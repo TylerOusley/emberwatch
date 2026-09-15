@@ -1,5 +1,25 @@
 # Emberwatch build validation
 
+## Build 06: visible backpacks, hired workers and fallen villages
+
+The combined `npm test` run passes **177/177 tests**. Coverage includes public backpack-tier replication over real WebSockets while inventories stay private, authenticated worker hiring, owner-only orders and cargo, visible pack geometry and lifecycle, worker UI payloads and preserved drafts, finite shared harvests, paid work time, full-storage handling, partial taxed sales, the treasury reserve, the normal debt-income path, and pauses for night, nearby enemies, absent employers and insufficient wages.
+
+Navigation checks exercise distant exterior-to-interior deliveries through the single gate and the return trip, obstacle avoidance, preventing harvests through walls, and sixteen workers delivering at once. Hired workers leave the hard-to-reach woodland beyond the sidewalls for player gathering; public interior and southern exterior sources remain available. Treasury waiting spots are spaced, and sales accept arrival beside the building so crowds cannot block a shared delivery point.
+
+Two additional real-SQLite worker persistence tests pass (**179 passing tests in total**). They hire and assign through authenticated simulation actions, advance real movement and harvesting, save and reopen the database, and verify worker identity, orders, cargo, prepaid time, gathering progress and node depletion. Restarted players remain offline; rejoining neither charges another hiring fee nor grants fresh money. A legacy village without workers gains an empty roster and keeps its saved treasury.
+
+The fallen-village check uses real keep destruction, HTTP browsing, a SQLite restart and bank withdrawal in the next run. Active villages with offline residents remain listed, fallen runs remain available to their current loss screen, and personal savings survive. Edited server/client modules pass JavaScript syntax checks.
+
+The backpack preview in `docs/previews/backpacks.png` renders the actual game geometry, reviewed from behind at an angle. The three purchased tiers have distinct curved bags and equipment, follow the torso, and reuse cached geometry safely. This environment cannot perform an interactive WebGL playtest. In-game animation, lighting and sustained multiplayer performance still need live observation after deployment.
+
+## Starting treasury balance adjustment
+
+The initial public treasury is now **20,000 gold** for newly created village runs. The grant is made only by village creation; saved villages keep their current balances on reload or rejoin. Personal starting wallets remain separate. After the balance adjustment, all **33 existing starter, backpack, backend, economy and market tests pass**, including real WebSocket sales and SQLite treasury recovery. Only the default-dependent expected balances were updated; scenario-specific liquidity fixtures retain their original values. The server module also passes its syntax check.
+
+## Tool-grip follow-up
+
+After the screenshot of the sideways pickaxe, the shared straight-handle grip, carrying elbow pose and tool strokes were corrected. The full automated suite passes **151/151 tests**. New geometry regressions check all working tools, three material tiers and three jobs, actual finger alignment, upright shafts and forward heads, animation continuity, stowing, ore-height mining contact, a level scythe blade and forward bow aim. Existing sword, character, horse and multiplayer tests also pass. Front, side, quarter and working-stroke renders were inspected from the actual Three.js geometry. This follow-up changes character visuals and preview tooling, with no server rules or save migration.
+
 ## Build 05: both playtest feedback lists
 
 Validated 2026-09-15 on Node 24: **148/148 tests pass** with `npm test`. All 34 client, server and shared JavaScript modules pass `node --check`.

@@ -1,5 +1,5 @@
 // Export actual Three.js geometry for a deterministic offline CPU review render.
-// node scripts/preview-characters.mjs [source.js] [output.json] [yaw] [idle|walk|strike|mounted|carry|downed]
+// node scripts/preview-characters.mjs [source.js] [output.json] [yaw] [idle|walk|strike|mounted|carry|downed] [characters|tools]
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -31,6 +31,8 @@ if(source.startsWith(`${path.resolve(repo)}${path.sep}`)) {
 const triangles=[],stats=[];
 const yaw=Number(process.argv[4]??'-.28'),spacing=2.20;
 const pose=process.argv[5]??'idle';
+const lineup=process.argv[6]??'characters';
+if(!['characters','tools'].includes(lineup))throw new Error(`Unknown preview lineup: ${lineup}`);
 const poses={idle:{},walk:{moving:true},strike:{attack:true},mounted:{mounted:true},carry:{carrying:true},downed:{downed:true}};
 if(!Object.hasOwn(poses,pose))throw new Error(`Unknown preview pose: ${pose}`);
 if(!Number.isFinite(yaw))throw new Error('Preview yaw must be a finite number.');
@@ -51,9 +53,12 @@ function skinNormal(mesh,index,normal) {
   skinMatrix.premultiply(mesh.bindMatrixInverse).multiply(mesh.bindMatrix);
   return normal.applyMatrix3(normalSkin.setFromMatrix4(skinMatrix));
 }
-for(const [i,kind] of ['villager','guard','priest','zombie'].entries()) {
+const subjects=lineup==='tools'
+  ? ['axe','pickaxe','hammer','scythe'].map(tool=>({kind:'villager',tool,label:tool}))
+  : ['villager','guard','priest','zombie'].map(kind=>({kind,label:kind,tool:kind==='villager'?'axe':kind==='guard'?{id:'sword',tier:3}:kind==='priest'?'heal':''}));
+for(const [i,{kind,tool,label}] of subjects.entries()) {
   const actor=createCharacter(kind,i+1);
-  actor.setTool(kind==='villager'?'axe':kind==='guard'?{id:'sword',tier:3}:kind==='priest'?'heal':'');
+  actor.setTool(tool);
   for(let t=0;t<60;t++)actor.update(1/60,t/60,{moving:false});
   if(pose!=='idle')for(let t=0;t<(pose==='strike'?18:60);t++)actor.update(1/60,1+t/60,poses[pose]);
   actor.group.rotation.y=yaw;
@@ -101,8 +106,8 @@ for(const [i,kind] of ['villager','guard','priest','zombie'].entries()) {
     }
     if(visibleTriangles){meshCount++;triangleCount+=visibleTriangles;if(m.isSkinnedMesh)skinnedMeshes++;}
   });
-  stats.push({kind,meshes:meshCount,skinnedMeshes,triangles:triangleCount,bounds:{min:bounds.min.toArray(),max:bounds.max.toArray()}});
+  stats.push({kind:label,meshes:meshCount,skinnedMeshes,triangles:triangleCount,bounds:{min:bounds.min.toArray(),max:bounds.max.toArray()}});
   actor.dispose();
 }
-fs.writeFileSync(output,JSON.stringify({format:2,yaw,spacing,pose,triangles,stats}));
+fs.writeFileSync(output,JSON.stringify({format:2,yaw,spacing,pose,lineup,triangles,stats}));
 console.log(JSON.stringify({output,stats}));
