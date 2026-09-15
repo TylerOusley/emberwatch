@@ -331,7 +331,7 @@ export class Simulation {
   payDawn(village) {
     const survived = village.day;
     village.phase = 'day'; village.phaseRemaining = this.daySeconds; village.day++; village.warningSent = false;
-    village.treasury += 50 + 20 * village.nightParticipants.length;
+    village.treasury += 1000 * survived;
     economyDawn(this, village);
     for (const player of Object.values(village.players)) {
       if (player.downed) player.respawnAvailable = true;
