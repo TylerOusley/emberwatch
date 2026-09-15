@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#182329"><title>Emberwatch — Hold the gate</title>
   <meta name="description" content="Build by daylight. Stand together at night. An original cooperative dwarf survival game.">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/settlement.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/settlement.css"><link rel="stylesheet" href="/watch.css">
   <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
 </head>
 <body>
@@ -13,7 +13,7 @@
   <div id="loading"><div class="crest large">E</div><p>Lighting the hearths…</p></div>
   <div id="fatal" hidden><h1>The village couldn’t load.</h1><p id="fatal-message"></p><button onclick="location.reload()">Try again</button></div>
   <main id="lobby" class="lobby">
-    <header class="lobby-top"><a class="wordmark" href="/" aria-label="Emberwatch home"><span class="crest">E</span><span>EMBERWATCH</span></a><span class="build-label"><i></i> FIRST LIGHT <span> / </span> PLAYABLE BUILD 04</span></header>
+    <header class="lobby-top"><a class="wordmark" href="/" aria-label="Emberwatch home"><span class="crest">E</span><span>EMBERWATCH</span></a><span class="build-label"><i></i> FIRST LIGHT <span> / </span> PLAYABLE BUILD 10</span></header>
     <section class="welcome">
       <p class="eyebrow"><span></span> A COOPERATIVE SURVIVAL ADVENTURE</p>
       <h1>A small village.<br>A long night.</h1>
@@ -40,10 +40,10 @@
     <header class="hud-top">
       <div class="hud-brand"><span class="crest">E</span><div><strong>EMBERWATCH</strong><span id="village-name">The Northern Watch</span></div></div>
       <div class="day-panel"><span id="phase-icon">☀</span><div><strong id="day-label">DAY 1</strong><span id="phase-label">Time to prepare</span></div><span class="divider"></span><strong id="clock">08:00</strong></div>
-      <div class="top-actions"><span class="connection" id="connection"><i></i> CONNECTED</span><button id="help-button" title="Controls (H)" aria-label="Controls and help">?</button><button id="menu-button" title="Village menu (Escape)" aria-label="Village menu">☰</button></div>
+      <div class="top-actions"><span class="connection" id="connection"><i></i> CONNECTED</span><button id="requests-button" title="Village requests (B)" aria-label="Village noticeboard">▤</button><button id="orders-button" title="Guard commands (R)" aria-label="Guard commands">⚑</button><button id="help-button" title="Controls (H)" aria-label="Controls and help">?</button><button id="menu-button" title="Village menu (Escape)" aria-label="Village menu">☰</button></div>
     </header>
     <div id="village-chat"></div>
-    <aside class="objectives panel"><p class="eyebrow">THE FIRST WATCH</p><h2 id="objective-title">Make ready for nightfall</h2><p id="objective-text">Gather supplies outside the walls.<br>Stand with the watch when darkness falls.</p><div class="objective-line"><span class="diamond"></span><span id="threat-label">The graveyard stirs at dusk</span></div></aside>
+    <aside class="objectives panel"><p class="eyebrow">THE FIRST WATCH</p><h2 id="objective-title">Make ready for nightfall</h2><p id="objective-text">Gather supplies outside the walls.<br>Stand with the watch when darkness falls.</p><div class="objective-line"><span class="diamond"></span><span id="threat-label">The graveyard stirs at dusk</span></div><div id="siege-health" hidden><span>GRAVEBREAKER</span><strong id="siege-hp"></strong><div class="meter"><i id="siege-bar"></i></div></div><div id="first-watch-guide"></div></aside>
     <div class="fortifications panel"><div><span>GATE</span><strong id="gate-text">1,200 / 1,200</strong></div><div class="meter"><i id="gate-bar"></i></div><div class="keep-line"><span>HEARTHKEEP</span><strong id="keep-text">2,000 / 2,000</strong></div><div class="meter small"><i id="keep-bar"></i></div></div>
     <aside class="map-panel"><div class="map-heading"><span id="residents-label">1 ONLINE · 0 OFFLINE</span><span>N ↑</span></div><button id="map-button" title="Open village atlas (M)" aria-label="Open village atlas"><canvas id="minimap" width="220" height="220" aria-label="Village map: gold is you, blue are allies, red are enemies"></canvas></button><div id="waypoint-label">M · ATLAS & PLAYER SHOPS</div><div class="map-footer"><i></i><span id="location-label">VILLAGE SQUARE</span></div></aside>
     <div id="interaction" hidden><kbd>E</kbd><div><strong id="interaction-title"></strong><span id="interaction-subtitle"></span></div></div>

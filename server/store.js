@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHash, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { STARTER_GOLD } from '../shared/equipment.js';
+import { freshProgression, normalizeProgression } from '../shared/progression.js';
 const scrypt = promisify(scryptCallback);
 const digest = token => createHash('sha256').update(token).digest('hex');
 
@@ -15,7 +16,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,salt TEXT NOT NULL,password_hash TEXT NOT NULL,bank INTEGER NOT NULL DEFAULT 0 CHECK(bank>=0),starter_granted INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS villages(id TEXT PRIMARY KEY,state TEXT NOT NULL,updated INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS starter_grants(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),PRIMARY KEY(account_id,village_id));`);
+      CREATE TABLE IF NOT EXISTS starter_grants(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),PRIMARY KEY(account_id,village_id));
+      CREATE TABLE IF NOT EXISTS account_progression(account_id TEXT PRIMARY KEY REFERENCES accounts(id),state TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS watch_achievements(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL,night INTEGER NOT NULL,PRIMARY KEY(account_id,village_id,night));`);
     // Account credit is restricted purchasing power, never protected savings or
     // spendable wallet gold. Migrate existing Railway databases without a reset.
     const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));
@@ -46,6 +49,7 @@ export class Store {
       try { this.db.prepare('INSERT INTO accounts(id,name,salt,password_hash) VALUES(?,?,?,?)').run(id, name, salt, hash); }
       catch { throw new Error('That name is already registered.'); }
       account = this.db.prepare('SELECT * FROM accounts WHERE id=?').get(id);
+      this.saveProgression(id, freshProgression({ offerGuide:true }));
     } else {
       // Run the same expensive operation even for unknown account names.
       const candidate = await scrypt(password, account?.salt ?? '00000000000000000000000000000000', 64);
@@ -93,6 +97,25 @@ export class Store {
     const account = this.account(id);
     if (!account || amount > account.debt) throw new Error('Repayment exceeds your outstanding debt.');
     this.db.prepare('UPDATE accounts SET debt=debt-?,repayment_remainder=? WHERE id=?').run(amount, amount === account.debt ? 0 : remainder ?? account.repayment_remainder, id);
+  }
+  progression(id) {
+    const row = this.db.prepare('SELECT state FROM account_progression WHERE account_id=?').get(id);
+    if (!row) return freshProgression(); // Existing residents opt in through Help.
+    try { return normalizeProgression(JSON.parse(row.state)); } catch { return freshProgression(); }
+  }
+  saveProgression(id, state) {
+    const clean = normalizeProgression(state);
+    this.db.prepare('INSERT INTO account_progression(account_id,state) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET state=excluded.state').run(id, JSON.stringify(clean));
+    return clean;
+  }
+  recordSurvivedNight(id, villageId, night) {
+    if (typeof villageId !== 'string' || !villageId || !Number.isSafeInteger(night) || night < 1) throw new Error('Invalid survived night.');
+    return this.transaction(() => {
+      const result = this.db.prepare('INSERT OR IGNORE INTO watch_achievements(account_id,village_id,night) VALUES(?,?,?)').run(id, villageId, night);
+      const progress = this.progression(id);
+      if (result.changes) { progress.nights++; this.saveProgression(id, progress); }
+      return { awarded:Boolean(result.changes), progress:this.progression(id) };
+    });
   }
   saveVillage(village) { this.db.prepare('INSERT INTO villages VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,updated=excluded.updated').run(village.id, JSON.stringify(village), Date.now()); }
   loadVillages() { return this.db.prepare('SELECT state FROM villages').all().map(row => JSON.parse(row.state)); }

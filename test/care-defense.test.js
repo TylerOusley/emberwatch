@@ -124,18 +124,18 @@ test('barracks recruitment is finite, limited to three, and removed with the bui
   assert.equal(village.guards.length, 0);
 });
 
-test('towers consume finite ammunition and pass the authentic owner to combat credit', () => {
+test('archer towers fire without ammunition and pass the authentic owner to combat credit', () => {
   const { sim, village, plot, owner, site, hits } = fixture('archer_tower', 'outpost-1');
-  owner.role = 'guard'; plot.storage.arrows = 1;
+  owner.role = 'guard'; plot.storage.arrows = 0;
   village.zombies = [{ id: 'zombie', x: site.x + 10, z: site.z, hp: 15 }];
   careTick(sim, village, .05);
   assert.equal(plot.storage.arrows, 0); assert.equal(village.zombies[0].hp, 0);
   assert.equal(hits[0].playerId, owner.id); assert.equal(owner.jobBonus, 1);
   village.zombies.push({ id: 'second', x: site.x + 10, z: site.z, hp: 15 });
-  careTick(sim, village, 5); assert.equal(hits.length, 1, 'empty towers do not fire');
-  plot.storage.arrows = 1; owner.online = false;
+  owner.online = false;
   careTick(sim, village, 5);
   assert.equal(hits.length, 2); assert.equal(owner.jobBonus, 1, 'offline ownership does not earn a bonus');
+  assert.equal(plot.storage.arrows, 0, 'empty arrow storage never prevents a shot');
 });
 
 test('cannons consume both ammunition ingredients; ruined towers stop firing', () => {
@@ -172,7 +172,7 @@ test('priest revivals release carried dwarfs and supersede bed treatment without
   assert.equal(casualty.downed, true); assert.equal(casualty.bedPlotId, null); assert.equal(visitor.wallet, 500);
 });
 
-test('tower fire respects obstacles without charging ammunition for blocked shots', () => {
+test('archer fire respects obstacles and preserves any arrows left in storage', () => {
   const { sim, village, plot, site, hits } = fixture('archer_tower', 'outpost-1');
   village.zombies = [{ id: 'hidden', x: site.x + 10, z: site.z, hp: 100 }];
   sim.clearAttack = () => false;
@@ -183,7 +183,7 @@ test('tower fire respects obstacles without charging ammunition for blocked shot
     return true;
   };
   careTick(sim, village, .05);
-  assert.equal(plot.storage.arrows, 9); assert.equal(hits.length, 1);
+  assert.equal(plot.storage.arrows, 10); assert.equal(hits.length, 1);
 });
 
 test('plot repairs use hammer tier, real shared materials and the same capped dawn bonus', () => {
@@ -255,18 +255,18 @@ test('roster migration preserves living recruits and newest casualties without d
   assert.deepEqual(village.guards.map(g => g.id), ['living-replacement', 'newer-second']);
 });
 
-test('tower status distinguishes missing ammo, range, obstructed shots, and destroyed structures', () => {
+test('archer status reports unlimited shots, range, obstructions, and destroyed structures', () => {
   const { sim, village, plot, site } = fixture('archer_tower', 'outpost-1');
   const status = () => careSnapshot(village, null, sim).defenseStatus[0];
   plot.storage.arrows = 0;
-  assert.equal(status().status, 'empty'); assert.equal(status().shotsRemaining, 0);
+  assert.equal(status().status, 'ready'); assert.equal(status().shotsRemaining, null); assert.equal(status().unlimitedAmmo, true);
   plot.storage.arrows = 4;
   village.zombies = [{ id: 'distant', x: site.x + 40, z: site.z, hp: 100 }];
   assert.equal(status().status, 'out_of_range');
   village.zombies[0].x = site.x + 10; sim.clearAttack = () => false;
-  assert.equal(status().status, 'blocked'); assert.equal(status().shotsRemaining, 4);
+  assert.equal(status().status, 'blocked'); assert.equal(status().shotsRemaining, null);
   sim.clearAttack = () => true;
   assert.equal(status().status, 'ready'); careTick(sim, village, .05);
-  assert.equal(status().status, 'firing'); assert.equal(status().shotsRemaining, 3);
+  assert.equal(status().status, 'firing'); assert.equal(status().shotsRemaining, null);
   plot.hp = 0; assert.equal(status().status, 'destroyed');
 });

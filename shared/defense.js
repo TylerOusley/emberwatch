@@ -9,7 +9,7 @@ export const DEFENSE_UPGRADES = Object.freeze({
   cannon: { gold: 250, resources: { timber: 20, stone: 50, iron: 25 } }
 });
 export const TOWER_STATS = Object.freeze({
-  archer_tower: { range: 22, damage: 20, cooldown: 1.6, ammo: { arrows: 1 }, starterAmmo: { arrows: 20 } },
+  archer_tower: { range: 22, damage: 20, cooldown: 1.6, ammo: {}, starterAmmo: {} },
   cannon: { range: 26, damage: 48, cooldown: 4, splash: 3.5, ammo: { coal: 1, stone: 1 } }
 });
 export const bedCapacity = plot => (plot.level ?? 1) >= 2 ? 4 : 2;

@@ -133,6 +133,9 @@ test('two real WebSocket sellers cannot both receive an out-of-date scarce-stock
   const firstQuote = saleQuote('wheat', a.queue.find(m => m.type === 'state').state.stock.wheat, 1);
   const secondQuote = saleQuote('wheat', b.queue.find(m => m.type === 'state').state.stock.wheat, 1);
   assert.equal(firstQuote, 4); assert.equal(secondQuote, 4);
+  // Posting requests moves gold into escrow; only accepted sales spend public funds here.
+  const publicFunds = () => village.treasury + village.requests.items.reduce((sum, request) => sum + request.reserved, 0);
+  const startingFunds = publicFunds();
   const response = client => client.queue.find(m => m.type === 'notice' || m.type === 'error');
   a.ws.send(JSON.stringify({ type: 'action', kind: 'sell', resource: 'wheat', amount: 1, minTotal: firstQuote }));
   b.ws.send(JSON.stringify({ type: 'action', kind: 'sell', resource: 'wheat', amount: 1, minTotal: secondQuote }));
@@ -140,7 +143,7 @@ test('two real WebSocket sellers cannot both receive an out-of-date scarce-stock
   assert.deepEqual([response(a).type, response(b).type].sort(), ['error', 'notice']);
   const loser = response(a).type === 'error' ? a : b;
   assert.match(response(loser).message, /price changed/);
-  assert.equal(village.stock.wheat, 25); assert.equal(village.treasury, 19996);
+  assert.equal(village.stock.wheat, 25); assert.equal(publicFunds(), startingFunds - 4);
   assert.deepEqual(Object.values(village.players).map(p => p.inventory.wheat).sort(), [0, 1]);
   assert.deepEqual(Object.values(village.players).map(p => p.wallet).sort((a, b) => a - b), [10, 14]);
   app.broadcast();
@@ -149,7 +152,7 @@ test('two real WebSocket sellers cannot both receive an out-of-date scarce-stock
   loser.ws.send(JSON.stringify({ type: 'action', kind: 'sell', resource: 'wheat', amount: 1, minTotal: saleQuote('wheat', updated.state.stock.wheat, 1) }));
   await waitFor(() => response(loser));
   assert.equal(response(loser).type, 'notice', 'a failed quote does not consume the action cooldown');
-  assert.equal(village.stock.wheat, 26); assert.equal(village.treasury, 19993);
+  assert.equal(village.stock.wheat, 26); assert.equal(publicFunds(), startingFunds - 7);
   assert.deepEqual(Object.values(village.players).map(p => p.inventory.wheat), [0, 0]);
   assert.deepEqual(Object.values(village.players).map(p => p.wallet).sort((a, b) => a - b), [13, 14]);
   a.ws.close(); b.ws.close();

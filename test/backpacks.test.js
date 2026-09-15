@@ -124,9 +124,9 @@ test('legacy saves default to pockets and do not refill a purchased backpack or 
   Object.assign(p, plotEntrance(PLOTS[0], plot));
   for (const [id, amount] of Object.entries(BUILDING_TYPES.archer_tower.cost)) if (id !== 'gold') plot.storage[id] = amount;
   f.act({ kind: 'plot_build', plotId: plot.id, building: 'archer_tower' });
-  assert.equal(plot.storage.arrows, 20, 'only newly paid construction includes a starter quiver');
+  assert.equal(plot.storage.arrows ?? 0, 0, 'arrow-free towers do not grant ammunition on construction');
   plot.storage.arrows = 3; ensureOwnership(v); ensureOwnership(v);
-  assert.equal(plot.storage.arrows, 3, 'migration and repeated snapshots never refill spent ammo');
+  assert.equal(plot.storage.arrows, 3, 'migration and repeated snapshots preserve existing arrow cargo');
   assert.equal(BACKPACKS[2].capacity + 50, carryCapacity(p));
 });
 

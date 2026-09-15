@@ -21,31 +21,35 @@ function fixture() {
   return { sim, store, account, village, player, act };
 }
 
-test('a normally constructed outer archer tower fires at the zombie road, then requires resupply', () => {
-  const { sim, village, player, act } = fixture();
+test('new and saved empty archer towers fire without resupply and preserve stored arrows', () => {
+  const { sim, store, village, player, act, account } = fixture();
   const site = PLOTS.find(p => p.id === 'outpost-1');
   Object.assign(player, plotEntrance(site, village.plots.find(p => p.id === site.id)));
   player.wallet = 500; player.inventory.timber = 60; player.inventory.stone = 40;
   act({ kind: 'plot_buy', plotId: site.id });
   act({ kind: 'plot_build', plotId: site.id, building: 'archer_tower' });
-  const plot = village.plots.find(p => p.id === site.id), arrows = TOWER_STATS.archer_tower.starterAmmo.arrows;
-  assert.equal(plot.storage.arrows, arrows, 'construction supplies the initial quiver');
+  const plot = village.plots.find(p => p.id === site.id);
+  assert.equal(plot.storage.arrows ?? 0, 0, 'construction no longer grants a quiver');
   village.guards = [];
   const zombie = { id: 'on-road', x: 0, z: 31, hp: 1000, maxHp: 1000, speed: 0, cooldown: 100, roadIndex: 3 };
   village.zombies = [zombie];
   const wallet = player.wallet;
   sim.tick(.05);
   assert.equal(zombie.hp, 980, 'real server LOS permits the first automatic shot');
-  assert.equal(plot.storage.arrows, arrows - 1); assert.equal(player.wallet, wallet);
+  assert.equal(plot.storage.arrows ?? 0, 0); assert.equal(player.wallet, wallet);
   assert.equal(careSnapshot(village, player.id, sim).defenseStatus[0].status, 'firing');
-  for (let i = 1; i < arrows; i++) sim.tick(1.61);
-  assert.equal(plot.storage.arrows, 0);
-  const hp = zombie.hp;
-  sim.tick(3); assert.equal(zombie.hp, hp, 'spent ammunition never regenerates for free');
-  assert.equal(careSnapshot(village, player.id, sim).defenseStatus[0].status, 'empty');
-  Object.assign(player, plotEntrance(site, village.plots.find(p => p.id === site.id))); player.inventory.arrows = 2;
-  act({ kind: 'plot_deposit', plotId: site.id, resource: 'arrows', amount: 2 });
-  sim.tick(.05); assert.equal(zombie.hp, hp - 20); assert.equal(plot.storage.arrows, 1);
+  for (let i = 0; i < 24; i++) sim.tick(1.61);
+  assert.equal(zombie.hp, 500, 'firing continues beyond the old starter quiver');
+  assert.equal(careSnapshot(village, player.id, sim).defenseStatus[0].unlimitedAmmo, true);
+  sim.saveAll();
+  const restored = new Simulation(store), recovered = restored.villages.get(village.id);
+  restored.join(village.id, account, 'guard');
+  restored.tick(1.61);
+  assert.equal(recovered.zombies[0].hp, 480, 'a saved empty tower fires after reconnect');
+  const savedPlot = recovered.plots.find(p => p.id === site.id);
+  savedPlot.storage.arrows = 7;
+  restored.tick(1.61);
+  assert.equal(recovered.zombies[0].hp, 460); assert.equal(savedPlot.storage.arrows, 7, 'old ammunition remains withdrawable cargo');
 });
 
 test('public watch replacement countdown persists and stops while the village has no online players', () => {

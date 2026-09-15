@@ -30,11 +30,11 @@ test('a zombie cannot strike a dwarf through the intact gate, but can strike aft
   const { sim, village, player } = await fixture(t);
   Object.assign(player, { x: 0, z: 17.5 });
   village.zombies = [enemy('gate-attacker', 0, 19.1)];
-  for (let i = 0; i < 4; i++) sim.tick(.05);
+  for (let i = 0; i < 18; i++) sim.tick(.05);
   assert.equal(player.hp, 100, 'an in-range zombie must respect the closed gate');
   assert.equal(village.gate.hp, village.gate.maxHp - 8, 'the zombie attacks the gate instead of becoming stuck targeting the protected dwarf');
   village.gate.hp = 0;
-  for (let i = 0; i < 32; i++) sim.tick(.05);
+  for (let i = 0; i < 34; i++) sim.tick(.05);
   assert.equal(player.hp, 91, 'the same target is damageable once the intervening gate is gone');
 });
 

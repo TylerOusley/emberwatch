@@ -159,14 +159,14 @@ test('automatic defenses explain ammunition, server firing status, range, and re
   f.state.plots = [plot];
   f.state.defenseStatus = [{ plotId: id, status: 'empty', range: 22, shotsRemaining: 0 }];
   f.visit('plot', id);
-  assert.match(f.html, /data-defense-state="empty"/);
-  assert.match(f.html, /Out of ammunition/); assert.match(f.html, /player tinker shop or the traveling merchant/);
-  assert.match(f.html, /New towers include 20 arrows/);
+  assert.match(f.html, /data-defense-state="ready"/);
+  assert.match(f.html, /without arrows or other ammunition/);
+  assert.match(f.html, /Shots available<\/span><strong>Unlimited/);
   plot.storage.arrows = 8;
   f.state.defenseStatus = [{ plotId: id, status: 'firing', range: 26, shotsRemaining: 8 }];
   f.ui.refresh();
   assert.match(f.html, /Engaging zombies/); assert.match(f.html, /26 m/);
-  assert.match(f.html, /Shots available<\/span><strong>8/);
+  assert.match(f.html, /Shots available<\/span><strong>Unlimited/);
   f.state.defenseStatus[0].status = 'out_of_range'; f.ui.refresh();
   assert.match(f.html, /Waiting for targets/);
   plot.hp = 0; f.visit('plot', id); assert.match(f.html, /data-defense-state="destroyed"/);

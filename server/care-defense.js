@@ -44,16 +44,17 @@ function towerTargets(sim, village, plot) {
 
 function towerStatus(sim, village, plot) {
   const stats = TOWER_STATS[plot.building];
-  const shotsRemaining = Math.max(0, Math.min(...Object.entries(stats.ammo).map(([id, cost]) => Math.floor((plot.storage[id] ?? 0) / cost))));
+  const unlimitedAmmo = Object.keys(stats.ammo).length === 0;
+  const shotsRemaining = unlimitedAmmo ? null : Math.max(0, Math.min(...Object.entries(stats.ammo).map(([id, cost]) => Math.floor((plot.storage[id] ?? 0) / cost))));
   let status;
   if (!usable(plot)) status = 'destroyed';
-  else if (!shotsRemaining) status = 'empty';
+  else if (!unlimitedAmmo && !shotsRemaining) status = 'empty';
   else if (plot.lastShot?.until > village.clock) status = 'firing';
   else {
     const { target, inRange } = towerTargets(sim, village, plot);
     status = target ? 'ready' : inRange ? 'blocked' : village.zombies.some(z => z.hp > 0) ? 'out_of_range' : 'ready';
   }
-  return { plotId: plot.id, status, range: stats.range, shotsRemaining, ammo: stats.ammo };
+  return { plotId: plot.id, status, range: stats.range, shotsRemaining, unlimitedAmmo, ammo: stats.ammo };
 }
 
 export function ensureCare(village) {
@@ -357,12 +358,12 @@ export function tickDefenseAttack(sim, village, zombie, dt) {
   if (!plot) return false;
   const site = siteFor(plot), dx = zombie.x - site.x, dz = zombie.z - site.z;
   const edge = structureEdge(plot, zombie, .8);
-  if (distance(zombie, edge) > 1.6) sim.stepNpc(zombie, edge, zombie.speed, dt, village.zombies);
+  if (distance(zombie, edge) > 1.6) { sim.cancelZombieWindup?.(zombie); sim.stepNpc(zombie, edge, zombie.speed, dt, village.zombies); }
   else {
     zombie.anim = 'attack'; zombie.yaw = Math.atan2(-dx, -dz);
-    if (!zombie.cooldown) {
-      plot.hp = Math.max(0, plot.hp - (zombie.elite ? 18 : 10));
-      zombie.cooldown = 1.5;
+    const struck = sim.attackZombieStructure ? sim.attackZombieStructure(village, zombie, plot, plot.id, 'plot') : !zombie.cooldown;
+    if (struck) {
+      if (!sim.attackZombieStructure) { plot.hp = Math.max(0, plot.hp - (zombie.elite ? 18 : 10)); zombie.cooldown = 1.5; }
       if (plot.hp <= 0) {
         plot.lastShot = null;
         sim.notice?.(village.id, 'A defensive building has been destroyed. Its owner can rebuild on the plot.');

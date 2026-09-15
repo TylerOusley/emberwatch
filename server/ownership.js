@@ -72,7 +72,7 @@ export function ensureOwnership(village) {
 function removeBuilding(village, plot) {
   village.guards = village.guards.filter(guard => guard.plotId !== plot.id && guard.barracksId !== plot.id);
   village.plotResources = village.plotResources.filter(node => node.plotId !== plot.id);
-  Object.assign(plot, { building: null, hp: 0, maxHp: 0, level: 1, patients: [], splitRemainders: {} });
+  Object.assign(plot, { building: null, hp: 0, maxHp: 0, level: 1, patients: [], splitRemainders: {}, guardOrder: null });
 }
 
 export function ownershipAction(sim, village, player, action) {
@@ -217,8 +217,8 @@ export function ownershipAction(sim, village, player, action) {
   for (const { id, stored, carried } of deductions) { plot.storage[id] = (plot.storage[id] ?? 0) - stored; player.inventory[id] -= carried; }
   village.treasury += type.cost.gold;
   Object.assign(plot, { building: action.building, hp: type.maxHp, maxHp: type.maxHp, level: 1 });
-  // A new archer tower includes a small quiver. Repairs and reloads never grant
-  // free ammunition, and saved towers keep their existing finite stock.
+  // Construction grants only explicitly configured starter supplies. Archer
+  // towers need no ammunition; existing stored arrows remain ordinary cargo.
   for (const [id, amount] of Object.entries(TOWER_STATS[action.building]?.starterAmmo ?? {})) plot.storage[id] = (plot.storage[id] ?? 0) + amount;
   village.plotResources.push(...plotNodes(plot));
   return `${type.name} constructed. ${['mine', 'wheat_farm', 'tree_farm'].includes(action.building) ? 'Your private resources are ready to harvest.' : 'Open this plot to use its services.'}`;
