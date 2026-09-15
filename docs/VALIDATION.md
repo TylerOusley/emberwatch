@@ -1,5 +1,19 @@
 # Emberwatch build validation
 
+## Crate art preparation: 20 original models and a review gallery
+
+The complete `npm test` run passes **409/409 tests**. All **73** runtime JavaScript modules pass syntax and local import checks. The game retains **76 unique HTML IDs**; the separate gallery has **26**, with its script, stylesheet and font paths resolving locally.
+
+There are 19 crate-item designs and the Sunforged Viking Helm milestone trophy. Model checks cover finite geometry and normals, outward surface winding, all three jobs, skull and eye clearance, articulated shin/foot attachments, tool variants, material ownership and repeated disposal. Fitting hides only the original head covering, backpack group or boot surfaces as appropriate, preserves the face and beard, and restores prior visibility on removal. Default game characters retain their original batching; the optional equipment-preview mode preserves named head surfaces for the isolated gallery.
+
+Camera checks use the actual model bounds across narrow/wide aspect ratios and rotated views. A sampled real pickaxe working animation stays inside the gallery frame on all three roles. Reduced motion disables optional glints and moving embers. The gallery uses generated studio reflections and existing Three.js lighting; it opens no account connection and sends no game actions. Its lifecycle preserves the canvas when the browser uses the back/forward cache.
+
+All **20 GLBs** passed structural checks and a load through the installed GLTFLoader: bounds, mesh/triangle counts and embedded bump materials agree with the source geometry. Static exports total **12,781,672 bytes** and **429,172 triangles**. Export-only indexing preserves complete vertex attributes. JavaScript retains the procedural effects; the GLBs are static geometry/material snapshots with extensions documented in [CRATE-ART.md](CRATE-ART.md).
+
+The [collection sheet](previews/crate-collection.jpg) and individual transparent item PNGs use actual authored geometry under offline studio lighting. Fitted armor, kit and Phoenix views were also inspected. These are geometry renders, not browser screenshots. The browser's URL policy blocked local HTTP and file previews; no live interactive browser or device-performance result is claimed. Gallery layout and feel still need review in a regular browser.
+
+No crate currency, purchase/opening action, milestone grant, equipment bonus, starter supply or self-revival mechanic is enabled. Validation used temporary data and did not change production accounts or village balances.
+
 ## Build 13: resource exchange, illustrated building plans, nearby map and torches
 
 The complete `npm test` run passes **384/384 tests**. All **65** runtime JavaScript modules pass syntax/local import checks, all local HTML assets resolve, and **76 HTML IDs** are unique.

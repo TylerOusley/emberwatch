@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>The Reliquary · Emberwatch item collection</title>
+  <meta name="description" content="Explore Emberwatch's original 3D crate equipment and Hundredth Watch helmet. An artwork preview; rewards are not active.">
+  <link rel="stylesheet" href="/crate-gallery.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+</head>
+<body>
+  <header class="masthead"><a href="/" class="brand" aria-label="Emberwatch game"><span class="brand-mark">✦</span> EMBERWATCH</a><span class="edition">THE ART COLLECTION <b>01</b></span><span class="preview-note"><i></i> Artwork preview</span></header>
+  <main class="gallery">
+    <aside class="collection" aria-label="Item collection">
+      <div class="collection-heading"><span class="eyebrow">FOR THE WATCHES AHEAD</span><h1>The Reliquary</h1><p>Tools of the trade.<br>Treasures of the watch.</p></div>
+      <div class="filters" role="group" aria-label="Filter collection">
+        <button data-tier="all" aria-pressed="true">All</button><button data-tier="basic" aria-pressed="false">Basic</button><button data-tier="rare" aria-pressed="false">Rare</button><button data-tier="epic" aria-pressed="false">Epic</button><button data-tier="legendary" aria-pressed="false">Legendary</button><button data-tier="milestone" aria-pressed="false">Day 100</button>
+      </div>
+      <div class="collection-count" id="collection-count">20 designs</div>
+      <div id="item-list" class="item-list"></div>
+      <p class="collection-footnote">19 crate items + 1 milestone trophy.<br>Every model made for Emberwatch.</p>
+    </aside>
+    <section class="studio" aria-label="3D item studio">
+      <div class="studio-heading"><span id="studio-tier" class="eyebrow">LEGENDARY COLLECTION</span><span class="studio-tag" id="studio-view">ITEM STUDY</span></div>
+      <canvas id="art-canvas" tabindex="0" aria-label="3D item preview. Drag or use arrow keys to rotate, scroll or use plus and minus to zoom, R to reset."></canvas>
+      <div id="stage-message" role="status">Preparing the collection…</div>
+      <div class="stage-caption"><span class="caption-rule"></span><span id="stage-name">Dawnsteel helm</span><span class="caption-rule"></span></div>
+      <div class="studio-actions"><button id="rotate-toggle" aria-pressed="true">Pause rotation</button><button id="reset-view">Reset view</button><button id="save-render">Save render <span aria-hidden="true">↗</span></button></div>
+      <p class="orbit-hint">DRAG TO ROTATE <span>·</span> SCROLL TO ZOOM</p>
+    </section>
+    <aside class="inspection" aria-label="Selected item details">
+      <div class="item-heading"><span id="item-tier" class="tier-label">LEGENDARY</span><h2 id="item-name">Dawnsteel helm</h2><p id="item-design"></p></div>
+      <div class="item-facts"><span id="item-slot">HEAD EQUIPMENT</span><span>ORIGINAL 3D MODEL</span></div>
+      <div class="effect-card"><span class="eyebrow">PLANNED EFFECT</span><p id="item-effect"></p><small>Reward mechanics are not active in this preview.</small></div>
+      <div class="view-toggle" role="group" aria-label="Preview mode"><button id="mode-item" aria-pressed="true">Item</button><button id="mode-character" aria-pressed="false">On dwarf</button></div>
+      <div id="character-options" class="option-grid" hidden><label>Job<select id="role"><option value="villager">Villager</option><option value="guard">Guard</option><option value="priest">Priest</option></select></label><label>Pose<select id="pose"><option value="idle">At rest</option><option value="walk">Walking</option><option value="strike">Working</option></select></label><label id="pack-option">Backpack<select id="backpack"><option value="0">Pockets</option><option value="1">Simple pack</option><option value="2">Traveler pack</option><option value="3">Expedition pack</option></select></label></div>
+      <label id="tool-option" class="full-option" hidden>Kit tool choice<select id="kit-tool"><option value="pickaxe">Pickaxe</option><option value="axe">Axe</option><option value="scythe">Scythe</option></select></label>
+      <label class="full-option">Lighting<select id="lighting"><option value="studio">Warm studio</option><option value="night">Moonlit evening</option></select></label>
+      <label class="motion-option"><input type="checkbox" id="reduced-motion"> Reduce animation and sparkles</label>
+      <div class="inspection-footnote"><span aria-hidden="true">◇</span><p>Rotate every detail. Try wearable pieces on all three jobs. Designs can be refined before the crates arrive.</p></div>
+    </aside>
+  </main>
+  <footer class="gallery-footer"><span>CRAFTED IN EMBERWATCH</span><span>Armory studies / leatherwork / expedition goods</span><a href="/">Return to the village →</a></footer>
+  <script type="module" src="/src/crate-gallery.js"></script>
+</body>
+</html>

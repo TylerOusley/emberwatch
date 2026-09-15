@@ -317,7 +317,7 @@ function makeBackpack(tier, armored=false) {
   return root.clone(true);
 }
 
-export function createCharacter(kind='villager', seed=1) {
+export function createCharacter(kind='villager', seed=1, { equipmentPreview=false }={}) {
   const group = new THREE.Group();
   const visual = pivot(group);
   const owned = new Set();
@@ -370,6 +370,9 @@ export function createCharacter(kind='villager', seed=1) {
     buildBody(visual,rig,{skin:actualSkin,own:owned});
     buildHead(head,{role,variation,palette,own:owned});
     buildClothing(rig,{role,variation,palette,own:owned});
+    // The isolated equipment studio needs removable head coverings. Preserve
+    // those named surfaces there; normal game actors keep the original batches.
+    if(equipmentPreview) head.traverse(object=>{if(object.isMesh)object.userData.tailored=true;});
     mergeRigid(visual,owned);
     if(role==='guard') {
       const shield=pivot(leftFore,.045,-.12,.20);
