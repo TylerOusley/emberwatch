@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildBody } from './character-body.js';
 import { buildHead } from './character-head.js';
 import { buildClothing } from './character-clothing.js';
+import { sampleLegGait, runningBlend } from './locomotion.js';
 
 // Original sculpted characters: continuous skin, shaped faces and tailored
 // garments deform around the existing gameplay rig. Tools retain rigid batching.
@@ -321,8 +322,26 @@ export function createCharacter(kind='villager', seed=1) {
   const visual = pivot(group);
   const owned = new Set();
   let rig, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, disposed=false;
-  let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0;
+  let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0, turnAmount=0;
   const actionOffsets = new Float64Array(12);
+  const leftStep=new Float64Array(3),rightStep=new Float64Array(3),stepScratch=new Float64Array(3);
+  const soleMatrix=new THREE.Matrix4(),solePoint=new THREE.Vector3();
+
+  function groundedHeight() {
+    // Measure sole corners through the actual eased joints, so extra knee and
+    // ankle articulation does not push the boots into the floor. This only
+    // adjusts the cosmetic body; network position and collision stay unchanged.
+    rig.body.updateMatrix(); rig.pelvis.updateMatrix();
+    let lowest=Infinity;
+    for(const [leg,shin,foot] of [[rig.leftLeg,rig.leftShin,rig.leftFoot],[rig.rightLeg,rig.rightShin,rig.rightFoot]]) {
+      leg.updateMatrix();shin.updateMatrix();foot.updateMatrix();
+      soleMatrix.makeRotationFromEuler(rig.body.rotation).multiply(rig.pelvis.matrix).multiply(leg.matrix).multiply(shin.matrix).multiply(foot.matrix);
+      for(const x of [-.14,.14])for(const z of [-.135,.316]) {
+        solePoint.set(x,-.152,z).applyMatrix4(soleMatrix);lowest=Math.min(lowest,solePoint.y);
+      }
+    }
+    return .018-lowest;
+  }
   const variation = Math.abs(Math.trunc(Number(seed)||1)) % 4;
   const skin = material([0xdba779,0xc38d65,0xe9bc8e,0xa87354][variation]);
   const beard = material([0x6b4029,0x9a6137,0xc6a77d,0x4b3730][variation]);
@@ -334,13 +353,15 @@ export function createCharacter(kind='villager', seed=1) {
     const zombie=role === 'zombie';
     const bone=(parent,x=0,y=0,z=0)=>{const b=new THREE.Bone();b.position.set(x,y,z);parent.add(b);return b;};
     const body=bone(visual,0,zombie?1.10:1.04,0);
+    const pelvis=bone(body);
     const head=bone(body,0,zombie?.81:.76,.01);
     const leftArm=bone(body,zombie?.35:.48,.36,0),rightArm=bone(body,zombie?-.35:-.48,.36,0);
     const leftFore=bone(leftArm,0,-.34,0),rightFore=bone(rightArm,0,-.34,0);
     const hand=bone(rightFore,0,-.30,.035);
-    const leftLeg=bone(body,zombie?.17:.21,-.27,0),rightLeg=bone(body,zombie?-.17:-.21,-.27,0);
+    const leftLeg=bone(pelvis,zombie?.17:.21,-.27,0),rightLeg=bone(pelvis,zombie?-.17:-.21,-.27,0);
     const leftShin=bone(leftLeg,0,-.35,0),rightShin=bone(rightLeg,0,-.35,0);
-    rig={body,head,leftArm,rightArm,leftFore,rightFore,hand,leftLeg,rightLeg,leftShin,rightShin,zombie};
+    const leftFoot=bone(leftShin,0,-.25,.015),rightFoot=bone(rightShin,0,-.25,.015);
+    rig={body,pelvis,head,leftArm,rightArm,leftFore,rightFore,hand,leftLeg,rightLeg,leftShin,rightShin,leftFoot,rightFoot,zombie};
     for(const [name,joint] of Object.entries(rig))if(joint?.isBone)joint.name=name;
     attackClock=9; previousAttack=false; spellAmount=0;
     const clothes=material(role==='guard'?0x364b5e:role==='priest'?0xb6ab91:role==='zombie'?0x50584f:0x4d6456);
@@ -407,7 +428,7 @@ export function createCharacter(kind='villager', seed=1) {
 
   function update(dt,time, options={}) {
     if(disposed) return;
-    const {moving=false,speed=5.4,attack=false,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,backpackTier:requestedBackpackTier}=options;
+    const {moving=false,speed=5.4,turnRate=0,attack=false,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,backpackTier:requestedBackpackTier}=options;
     dt=clamp(Number(dt)||0,0,.1);
     idleTime+=dt;
     if(tool!==undefined) setTool(typeof tool==='object'?tool:{id:tool,tier});
@@ -433,11 +454,12 @@ export function createCharacter(kind='villager', seed=1) {
     // not accumulate different gait phases over the same traveled distance.
     const strideDistance=speedTarget*dt+(motionSpeed-speedTarget)*speedBlend/10;
     motionSpeed+=(speedTarget-motionSpeed)*speedBlend;
+    turnAmount+=((Number.isFinite(turnRate)?clamp(turnRate,-3,3):0)-turnAmount)*(1-Math.exp(-dt*8));
     downAmount+=((downed?1:0)-downAmount)*(1-Math.exp(-dt*8));
     walkPhase=(walkPhase+strideDistance*(rig.zombie?4.1:9.0)/nominalSpeed)%TAU;
     const s=Math.sin(walkPhase), c=Math.cos(walkPhase), breath=Math.sin(idleTime*2.2+variation);
-    const stride=moveAmount*clamp(motionSpeed/nominalSpeed,.30,1.15);
-    const liftLeft=Math.pow(Math.max(0,-s),2), liftRight=Math.pow(Math.max(0,s),2);
+    const stride=moveAmount*clamp(motionSpeed/nominalSpeed,.45,1.15);
+    const running=rig.zombie?0:runningBlend(motionSpeed);
     const stepRise=(1-Math.cos(walkPhase*2))*.5;
     const casting=toolId==='heal'||toolId==='staff';
     const spellTarget=!downed && casting && (channeling || attack===true || attackClock<.54) ? 1 : 0;
@@ -448,6 +470,9 @@ export function createCharacter(kind='villager', seed=1) {
     const a=actionOffsets, alive=1-downAmount;
     const attackWeight=active?Math.sin(Math.PI*clamp(attackClock/duration,0,1)):0;
     const armStride=stride*(1-attackWeight*.85)*(1-spellAmount*.85);
+    const gaitStrength=stride*(1-mountAmount)*(1-downAmount);
+    sampleLegGait(walkPhase,gaitStrength, running,leftStep,stepScratch);
+    sampleLegGait(walkPhase+Math.PI,gaitStrength, running,rightStep,stepScratch);
     const settle=1-Math.exp(-dt*25);
     if(toolId==='scythe' && heldTool) {
       // Roll around the circular shaft while reaping, so the cutting blade
@@ -461,35 +486,53 @@ export function createCharacter(kind='villager', seed=1) {
     visual.position.y=.70*downAmount;
     visual.position.z=0;
     if(rig.zombie) {
-      rig.body.position.y+=(1.10+(stepRise*.030*stride+breath*.009)*alive-rig.body.position.y)*settle;
-      poseJoint(rig.body,.17+s*.025*stride+a[7],s*.045*stride+a[8],.065+s*.045*stride+a[9],settle);
-      poseJoint(rig.head,-.09+breath*.020-a[7]*.35,c*.045*stride,.10+Math.sin(idleTime*1.4+variation)*.025,settle);
-      poseJoint(rig.leftLeg,s*.30*stride,0,0,settle);
-      poseJoint(rig.rightLeg,-s*.37*stride,0,0,settle);
-      poseJoint(rig.leftShin,.08+liftLeft*.27*stride,0,0,settle);
-      poseJoint(rig.rightShin,.06+liftRight*.32*stride,0,0,settle);
-      poseJoint(rig.leftArm,(-.50+c*.10*armStride+a[10])*alive,0,.10+breath*.025,settle);
-      poseJoint(rig.rightArm,(-.75-c*.13*armStride+a[0])*alive,a[1],-.12+a[2],settle);
-      poseJoint(rig.leftFore,(-.14-breath*.025+a[11])*alive,0,0,settle);
-      poseJoint(rig.rightFore,(-.18+breath*.030+a[3])*alive,0,0,settle);
+      // Unequal steps and delayed shoulders retain a dragging zombie gait,
+      // while elbows, knees and ankles now move instead of a rigid shuffle.
+      poseJoint(rig.body,.17+s*.045*stride+a[7],s*.075*stride+a[8],.065+s*.065*stride+a[9],settle);
+      poseJoint(rig.pelvis,-.10*stride,-s*.13*stride,-s*.035*stride,settle);
+      poseJoint(rig.head,-.09+breath*.020-a[7]*.35,c*.07*stride,.10+Math.sin(idleTime*1.4+variation)*.025,settle);
+      poseJoint(rig.leftLeg,leftStep[0]*.70,0,.015*stride,settle);
+      poseJoint(rig.rightLeg,rightStep[0]*.85,0,-.015*stride,settle);
+      poseJoint(rig.leftShin,.08+leftStep[1]*.55,0,0,settle);
+      poseJoint(rig.rightShin,.06+rightStep[1]*.75,0,0,settle);
+      poseJoint(rig.leftFoot,-leftStep[0]*.70-leftStep[1]*.55-.06,.015*stride,0,settle);
+      poseJoint(rig.rightFoot,-rightStep[0]*.85-rightStep[1]*.75-.04,-.015*stride,0,settle);
+      poseJoint(rig.leftArm,(-.50+Math.sin(walkPhase-.45)*.19*armStride+a[10])*alive,s*.05*stride,.10+breath*.025,settle);
+      poseJoint(rig.rightArm,(-.75-Math.sin(walkPhase+.20)*.23*armStride+a[0])*alive,a[1]-s*.055*stride,-.12+a[2],settle);
+      poseJoint(rig.leftFore,(-.14-breath*.025-.24*(.5+.5*c)*armStride+a[11])*alive,0,.025*stride,settle);
+      poseJoint(rig.rightFore,(-.18+breath*.030-.32*(.5-.5*c)*armStride+a[3])*alive,0,-.035*stride,settle);
+      rig.body.position.x=s*.030*stride*alive;
+      const height=1.10+(groundedHeight()-1.10)*moveAmount;
+      rig.body.position.y=height+(breath*.009)*alive*(1-moveAmount);
     } else {
-      rig.body.position.y+=(1.04+(stepRise*.040*stride+breath*.008)*alive-rig.body.position.y)*settle;
-      poseJoint(rig.body,.045*stride+a[7],s*.035*stride+a[8],-s*.020*stride+a[9],settle);
-      poseJoint(rig.head,-.025+breath*.01-a[7]*.45-spellAmount*.08,-s*.025*stride-a[8]*.28,downAmount*.20,settle);
-      poseJoint(rig.leftLeg,s*.53*stride-1.10*mountAmount,0,-.40*mountAmount,settle);
-      poseJoint(rig.rightLeg,-s*.53*stride-1.10*mountAmount,0,.40*mountAmount,settle);
-      poseJoint(rig.leftShin,liftLeft*.42*stride+.80*mountAmount,0,0,settle);
-      poseJoint(rig.rightShin,liftRight*.42*stride+.80*mountAmount,0,0,settle);
-      poseJoint(rig.leftArm,(-s*.32*armStride-.06+a[10]-spellAmount*.70-.9*carryAmount-.65*mountAmount)*alive,spellAmount*.14,.09+spellAmount*.08,settle);
-      poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65-.9*carryAmount-.65*mountAmount)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
-      poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
+      const counter=s*stride, lean=turnAmount*stride*.025;
+      poseJoint(rig.body,(.055+.10*running)*stride+a[7],counter*.095+a[8],-counter*.025-lean+a[9],settle);
+      poseJoint(rig.pelvis,-.035*stride,-counter*.17,counter*.04,settle);
+      poseJoint(rig.head,-.025+breath*.01-a[7]*.45-spellAmount*.08-.035*running*stride,-counter*.07-a[8]*.28+turnAmount*.035,downAmount*.20+lean*.6,settle);
+      poseJoint(rig.leftLeg,leftStep[0]-1.10*mountAmount,0,.015*stride-.40*mountAmount,settle);
+      poseJoint(rig.rightLeg,rightStep[0]-1.10*mountAmount,0,-.015*stride+.40*mountAmount,settle);
+      poseJoint(rig.leftShin,leftStep[1]*(1-mountAmount)+.80*mountAmount,0,0,settle);
+      poseJoint(rig.rightShin,rightStep[1]*(1-mountAmount)+.80*mountAmount,0,0,settle);
+      poseJoint(rig.leftFoot,leftStep[2]*(1-mountAmount)+.22*mountAmount,0,0,settle);
+      poseJoint(rig.rightFoot,rightStep[2]*(1-mountAmount)+.22*mountAmount,0,0,settle);
+      const leftSwing=c*(role==='guard'?.30:.46)*(1+running*.35)*armStride;
+      const rightSwing=-c*(toolId?.30:.46)*(1+running*.35)*armStride;
+      const armsFree=(1-mountAmount)*(1-carryAmount);
+      poseJoint(rig.leftArm,(leftSwing*armsFree-.06+a[10]-spellAmount*.70-.9*carryAmount-.65*mountAmount)*alive,spellAmount*.14-counter*.035,.09+spellAmount*.08+running*.06*stride,settle);
+      poseJoint(rig.rightArm,(rightSwing*armsFree-.12+a[0]-spellAmount*.65-.9*carryAmount-.65*mountAmount)*alive,a[1]+counter*.035,-.10+a[2]-spellAmount*.08-running*.06*stride,settle);
+      const leftElbow=(.25*(.5-.5*c)+running*.50)*armStride*armsFree;
+      poseJoint(rig.leftFore,(-.13-leftElbow+a[11]-spellAmount*.32-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
       const uprightGrip=UPRIGHT_TOOLS.has(toolId);
       const elbowRest=-.14-(uprightGrip?1.26*(1-mountAmount)*(1-carryAmount):0);
-      poseJoint(rig.rightFore,(elbowRest+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
+      const rightElbow=(uprightGrip?.10*(.5+.5*c):.25*(.5+.5*c)+running*.50)*armStride*armsFree;
+      poseJoint(rig.rightFore,(elbowRest-rightElbow+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
       // The same forearm twist seats each shaft through the fingers. Tools
       // use a bent elbow for an upright carry, sword keeps its low guard.
       const gripTwist=toolId==='sword'||uprightGrip?-Math.PI/2:0;
       poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+gripTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
+      rig.body.position.x=counter*.020*alive;
+      const groundBlend=moveAmount*(1-mountAmount)*(1-downAmount);
+      rig.body.position.y=1.04+(groundedHeight()-1.04)*groundBlend+breath*.008*alive*(1-moveAmount)+stepRise*.028*running*stride;
     }
   }
   function dispose() {

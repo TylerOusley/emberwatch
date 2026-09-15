@@ -76,12 +76,9 @@ export function createWorld(scene) {
     }
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();
     const o=mesh(g,roadMat);o.castShadow=false;
-    // Irregular stone edging gives the lane an authored, old-world outline.
-    for(let i=0;i<len/1.15;i++)for(const side of [-1,1]){
-      const t=i/(len/1.15),p=curve.getPoint(t),tan=curve.getTangent(t),off=width/2+.08;
-      box(i%4?M.stone:M.moss,p.x+tan.z*off*side,.045,p.z-tan.x*off*side,.38,.13,.88,Math.atan2(tan.x,tan.z));
-    }
-    lanes.push({curve,width});return curve;
+    // Edging is placed after every lane and paved square is known, so no
+    // curb continues across the mouth of a junction or a plot access path.
+    lanes.push({curve,width,geometry:g});return curve;
   }
   const mainRoad=road([...ROAD].reverse(),7.2);
   // The Watch faces the central street. Existing route waypoints beyond its
@@ -116,6 +113,10 @@ export function createWorld(scene) {
   // Paved square around the communal well, completely outside the central lane.
   const paving=mesh(new THREE.CircleGeometry(5.7,16),roadMat,root,8,.018,-4);paving.rotation.x=-Math.PI/2;
   const marketPaving=mesh(new THREE.CircleGeometry(8,20),roadMat,root,0,.019,-66);marketPaving.rotation.x=-Math.PI/2;marketPaving.castShadow=false;
+  paving.updateMatrix();marketPaving.updateMatrix();
+  for(const edge of createRoadEdging(lanes,[paving,marketPaving])){
+    box(edge.index%4?M.stone:M.moss,edge.x,.045,edge.z,.38,.13,.88,edge.yaw);
+  }
 
   // Mountain shoulders shelter the keep; silhouettes stay outside playable bounds.
   const mountainG=new THREE.ConeGeometry(1,1,6);
@@ -527,6 +528,66 @@ export function createWorld(scene) {
     gate.userData.openAmount=THREE.MathUtils.lerp(gate.userData.openAmount,target,.065);gate.position.y=.1+gate.userData.openAmount*4.7;
   }
   return {root,resources,gate,update,road:mainRoad,lanterns,plots:plotsWorld,resourceEffects,resetResourceEffects:()=>resourceEffects.reset()};
+}
+
+// Build-time curb clipping uses the exact triangles of the rendered roads,
+// including curved lanes and paved squares. A spatial grid keeps this bounded
+// to nearby surfaces; it does no work in the animation loop.
+export function createRoadEdging(lanes,pavedSquares=[]){
+  const cellSize=4,grid=new Map(),edgeGrid=new Map(),edges=[];
+  const bounds=points=>({minX:Math.min(...points.map(p=>p.x)),maxX:Math.max(...points.map(p=>p.x)),minZ:Math.min(...points.map(p=>p.z)),maxZ:Math.max(...points.map(p=>p.z))});
+  function visitCells(box,visit){
+    for(let x=Math.floor(box.minX/cellSize);x<=Math.floor(box.maxX/cellSize);x++)for(let z=Math.floor(box.minZ/cellSize);z<=Math.floor(box.maxZ/cellSize);z++)visit(`${x}:${z}`);
+  }
+  function insert(index,record){visitCells(record.bounds,key=>{if(!index.has(key))index.set(key,[]);index.get(key).push(record);});}
+  function candidates(index,box){const found=new Set();visitCells(box,key=>{for(const item of index.get(key)??[])found.add(item);});return found;}
+  function overlaps(a,b){
+    // Separating axes for convex footprints. Merely touching an exposed edge
+    // is allowed; positive overlap into the neighboring pavement is not.
+    for(const polygon of [a,b])for(let i=0;i<polygon.length;i++){
+      const next=polygon[(i+1)%polygon.length],axisX=next.z-polygon[i].z,axisZ=polygon[i].x-next.x;
+      let aMin=Infinity,aMax=-Infinity,bMin=Infinity,bMax=-Infinity;
+      for(const p of a){const d=p.x*axisX+p.z*axisZ;aMin=Math.min(aMin,d);aMax=Math.max(aMax,d);}
+      for(const p of b){const d=p.x*axisX+p.z*axisZ;bMin=Math.min(bMin,d);bMax=Math.max(bMax,d);}
+      if(Math.min(aMax,bMax)-Math.max(aMin,bMin)<=1e-7)return false;
+    }
+    return true;
+  }
+  function addSurface(geometry,owner,matrix){
+    const positions=geometry.attributes.position,index=geometry.index,vertex=new THREE.Vector3();
+    for(let i=0;i<(index?.count??positions.count);i+=3){
+      const points=[];
+      for(let j=0;j<3;j++){
+        vertex.fromBufferAttribute(positions,index?index.getX(i+j):i+j);if(matrix)vertex.applyMatrix4(matrix);points.push({x:vertex.x,z:vertex.z});
+      }
+      const [a,b,c]=points;
+      if(Math.abs((b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x))<1e-8)continue;
+      insert(grid,{owner,points,bounds:bounds(points)});
+    }
+  }
+  lanes.forEach((lane,owner)=>addSurface(lane.geometry,owner));
+  for(const square of pavedSquares)addSurface(square.geometry,-1,square.matrix);
+  function footprint(x,z,yaw,width=.38,depth=.88){
+    const cos=Math.cos(yaw),sin=Math.sin(yaw);
+    return [[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>({x:x+cos*a*width/2+sin*b*depth/2,z:z-sin*a*width/2+cos*b*depth/2}));
+  }
+  lanes.forEach(({curve,width},owner)=>{
+    const length=curve.getLength(),count=length/1.15;
+    for(let index=0;index<count;index++)for(const side of [-1,1]){
+      const p=curve.getPoint(index/count),tangent=curve.getTangent(index/count),offset=width/2+.08,yaw=Math.atan2(tangent.x,tangent.z);
+      const x=p.x+tangent.z*offset*side,z=p.z-tangent.x*offset*side;
+      // The inner 11 cm is deliberately bedded into its own paving. Only the
+      // exposed portion can cross another road: this also preserves the outer
+      // boundary where two parallel road surfaces coincide.
+      const exposed=footprint(x+tangent.z*.0625*side,z-tangent.x*.0625*side,yaw,.255),exposedBounds=bounds(exposed);
+      if([...candidates(grid,exposedBounds)].some(surface=>surface.owner!==owner&&overlaps(exposed,surface.points)))continue;
+      const points=footprint(x,z,yaw),box=bounds(points);
+      // Coincident roads share one row of edging, rather than stacking stones.
+      if([...candidates(edgeGrid,box)].some(edge=>overlaps(points,edge.points)))continue;
+      const edge={x,z,yaw,index,side,owner};edges.push(edge);insert(edgeGrid,{points,bounds:box});
+    }
+  });
+  return edges;
 }
 
 // Cosmetic feedback follows confirmed resource changes, never local clicks.

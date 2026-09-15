@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 07: articulated movement and clear path junctions
+
+The complete `npm test` run passes **194/194 tests**. All 38 client, shared, server and movement-preview JavaScript modules pass syntax checks. New checks cover independent knee/ankle/elbow movement, walking versus running, floor clearance, frame-rate consistency, smooth transitions through tools, turns, carrying, riding and downing, clothing deformation and skeleton disposal. Existing combat, equipment, backpack, worker, multiplayer and persistence checks remain green.
+
+Road edging now waits until all 70 road surfaces and the paved squares are known. Five junction regressions cover T intersections, crossroads, overlapping and reversed parallel lanes, wider roads, squares, and actual village shop/plot entrances. [Actual-geometry overhead comparisons](previews/path-junctions.png) confirm internal curb rows are removed while exposed edges remain. The road mesh, navigation and collision layout are unchanged; clipping runs only when the world is built.
+
+Actual Three.js geometry was sampled and rendered for walking, running, workers, guards, priests and zombies. The selected 60 fps walk/run previews are in `docs/previews`; each repeats a 1.4-second sample four times. Boots articulate at the ankles, clothing follows the knees and hips, and tools/backpacks stay attached. Small clothing seam intersections can remain at extreme poses. These studio renders and automated checks do not establish interactive WebGL appearance or production multiplayer frame rate, which still require an in-game playtest. No server rules, save data or balances change in this update.
+
 ## Increasing night-survival treasury grants
 
 The survival grant now uses `1,000 × completed night number`, calculated before advancing to the next day. All **19 existing backend and economy tests pass**, and the server passes its syntax check. A separate temporary-database check exercised real night-to-day ticks for completed nights 1, 2, 3 and 10, producing 1,000, 2,000, 3,000 and 10,000 gold. It also verified participant-count independence, unchanged player wallet/bank balances, no gold reward notices, preserved balances across SQLite restarts/rejoins, and no extra payment while the empty village remains paused. Merchant restocking, exports and wages were isolated from those grant assertions. Existing saves retain their current balances and receive the new formula only at future dawns.

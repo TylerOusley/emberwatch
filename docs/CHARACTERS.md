@@ -1,5 +1,17 @@
 # Natural character redesign
 
+## Articulated locomotion
+
+The biped rig now includes a pelvis and two ankle joints. The walk cycle has separate contact, weight-acceptance, planted, toe-off and recovery poses. Knees fold during the returning step, ankles roll with the foot, elbows move with the arm swing, and hips counter the shoulders. Running blends into stronger knee lift, bent arms and forward lean as speed rises. Small turn leans use the rendered turning rate. Zombie gaits retain asymmetric dragging steps and delayed arm motion.
+
+The support sole is measured through the actual eased joints so the cosmetic body can follow the floor without changing the network position or collision capsule. Gait phase follows smoothed movement speed; stopping, riding and downing blend out the walking cycle. Tool grip offsets and gameplay action timing are preserved. Backpacks follow the torso throughout.
+
+Boots are skinned between calf and ankle, and continuous trouser surfaces bridge the knees. Cloth layers at the hips share compatible deformation so stronger steps do not pull the garments apart. Shared assets remain cached; actor-owned skeletons are disposed on role changes.
+
+Actual 60fps geometry previews: [walking](previews/movement-walk.mp4) and [running](previews/movement-run.mp4). Contact sheets: [walk](previews/movement-walk.jpg) and [run](previews/movement-run.jpg). `scripts/preview-locomotion.mjs` samples the real Three.js skinned meshes; `scripts/render-locomotion-preview.py` uses a CPU depth buffer to render them. The scripts require Node/Three.js, NumPy, Pillow, ffmpeg and a C compiler for preview creation only; the game adds no runtime dependency. Temporary geometry samples are not committed.
+
+These previews verify the sampled model poses and attachments. They do not replace an interactive WebGL playtest or a sustained multiplayer performance check.
+
 ## Visible backpack upgrades
 
 Purchased backpack tiers now appear on the dwarf’s back in both local and remote player models. Simple leather, reinforced canvas with side pouches, and expedition packs with a bedroll have different silhouettes. Tier zero adds no backpack. Straps fit around the torso; the guard receives roomier straps for the armor. The pack follows the body during movement, riding, carrying and downed poses, survives job changes, and disappears when manual respawn removes the upgrade.
