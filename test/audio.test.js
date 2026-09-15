@@ -123,3 +123,23 @@ test('split offspring share one cue, siege windups/impacts do not repeat, and sp
   assert.equal(audio.play('stone',{position:{x:0,z:10}}),true);
   const source=context.sources.at(-1),panner=source.connections[0].connections[0];assert.ok(panner.pan.value<0,'a source on camera-left is heard on the left');audio.dispose();
 });
+
+test('caves use stone footsteps, stop outdoor ambience and resume it after a fresh interval', async () => {
+  const { audio, context } = fixture();await audio.unlock();update(audio, 0);update(audio, 8);
+  const outdoor = context.sources.filter(source => source.onended);assert.ok(outdoor.length >= 2);
+  audio.update(frame(8.1, { position: { x: 0, z: -151 } }));assert.ok(outdoor.every(source => source.stopped), 'birds and wind stop when entering the cave');
+  const before = { ...audio.debug.events };
+  for (const [time, phase] of [[30, 'day'], [60, 'night']]) {
+    const f = frame(time, { position: { x: 0, z: -151 } });f.state.phase = phase;audio.update(f);
+  }
+  assert.equal(audio.debug.events.bird, before.bird);assert.equal(audio.debug.events.breeze, before.breeze);assert.equal(audio.debug.events.cricket, before.cricket);
+  assert.equal(createFootstepSurface()({ x: 0, z: -151 }), 'stone');
+  audio.setSurfaceResolver(() => 'grass');
+  audio.update(frame(60.1, { position: { x: 0, z: -152 }, speed: 4 }));
+  audio.update(frame(60.2, { position: { x: 0, z: -153 }, speed: 4 }));
+  assert.equal(audio.debug.events.stepStone, 1, 'cave floor wins over an outdoor surface resolver');
+  assert.equal(audio.play('swing'), true, 'combat cues remain available underground');
+  audio.update(frame(61, { position: { x: 0, z: -115 } }));assert.equal(audio.debug.events.bird, before.bird, 'leaving does not replay queued outdoor ambience');
+  audio.update(frame(70, { position: { x: 0, z: -115 } }));assert.equal(audio.debug.events.bird, before.bird + 1);assert.equal(audio.debug.events.breeze, before.breeze + 1);
+  audio.dispose();
+});

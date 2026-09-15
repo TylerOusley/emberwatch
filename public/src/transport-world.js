@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILDINGS } from '/shared/world.js';
+import { BUILDINGS, groundHeight } from '/shared/world.js';
 import { createHorseModel, createHorseResources } from './horse-model.js';
 import { createMerchantVisit } from './merchant-model.js';
 
@@ -63,6 +63,9 @@ export function createTransportWorld(scene) {
         mesh.position.x += (entity.x - mesh.position.x) * blend; mesh.position.z += (entity.z - mesh.position.z) * blend;
         const turn = Math.atan2(Math.sin((entity.yaw ?? 0) - mesh.rotation.y), Math.cos((entity.yaw ?? 0) - mesh.rotation.y)); mesh.rotation.y += turn * blend;
       }
+      // Sample after interpolation so ramps follow the rendered mount/cart,
+      // including the rider's predicted position, without another height lag.
+      mesh.position.y = groundHeight(mesh.position.x, mesh.position.z);
       const traveled = distance > 12 ? 0 : Math.hypot(mesh.position.x - beforeX, mesh.position.z - beforeZ);
       animate(mesh, entity, traveled, dt, Boolean(renderedRider));
     }

@@ -92,3 +92,80 @@ test('every zombie attack shows a fixed faint footprint with the actual server r
     pose(a,{...e,windupUntil:null,lastSlamAt:31},32);assert.equal(outline.visible,false);assert.equal(a.group.getObjectByName('enemy-ground-effects').visible,false);pose(a,{...e,hp:0},30.7);assert.equal(outline.visible,false,'death cancels the advertised attack');a.dispose();
   }
 });
+
+test('warning, footprint and confirmed impact dust use the target floor height on a cave ramp', async () => {
+  const { groundHeight } = await import('../shared/world.js');
+  for (const kind of ['shambler', 'siege']) {
+    const e = entity(kind, { x: 0, z: -130, windupStartedAt: 30, windupUntil: 31, windupX: 0, windupZ: -136, windupRadius: 1.5 });
+    const a = createZombiePresentation(e, 12);a.group.position.set(e.x, groundHeight(e.x, e.z), e.z);a.group.rotation.y = 1.1;pose(a, e, 30.5);
+    const outline = a.group.getObjectByName('enemy-attack-warning'), fill = a.group.getObjectByName('enemy-attack-footprint');
+    const targetHeight = groundHeight(e.windupX, e.windupZ);
+    assert.notEqual(targetHeight, a.group.position.y, 'target and attacker occupy different ramp heights');
+    assert.ok(Math.abs(outline.getWorldPosition(new THREE.Vector3()).y - targetHeight - .035) < 1e-8);
+    assert.ok(Math.abs(fill.getWorldPosition(new THREE.Vector3()).y - targetHeight - .030) < 1e-8);
+    const hit = { ...e, windupUntil: null, lastSlamAt: 31, lastSlamX: e.windupX, lastSlamZ: e.windupZ, lastSlamRadius: 1.5 };
+    pose(a, hit, 31.1);
+    const effects = a.group.getObjectByName('enemy-ground-effects'), center = effects.getWorldPosition(new THREE.Vector3());
+    assert.ok(Math.abs(center.x - e.windupX) < 1e-8 && Math.abs(center.z - e.windupZ) < 1e-8);
+    assert.ok(Math.abs(center.y - targetHeight) < 1e-8, 'impact dust rises from the target floor');
+    a.dispose();
+  }
+});
+
+test('the entire warning outline and fill conform to ramps and landing breaks without changing the hit radius', async () => {
+  const { groundHeight } = await import('../shared/world.js');
+  const radius = 3.2;
+  for (const target of [{ x: 9, z: -168 }, { x: 4, z: -198 }, { x: 9, z: -162 }, { x: 9, z: -174 }, { x: 4, z: -193 }, { x: 4, z: -207 }]) {
+    const e = entity('siege', { x: target.x, z: target.z + 1, windupStartedAt: 30, windupUntil: 31, windupX: target.x, windupZ: target.z, windupRadius: radius });
+    const actor = createZombiePresentation(e, 31);actor.group.position.set(e.x, groundHeight(e.x, e.z), e.z);actor.group.rotation.y = 1.13;pose(actor, e, 30.5);
+    const meshes = [['enemy-attack-warning', .035], ['enemy-attack-footprint', .030]];
+    for (const [name, offset] of meshes) {
+      const mesh = actor.group.getObjectByName(name), geometry = mesh.geometry, attribute = geometry.attributes.position;
+      const points = Array.from({ length: attribute.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(attribute, i).applyMatrix4(mesh.matrixWorld));
+      for (const point of points) {
+        const r = Math.hypot(point.x - target.x, point.z - target.z);
+        assert.ok(r <= radius + 1e-6, 'height correction never expands the advertised hit area');
+        if(name === 'enemy-attack-warning')assert.ok(r >= radius * .97, 'outline remains on the true circle rim');
+        assert.ok(Math.abs(point.y - groundHeight(point.x, point.z) - offset) < 2e-6, `${name} vertex stays above its own floor`);
+      }
+      // A flat fan with raised rim vertices can still cut through a landing.
+      // Sample inside every triangle as well as checking the circumference.
+      const index = geometry.index;
+      for (let i = 0; i < index.count; i += 3) {
+        const a=points[index.getX(i)],b=points[index.getX(i+1)],c=points[index.getX(i+2)];
+        for (const weights of [[1/3,1/3,1/3],[.1,.4,.5]]) {
+          const point = new THREE.Vector3().addScaledVector(a,weights[0]).addScaledVector(b,weights[1]).addScaledVector(c,weights[2]);
+          assert.ok(Math.abs(point.y - groundHeight(point.x, point.z) - offset) < 2e-6, `${name} triangle does not disappear into a ramp/landing seam`);
+        }
+      }
+    }
+    const ring = actor.group.getObjectByName('enemy-attack-warning'), terrain = ring.geometry;
+    actor.group.rotation.y = -2.24;actor.group.position.x += .17;pose(actor,e,30.7);
+    assert.equal(ring.geometry, terrain, 'changing attacker yaw/position reuses the committed terrain mesh');
+    actor.dispose();
+  }
+});
+
+test('terrain warning geometry is private, restores pooled flat meshes, and is disposed exactly once', async () => {
+  const { groundHeight } = await import('../shared/world.js');
+  const flat = entity('shambler', { windupStartedAt: 30, windupUntil: 31, windupX: 0, windupZ: 10, windupRadius: 1.45 });
+  const first = createZombiePresentation(flat, 42), second = createZombiePresentation(flat, 43);
+  pose(first,flat,30.2);pose(second,flat,30.2);
+  const firstRing=first.group.getObjectByName('enemy-attack-warning'),secondRing=second.group.getObjectByName('enemy-attack-warning');
+  const firstFill=first.group.getObjectByName('enemy-attack-footprint'),secondFill=second.group.getObjectByName('enemy-attack-footprint');
+  const pooledRing=firstRing.geometry,pooledFill=firstFill.geometry,flatRing=Array.from(pooledRing.attributes.position.array),flatFill=Array.from(pooledFill.attributes.position.array);
+  assert.equal(secondRing.geometry,pooledRing);assert.equal(secondFill.geometry,pooledFill);
+  const rampA={...flat,windupX:9,windupZ:-168,windupRadius:3.2},rampB={...flat,windupX:4,windupZ:-198,windupRadius:2};
+  first.group.position.set(9,groundHeight(9,-168),-168);pose(first,rampA,30.4);
+  const ringA=firstRing.geometry,fillA=firstFill.geometry;assert.notEqual(ringA,pooledRing);assert.notEqual(fillA,pooledFill);
+  second.group.position.set(4,groundHeight(4,-198),-198);pose(second,rampB,30.4);
+  assert.notEqual(secondRing.geometry,ringA);assert.notEqual(secondFill.geometry,fillA);
+  assert.deepEqual(Array.from(pooledRing.attributes.position.array),flatRing);assert.deepEqual(Array.from(pooledFill.attributes.position.array),flatFill);
+  assert.equal(first.group.getObjectByName('disturbed-grave').geometry,pooledFill,'grave emergence retains its unmodified shared patch');
+  let ringDisposals=0,fillDisposals=0;ringA.addEventListener('dispose',()=>ringDisposals++);fillA.addEventListener('dispose',()=>fillDisposals++);
+  first.group.position.set(0,0,10);pose(first,flat,30.6);assert.equal(firstRing.geometry,pooledRing);assert.equal(firstFill.geometry,pooledFill);
+  assert.equal(ringDisposals,1);assert.equal(fillDisposals,1);
+  first.dispose();assert.equal(ringDisposals,1);assert.equal(fillDisposals,1);
+  const otherRing=secondRing.geometry;let otherDisposals=0;otherRing.addEventListener('dispose',()=>otherDisposals++);
+  second.dispose();second.dispose();assert.equal(otherDisposals,1);
+});

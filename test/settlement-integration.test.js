@@ -74,14 +74,15 @@ test('real loans, plot construction, stocked multiplayer crafting and tier yield
   assert.equal(owner.wallet, 28, 'shop earnings repay six gold of debt before reaching the owner wallet');
   assert.equal(app.store.account(owner.id).debt, 194);
   const ore = RESOURCES.find(node => node.type === 'iron'); visitor.x = ore.x; visitor.z = ore.z; visitor.tool = 'pickaxe';
+  const actualMineral=v.resources.find(node=>node.id===ore.id).type, initialMineral=visitor.inventory[actualMineral];
   act(app, v, visitor, { kind: 'gather', targetId: ore.id });
-  assert.equal(visitor.inventory.iron, 2); assert.equal(visitor.durability.pickaxe, 149);
+  assert.equal(visitor.inventory[actualMineral], initialMineral+2); assert.equal(visitor.durability.pickaxe, 149);
   const villageId = v.id, ownerId = owner.id, visitorId = visitor.id;
   app.simulation.saveAll(); await f.reload();
   const recovered = f.app.simulation.villages.get(villageId);
   assert.equal(recovered.plots[0].ownerId, ownerId); assert.equal(recovered.plots[0].building, 'tool_shop');
   assert.equal(recovered.plots[0].storage.stone, 0); assert.equal(recovered.players[visitorId].tiers.pickaxe, 'stone');
-  assert.equal(recovered.players[visitorId].inventory.iron, 2); assert.equal(recovered.players[visitorId].durability.pickaxe, 149);
+  assert.equal(recovered.players[visitorId].inventory[actualMineral], initialMineral+2); assert.equal(recovered.players[visitorId].durability.pickaxe, 149);
   assert.equal(f.app.store.account(ownerId).credit, 110); assert.equal(f.app.store.account(ownerId).debt, 194);
   assert.equal(recovered.players[visitorId].online, false);
   const before = recovered.clock; f.app.simulation.tick(180); assert.equal(recovered.clock, before, 'saved settlement pauses without online residents');

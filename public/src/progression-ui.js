@@ -1,5 +1,5 @@
 import { MILESTONES, GUIDE_STEPS, COSMETIC_PALETTES, COSMETIC_CRESTS, normalizeProgression, unlockedCosmetics } from '../../shared/progression.js';
-import { BUILDINGS, PLOTS, RESOURCES } from '../../shared/world.js';
+import { BUILDINGS, PLOTS, RESOURCES, CAVE_ENTRANCE, caveAreaAt, resolveResource } from '../../shared/world.js';
 import { BUILDING_TYPES } from '../../shared/content.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot } from '../../shared/access.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,8 +17,9 @@ export function createProgressionUI({getState,getMe,getActivePanel,openPanel,sen
     if(id==='gate')return {x:0,z:12,label:'Village gate'};
     if(id==='gather') {
       const p=getMe(),tool=p?.tool,resource=tool==='axe'?'timber':tool==='scythe'?'wheat':'stone';
-      const available=new Map((getState()?.resources??[]).map(n=>[n.id,n.available]));
-      const node=RESOURCES.filter(n=>n.type===resource&&available.get(n.id)!==false).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];
+      if(resource==='stone'&&!caveAreaAt(p.x,p.z))return {...CAVE_ENTRANCE,label:'Mountain mine entrance'};
+      const available=new Map((getState()?.resources??[]).map(n=>[n.id,n]));
+      const node=RESOURCES.map(n=>resolveResource(n,available.get(n.id))).filter(n=>n.type===resource&&available.get(n.id)?.available!==false).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];
       return node?{x:node.x,z:node.z,label:`Gather ${resource}`}:null;
     }
     const b=BUILDINGS.find(b=>b.id===id);return b?{...buildingEntrance(b),label:b.name}:null;

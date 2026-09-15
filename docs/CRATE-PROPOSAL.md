@@ -2,20 +2,42 @@
 
 Design draft for Tyler's review. **None of this document's crates, armor statistics, starting kits, new milestones or helmet are implemented in Build 11.** The approved Build 11 changes concern gate/well artwork and physical noticeboard access only.
 
-## Requested prices, milestones and duplicate refunds
+## Requested prices, milestones and accepted duplicate-credit rule
 
-Crates would be purchased in the menu using the player's personal bank savings. Wallet funds, village treasury funds and restricted loan credit would not be charged. A crate costs the listed amount once, with no separate key purchase.
+Crates would be purchased in the menu using either the player's personal bank savings or shared crate credits. Wallet funds, village treasury funds and restricted loan credit would not be charged. A crate costs the listed amount once, with no separate key purchase. Each purchase uses one currency; mixed bank-gold/credit payments are outside the initial proposal.
 
-| Crate | Bank price | Earned at survived-night milestones | Duplicate refund at 70% of listed price |
-| --- | ---: | --- | ---: |
-| Basic | 1,000 | 10, 20, 30 | 700 |
-| Rare | 10,000 | 40, 50, 60 | 7,000 |
-| Epic | 50,000 | 70, 80, 90 | 35,000 |
-| Legendary | 100,000 | 100, 110, 120, and every ten afterward | 70,000 |
+| Crate | Requested bank price | Proposed credit price | Earned at survived-night milestones | Bank-funded duplicate refund at these prices | Earned or credit-funded duplicate rebate |
+| --- | ---: | ---: | --- | ---: | ---: |
+| Basic | 1,000 gold | 100 credits | 10, 20, 30 | 700 gold | 70 credits |
+| Rare | 10,000 gold | 1,000 credits | 40, 50, 60 | 7,000 gold | 700 credits |
+| Epic | 50,000 gold | 5,000 credits | 70, 80, 90 | 35,000 gold | 3,500 credits |
+| Legendary | 100,000 gold | 10,000 credits | 100, 110, 120, and every ten afterward | 70,000 gold | 7,000 credits |
 
-Each opening awards one item. A duplicate means that exact item is already permanently unlocked on the account, even if it is unequipped or the character lost its physical copy. The original unlock remains and the duplicate automatically converts to the displayed refund. Refunds would go back to the bank. Prices here are the requested starting values, still subject to playtesting against the game's actual earning rates.
+Each opening awards one item. A duplicate means that exact item is already permanently unlocked on the account, even if it is unequipped or the character lost its physical copy. The original unlock remains and the duplicate automatically converts to the displayed refund or rebate. A new unlock receives the item without a duplicate rebate. Bank prices are the requested starting values; credit prices and the corresponding rebate amounts above are proposed values for review and playtesting.
 
-One significant economy decision remains: applying the same refund to a free milestone crate creates new bank gold. Once a player owns the whole legendary pool, every ten qualifying nights guarantees another 70,000 bank gold. One alternative to consider is paying duplicates from free crates in crate credit usable only on future crates; purchased crates could keep the 70% bank refund. This alternative is a recommendation, not a change to the requested rule.
+**Accepted direction:** duplicates from crates that were not purchased with bank gold award one shared, permanent account balance of crate credits. Players can use that balance on any crate tier or save it for a more expensive tier. Credits are not separate balances for Basic, Rare, Epic or Legendary crates.
+
+The funding source determines the return:
+
+- **Bank-funded crate:** a duplicate returns 70% of the actual bank-gold purchase price to the personal bank. If discounted prices are introduced later, the refund must use the amount actually paid, not an undiscounted catalog price.
+- **Earned milestone crate:** a duplicate awards 70% of that tier's credit price as crate credits, using the proposed values above. It creates no bank gold.
+- **Credit-funded crate:** a duplicate returns 70% of the credits spent as crate credits. It never converts those credits into bank gold, regardless of how the original item was unlocked.
+
+Examples using the proposed prices:
+
+- A duplicate earned Legendary crate gives **7,000 shared credits**. That buys seven Rare crates, one Epic crate with 2,000 credits left, or seventy Basic crates. The player can instead save it and collect 3,000 more credits for a Legendary crate.
+- A duplicate earned Basic crate gives **70 credits**. The player can save another 30 for a Basic crate or continue saving toward any higher tier.
+- A Rare crate purchased for 1,000 credits that yields a duplicate returns 700 credits. The opening therefore consumes 300 credits overall; repeated duplicates cannot grow the balance.
+
+Credits remain account-bound between villages. They cannot be withdrawn, sold, traded, transferred to another player, donated to the treasury, or used to repay loans. They purchase crates only. A credit-funded crate remains credit-funded permanently; reopening its result must never treat it as a gold purchase.
+
+### Economy and repeat-claim safeguards
+
+This accepted rule prevents free or credit-funded Legendary duplicates from becoming recurring 70,000-gold deposits. Shared credits still let players exchange a high-tier duplicate for several lower-tier openings, which is intended collection progress. With a four-item pool, completed tiers will generate duplicates frequently, so the opening screen must clearly display the pool, ownership and applicable return.
+
+Persist each crate's owner, tier, original funding source, actual price paid, unique grant/purchase identifier and final result. Deducting the price, recording the result, unlocking an item and issuing any duplicate return must commit together. Refund currency follows that stored funding source, not a client field or the source of an earlier copy of the item. Do not add a general credit-to-gold exchange or allow rewards from credit purchases to be sold for bank gold through another menu.
+
+Milestone grants need their own permanent unique claims. The lifetime-versus-single-village milestone choice below remains unresolved; whichever is selected, reconnecting, repeated dawn handling, loading an older village snapshot or retrying an opening must not grant that same earned crate again. The helmet and starting-kit rules elsewhere in this draft remain proposals, not approved runtime changes.
 
 ## Suggested first item pool
 
@@ -68,11 +90,11 @@ This preserves the existing reason to rescue a fallen dwarf and leaves the norma
 
 Use a horizontal reel of item cards moving beneath a fixed central pointer. A short anticipation, quick spin and gradual slowdown lasting roughly four seconds leads to the final item, followed by its full model, effect and unlock/duplicate result. Offer Skip and reduced motion; both reveal the same already-selected outcome.
 
-The server should select and save the result once before the animation begins. Reopening the menu, losing connection, double-clicking or skipping must show that same result rather than roll again. Show the item pool, odds, price and duplicate return before buying. Purchase/opening/award/refund should be one persistent transaction. Decorative passing cards must not imply odds or a special near-miss chance that does not exist.
+The server should select and save the result once before the animation begins. Reopening the menu, losing connection, double-clicking or skipping must show that same result rather than roll again. Show the item pool, odds, selected payment currency, price and source-appropriate duplicate return before buying. Purchase/opening/award/refund should be one persistent transaction. Decorative passing cards must not imply odds or a special near-miss chance that does not exist.
 
 ## Decisions to settle before implementation
 
 1. Personal lifetime survived nights, or reaching these numbered nights within one village?
-2. Keep the 70% bank refund for free earned crates too, or use crate credit for those duplicates?
+2. Approve or adjust the proposed credit prices: 100 / 1,000 / 5,000 / 10,000. Shared credits from earned and credit-funded duplicates are already the accepted direction.
 3. Approve or change the proposed equipment slots, 25% armor cap, item pool and death behavior.
 4. Keep the helmet's Last Stand ability, choose another function, or make it visual only.

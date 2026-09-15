@@ -63,3 +63,16 @@ test('rally markers filter ownership, reuse geometry, move with snapshots, and d
   rallies.update(null, 'alice'); assert.equal(rallies.group.children.length, 0); assert.equal(materialDisposals, 1); assert.equal(geometryDisposals, 0);
   rallies.dispose(); rallies.dispose(); assert.equal(geometryDisposals, 3); assert.equal(scene.children.length, 0);
 });
+
+test('owned rally markers stay on the floor through cave ramps and chambers', async () => {
+  const { groundHeight } = await import('../shared/world.js');
+  const scene = new THREE.Scene(), rallies = createGuardRallies(scene), row = { plotId: 'west-1', ownerId: 'alice', mode: 'hold', effectiveMode: 'hold' };
+  for (const rally of [{ x: 0, z: -130 }, { x: 0, z: -151 }, { x: 9, z: -167 }, { x: 16, z: -182 }, { x: 4, z: -200 }, { x: 0, z: -217 }, { x: 0, z: 12 }]) {
+    rallies.update({ guardOrders: [{ ...row, rally }] }, 'alice');
+    const marker = rallies.group.children[0];marker.updateWorldMatrix(true, true);
+    assert.equal(marker.position.y, groundHeight(rally.x, rally.z));
+    const ring = marker.children.find(child => child.geometry?.type === 'RingGeometry');
+    assert.ok(Math.abs(ring.getWorldPosition(new THREE.Vector3()).y - groundHeight(rally.x, rally.z) - .032) < 1e-8);
+  }
+  rallies.dispose();
+});

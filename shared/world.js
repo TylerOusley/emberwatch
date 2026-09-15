@@ -1,4 +1,6 @@
 // The same geometry, resource locations and collision bounds are used by client and server.
+import { CAVE_SOLIDS, caveSlot } from './caves.js';
+export { CAVE_AREAS, CAVE_HEIGHTS, CAVE_ROUTE, CAVE_ENTRANCE, CAVE_SOLIDS, caveAreaAt, caveTierAt, caveDepthAt, groundHeight, caveSlot, caveResourceType, caveTravelWaypoint } from './caves.js';
 export const CONFIG = Object.freeze({ daySeconds:480, nightSeconds:240, maxResidents:8, speed:5.4, sprintSpeed:8, playerRadius:.48, gateMax:1200, keepMax:2000, repairCap:10 });
 export const ROAD = [{x:20,z:103},{x:12,z:84},{x:0,z:65},{x:0,z:38},{x:0,z:18},{x:0,z:-35}];
 export const GUARD_ROAD = [{x:-15.5,z:-3},{x:-12,z:3},{x:0,z:3},{x:0,z:15},{x:0,z:25},{x:0,z:38}];
@@ -16,10 +18,10 @@ export const BUILDINGS = [
 ];
 const buildingFacing={keep:0,barracks:Math.PI/2,tools:Math.PI/2,food:-Math.PI/2,bank:Math.PI/2,church:-Math.PI/2,house1:-Math.PI/2,house2:Math.PI/2,stable:-Math.PI/2,merchant:Math.PI/2};
 for(const building of BUILDINGS)building.yaw=buildingFacing[building.id]??0;
-export const WORLD_BOUNDS = Object.freeze({minX:-112,maxX:112,minZ:-145,maxZ:128});
+export const WORLD_BOUNDS = Object.freeze({minX:-112,maxX:112,minZ:-234,maxZ:128});
 export const WALLS = [
  {x:-47.5,z:18,w:79,d:2}, {x:47.5,z:18,w:79,d:2},
- {x:-87,z:-57,w:2,d:152}, {x:87,z:-57,w:2,d:152}, {x:0,z:-132,w:176,d:2}
+ {x:-87,z:-57,w:2,d:152}, {x:87,z:-57,w:2,d:152}, {x:-47,z:-132,w:82,d:2}, {x:47,z:-132,w:82,d:2}
 ];
 // Forty home plots fit a full eight-dwarf village at five deeds per resident.
 // Each frontage opens onto a continuous neighborhood lane; exterior deeds are
@@ -59,7 +61,7 @@ export function plotAccessRoute(plot){
  const side=plot.x<0?-1:1,lane=side*(Math.abs(plot.x)>60?61:39);
  return [front,{x:lane,z:plot.z},{x:lane,z:14},{x:0,z:14},{x:0,z:25},{x:0,z:35}];
 }
-export const SOLIDS = [...BUILDINGS.map(b=>({x:b.x,z:b.z,w:b.w,d:b.d})),...WALLS,{x:8,z:-4,w:3.1,d:3.1},
+export const SOLIDS = [...BUILDINGS.map(b=>({x:b.x,z:b.z,w:b.w,d:b.d})),...WALLS,...CAVE_SOLIDS,{x:8,z:-4,w:3.1,d:3.1},
  {x:-8,z:18,w:4.5,d:5}, {x:8,z:18,w:4.5,d:5}];
 export function seeded(seed=42){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 const random=seeded(3248);
@@ -89,6 +91,24 @@ for(const resource of RESOURCES){
  const sign=resource.x<0?-1:1;
  resource.x=sign*(96+(Number(resource.id.split('-').at(-1))%5)*2);
  resource.z=24+(Number(resource.id.split('-').at(-1))%16)*5;
+}
+// Reposition minerals after original deterministic generation: every resource
+// identity/type/appearance seed and all non-mineral positions remain intact.
+let caveIndex=0;
+for(const resource of RESOURCES)if(['stone','iron','coal'].includes(resource.type))Object.assign(resource,caveSlot(caveIndex++));
+export function resolveResource(resource,state){
+ return resource?.caveTier?{...resource,type:state?.type??resource.type,roll:state?.roll??0}:resource;
+}
+export function clearResourceSegment(from,to,extraSolids=[]){
+ for(const s of [...SOLIDS,...extraSolids]){
+  let low=0,high=1;
+  for(const [start,delta,center,half] of [[from.x,to.x-from.x,s.x,s.w/2],[from.z,to.z-from.z,s.z,s.d/2]]){
+   if(Math.abs(delta)<1e-9){if(Math.abs(start-center)>half){low=1;high=0;break;}}
+   else{const a=(center-half-start)/delta,b=(center+half-start)/delta;low=Math.max(low,Math.min(a,b));high=Math.min(high,Math.max(a,b));}
+  }
+  if(low<=high&&high>1e-7&&low<1-1e-7)return false;
+ }
+ return true;
 }
 export const TOOLS = [
  {id:'sword',name:'Wooden sword',key:'1',tier:1,durability:100},

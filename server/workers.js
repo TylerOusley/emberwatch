@@ -1,6 +1,6 @@
 import { canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
-import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids } from '../shared/world.js';
+import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
 import { RESOURCE_WEIGHTS, STORAGE_CAPACITY, inventoryWeight, carryCapacity } from '../shared/content.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
@@ -146,7 +146,7 @@ function approach(node, from, extraSolids) {
 function availableNodes(v, w) {
   if (w.sourcePlotId !== null) return sourcePlot(v, w) ? (v.plotResources ?? []).filter(node => node.plotId === w.sourcePlotId && node.type === w.resource && node.available && node.remaining > 0).map(node => ({ node, state: node })) : [];
   return (v.resources ?? []).flatMap(state => {
-    const node = publicNodes.get(state.id);
+    const node = resolveResource(publicNodes.get(state.id), state);
     // Sidewall woodland needs a much longer route around the wall's southern
     // end than the bounded navigation search supports. Hired hands use the
     // interior and the accessible fields/woodland beyond the shared gate.

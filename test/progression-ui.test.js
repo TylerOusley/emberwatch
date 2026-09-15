@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProgressionUI,guideView } from '../public/src/progression-ui.js';
-import { BUILDINGS,PLOTS } from '../shared/world.js';
+import { BUILDINGS,PLOTS,RESOURCES,CAVE_ENTRANCE } from '../shared/world.js';
 import { buildingEntrance,plotEntrance } from '../shared/access.js';
 import { freshProgression } from '../shared/progression.js';
 function fixture(t) {
@@ -36,4 +36,12 @@ test('appearance controls retain drafts while snapshots arrive and require prope
   const next=f.opens;f.state.cosmetics.players.bob={palette:'forest',crest:'oak'};f.ui.refresh();assert.equal(f.opens,next,'another player’s appearance does not reset this menu');
   Object.assign(f.player,plotEntrance(PLOTS[0],f.plot));f.ui.refresh();const button=f.content.querySelectorAll('[data-decorate]')[0];assert.equal(button.disabled,false);f.field('plot-color-'+f.plot.id).value='ember';button.onclick();assert.deepEqual(f.sent.at(-1),{type:'action',kind:'cosmetic_plot',plotId:f.plot.id,palette:'ember'});
   Object.assign(f.player,buildingEntrance(BUILDINGS.find(b=>b.id==='keep')));f.ui.refresh();assert.equal(f.field('banner-save').disabled,false);f.field('banner-palette').value='azure';f.field('banner-crest').value='shield';f.click('banner-save');assert.deepEqual(f.sent.at(-1),{type:'action',kind:'cosmetic_banner',palette:'azure',crest:'shield'});
+});
+
+test('mining guide leads beginners to the cave mouth and follows actual ore rolls underground',t=>{
+  const f=fixture(t);f.state.progression.guide.done=['tool'];f.ui.refresh();f.guide.querySelector('.guide-mark').onclick();
+  assert.deepEqual(f.waypoints.at(-1),{...CAVE_ENTRANCE,label:'Mountain mine entrance'});
+  const node=RESOURCES.find(n=>n.caveTier==='middle'&&n.type!=='stone');
+  Object.assign(f.player,{x:node.x+1,z:node.z});f.state.resources=RESOURCES.map(n=>({id:n.id,type:n.id===node.id?'stone':n.type,available:n.id===node.id}));
+  f.guide.querySelector('.guide-mark').onclick();assert.deepEqual(f.waypoints.at(-1),{x:node.x,z:node.z,label:'Gather stone'});
 });

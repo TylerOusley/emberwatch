@@ -109,3 +109,27 @@ test('mounted horses use the rider rendered transform while dismounted and stabl
   assert.equal(disposed, 1, 'removing an entity frees its independent skeleton');
   world.dispose();
 });
+
+test('ridden horses and interpolated carts follow the cave floor at their rendered positions', async () => {
+  const urls = { three: '../node_modules/three/build/three.module.js', '/shared/world.js': '../shared/world.js', './horse-model.js': '../public/src/horse-model.js', './merchant-model.js': '../public/src/merchant-model.js' };
+  let source = readFileSync(new URL('../public/src/transport-world.js', import.meta.url), 'utf8');
+  for (const [specifier, path] of Object.entries(urls)) source = source.replace(`'${specifier}'`, JSON.stringify(new URL(path, import.meta.url).href));
+  const { createTransportWorld } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+  const { groundHeight } = await import('../shared/world.js');
+  const scene = new THREE.Scene(), world = createTransportWorld(scene);
+  const state = { horses: [{ id: 'ramp-horse', riderId: 'rider', x: 0, z: -118, yaw: 0 }], carts: [{ id: 'ramp-cart', x: 0, z: -123, yaw: 0, weight: 1 }] };
+  const riders = new Map([['rider', { x: 0, z: -130, yaw: 0 }]]);world.update(state, 1 / 60, riders);
+  const horse = world.root.getObjectByName('horse-ramp-horse'), cart = world.root.getObjectByName('cart-ramp-cart');
+  assert.equal(horse.position.y, -1.5, 'a mounted horse uses the predicted rider location on the ramp');
+  for (const position of [{ x: 0, z: -135 }, { x: 0, z: -151 }, { x: 9, z: -168 }, { x: 16, z: -182 }, { x: 4, z: -200 }, { x: 0, z: -217 }]) {
+    riders.set('rider', position);world.update(state, 1 / 60, riders);
+    assert.equal(horse.position.x, position.x);assert.equal(horse.position.z, position.z);
+    assert.equal(horse.position.y, groundHeight(position.x, position.z), 'saddle and rider cannot separate on a slope');
+  }
+  state.carts[0].z = -131;world.update(state, 1 / 60, riders);
+  assert.ok(cart.position.z < -123 && cart.position.z > -131, 'cart retains its existing movement smoothing');
+  assert.equal(cart.position.y, groundHeight(cart.position.x, cart.position.z));
+  assert.notEqual(cart.position.y, groundHeight(state.carts[0].x, state.carts[0].z), 'height follows the rendered cart, not a later server endpoint');
+  riders.set('rider', { x: 0, z: -115 });world.update(state, 1 / 60, riders);assert.equal(horse.position.y, 0);
+  world.dispose();
+});
