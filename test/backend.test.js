@@ -50,7 +50,7 @@ test('HTTP authentication, real WebSocket multiplayer synchronization, and stale
   const village = app.simulation.villages.get(summary.id), p = village.players[alice.playerId];
   // This synchronization scenario represents a dwarf who has obtained an axe.
   // New-arrival equipment and purchasing are covered by the starter tests.
-  p.durability.axe = 100;
+  p.durability.axe = 100; p.backpackTier = 3;
   const oldX = p.x;
   a.ws.send(JSON.stringify({ type: 'input', x: 1, z: 0, yaw: Math.PI / 2, sprint: false, tool: 'axe' }));
   await waitFor(() => app.simulation.inputs.get(p.id));
@@ -58,6 +58,8 @@ test('HTTP authentication, real WebSocket multiplayer synchronization, and stale
   const synced = await waitFor(() => b.queue.find(m => m.type === 'state' && m.state.players.find(q => q.id === p.id)?.x > oldX));
   assert.equal(synced.state.players.length, 2);
   assert.equal(synced.state.players.find(q => q.id === p.id).tool, 'axe');
+  assert.equal(synced.state.players.find(q => q.id === p.id).backpackTier, 3, 'worn backpack tier replicates to another player');
+  assert.equal(synced.state.players.find(q => q.id === p.id).inventory, undefined, 'visible equipment does not expose private inventory');
   assert.equal(synced.state.players.find(q => q.id === p.id).wallet, undefined, 'other players never receive private wallet or bank values');
   assert.ok(p.x - oldX <= 5.4 * .1 + .001);
   const beforeTurn = { x: p.x, z: p.z };
@@ -69,6 +71,23 @@ test('HTTP authentication, real WebSocket multiplayer synchronization, and stale
   app.simulation.inputs.get(p.id).received = -100000;
   const stoppedX = p.x; app.simulation.tick(.1); assert.equal(p.x, stoppedX, 'disconnected/stalled input never makes a dwarf walk forever');
   assert.throws(() => app.simulation.input(village.id, p.id, { x: Infinity, z: 0, yaw: 0 }), /Invalid movement/);
+  // Worker contracts travel over the same authenticated socket as player actions.
+  Object.assign(p, { x: -18, z: -17.5, wallet: 300 });
+  village.clock += 1;
+  a.ws.send(JSON.stringify({ type: 'action', kind: 'worker_hire', ownerId: bob.playerId, price: 0 }));
+  await waitFor(() => village.workers.length === 1);
+  const worker = village.workers[0];
+  assert.equal(worker.ownerId, p.id, 'the socket identity owns and pays for the contract');
+  assert.equal(p.wallet, 225);
+  app.broadcast();
+  const ownedCrew = await waitFor(() => a.queue.find(m => m.type === 'state' && m.state.workers?.some(w => w.id === worker.id)));
+  const remoteCrew = await waitFor(() => b.queue.find(m => m.type === 'state' && m.state.workers?.some(w => w.id === worker.id)));
+  assert.deepEqual(ownedCrew.state.workers[0].cargo, worker.cargo);
+  assert.equal(remoteCrew.state.workers[0].cargo, undefined, 'worker cargo is private to the employer');
+  assert.equal(remoteCrew.state.workers[0].resource, undefined, 'orders are private to the employer');
+  assert.equal(remoteCrew.state.workers[0].backpackTier, 1, 'other residents see the worker and their worn equipment');
+  b.ws.send(JSON.stringify({ type: 'action', kind: 'worker_pause', workerId: worker.id, paused: false }));
+  await waitFor(() => b.queue.find(m => m.type === 'error' && /own|yours|another|belong/i.test(m.message)));
   const list = await (await fetch(base + '/api/villages')).json();
   assert.equal(list.villages[0].online, 2);
   a.ws.close(); b.ws.close();

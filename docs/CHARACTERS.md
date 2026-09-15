@@ -1,5 +1,15 @@
 # Natural character redesign
 
+## Visible backpack upgrades
+
+Purchased backpack tiers now appear on the dwarf’s back in both local and remote player models. Simple leather, reinforced canvas with side pouches, and expedition packs with a bedroll have different silhouettes. Tier zero adds no backpack. Straps fit around the torso; the guard receives roomier straps for the armor. The pack follows the body during movement, riding, carrying and downed poses, survives job changes, and disappears when manual respawn removes the upgrade.
+
+The model uses cached, curved sewn panels and batches details into four, five or six extra meshes by tier. Changing an actor’s tier or disposing another character does not destroy shared equipment geometry. `scripts/preview-backpacks.mjs` exports the actual game meshes for the existing CPU renderer.
+
+![Actual backpack tiers](previews/backpacks.png)
+
+This image is an offline render of game geometry. Browser lighting and motion still require a live playtest.
+
 ## Follow-up: sideways tool grips
 
 The sword correction did not update the gathering tools' legacy attachment. Axe, pickaxe, hammer, scythe and staff handles now pass through the sculpted finger opening. A bent elbow carries them upright with their working heads facing forward. The bow is held at its actual handle, and its arrow runs along the bow's firing plane. Sword poses retain their established grip.

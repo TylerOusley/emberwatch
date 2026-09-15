@@ -4,6 +4,7 @@ import { ensureOwnership, ownershipAction, ownershipTick, ownershipSnapshot } fr
 import { ensureEconomy, economyAction, economyDawn, economySnapshot } from './economy.js';
 import { ensureCare, careAction, careTick, careNight, careSnapshot, guardPathFor, tickDefenseAttack, cancelCarry, cancelTreatment } from './care-defense.js';
 import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer, chargePurchase } from './transport.js';
+import { ensureWorkers, workersAction, workersTick, workersSnapshot } from './workers.js';
 import { TRANSPORT } from '../shared/transport.js';
 import { stepNpcNavigation } from './navigation.js';
 import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight } from '../shared/content.js';
@@ -41,7 +42,7 @@ function ensureVillage(village) {
   if ((village.schemaVersion ?? 0) < 4 && village.phase === 'night') {
     for (const guard of village.guards ?? []) if (!guard.plotId && !guard.hungry && guard.hp > 0) guard.fedNight ??= village.day;
   }
-  ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village);
+  ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village); ensureWorkers(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
     player.inventory = { ...emptyInventory(), ...player.inventory };
@@ -81,7 +82,7 @@ export class Simulation {
     this.notices = [];
   }
   list() {
-    return [...this.villages.values()].map(v => ({ id: v.id, name: v.name, day: v.day, online: Object.values(v.players).filter(p => p.online).length, residents: Object.keys(v.players).length, maxResidents: 8, status: v.status }));
+    return [...this.villages.values()].filter(v => v.status === 'active').map(v => ({ id: v.id, name: v.name, day: v.day, online: Object.values(v.players).filter(p => p.online).length, residents: Object.keys(v.players).length, maxResidents: 8, status: v.status }));
   }
   create(name, account) {
     if (typeof name !== 'string' || name.trim().length < 3 || name.trim().length > 32) throw new Error('Village names must be 3–32 characters.');
@@ -134,10 +135,10 @@ export class Simulation {
   }
   snapshot(village, viewerId) {
     return { id: village.id, name: village.name, clock: village.clock, day: village.day, phase: village.phase, phaseRemaining: Math.ceil(village.phaseRemaining), gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
-      ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store),
+      ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
-        tiers: p.tiers, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
-        ...(p.id === viewerId ? { inventory: p.inventory, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), backpackTier: p.backpackTier, carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
+        tiers: p.tiers, backpackTier: p.backpackTier, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
+        ...(p.id === viewerId ? { inventory: p.inventory, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
       zombies: village.zombies.filter(z => z.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim }) => ({ id, x, z, yaw, hp, maxHp, anim })),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
       resources: village.resources.map(({ id, available, remaining }) => ({ id, available, remaining })) };
@@ -162,7 +163,7 @@ export class Simulation {
     if (player.carryingId && ['attack', 'gather', 'repair', 'repairPlot', 'heal', 'mountHorse'].includes(kind)) throw new Error('Put your companion down before using tools or weapons.');
     if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
     if (kind !== 'heal') player.healing = null;
-    for (const handler of [ownershipAction, economyAction, careAction, transportAction]) {
+    for (const handler of [ownershipAction, economyAction, careAction, transportAction, workersAction]) {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
@@ -274,7 +275,7 @@ export class Simulation {
   }
   relocateBlocked(village) {
     const solids = plotSolids(village.plots);
-    for (const entity of [...Object.values(village.players), ...village.guards, ...village.zombies, ...village.horses, ...village.carts]) {
+    for (const entity of [...Object.values(village.players), ...village.guards, ...village.zombies, ...village.horses, ...village.carts, ...village.workers]) {
       if (entity.bedPlotId || entity.carriedBy || canStand(entity.x, entity.z, .5, solids)) continue;
       let found = false;
       for (let radius = 1; radius <= 20 && !found; radius++) for (let i = 0; i < 24; i++) {
@@ -397,6 +398,7 @@ export class Simulation {
         const node = village.resources[i];
         if (!node.available && village.clock >= node.regrowAt) Object.assign(node, makeResource(RESOURCES[i]));
       }
+      workersTick(this, village, dt);
       if (village.phase === 'night' && village.spawned < village.waveCount && village.clock >= village.nextSpawn) {
         const band = Math.floor((village.day - 1) / 5), elite = band > 0 && village.spawned % 5 === 0;
         village.zombies.push({ id: randomUUID(), x: ROAD[0].x + (village.spawned % 3 - 1) * 1.3, z: ROAD[0].z + (village.spawned % 2) * 1.5, yaw: Math.PI, hp: elite ? 120 + band * 20 : 65 + band * 14, maxHp: elite ? 120 + band * 20 : 65 + band * 14, anim: 'walk', roadIndex: 1, cooldown: 0, elite, speed: 1.75 + Math.min(band * .08, .65) });
