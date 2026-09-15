@@ -50,8 +50,9 @@ test('striking keeps the sword in the same skinned hand grip, and stowing restor
   assert.equal(sword.visible,false);
   assert.ok(Math.abs(hand.rotation.y)<.005,'riding does not leave the sword wrist twist');
   settle(actor,{tool:'axe'});
-  assert.ok(Math.abs(hand.rotation.y)<.001,'switching tools restores the existing gathering hand pose');
+  assert.ok(Math.abs(hand.rotation.y+Math.PI/2)<.001,'gathering tools now use the same correct finger grip');
   settle(actor,{tool:''});
+  assert.ok(Math.abs(hand.rotation.y)<.001,'empty hands release the equipment twist');
   assert.equal(actor.group.getObjectByName('held-sword'),undefined);
   actor.dispose();
 });

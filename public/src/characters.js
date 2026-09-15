@@ -14,27 +14,29 @@ const smooth = t => t * t * (3 - 2 * t);
 // Additive shoulder, elbow, wrist, torso, and support-arm poses. Each action
 // eases from the current gait through anticipation, contact, and recovery.
 // Wrist rotation lets the working end of a tool travel forward at contact.
+const WORK_TOOLS = new Set(['axe','pickaxe','hammer','scythe']);
+const UPRIGHT_TOOLS = new Set([...WORK_TOOLS,'bow','staff','heal']);
 const REST_ACTION = new Array(12).fill(0);
 const ACTION_POSES = {
   axe: [
-    [-1.85,-.15,-.20,-.45,-.15,0,-.12,-.035,-.22,-.035,-.38,-.24],
-    [-.78,.14,-.06,-.05,1.30,0,.12,.10,.23,.025,-.56,-.16],
-    [-.42,.18,.05,.04,.85,0,.16,.07,.16,.015,-.28,-.08],
+    [-1.85,-.15,-.20,1.15,-.15,0,-.12,-.035,-.22,-.035,-.38,-.24],
+    [-.78,.14,-.06,.60,1.30,0,.12,.10,.23,.025,-.56,-.16],
+    [-.42,.18,.05,.60,.85,0,.16,.07,.16,.015,-.28,-.08],
   ],
   pickaxe: [
-    [-2.0,-.05,-.12,-.42,-.10,0,-.08,-.055,-.10,0,-.68,-.36],
-    [-.82,.04,-.03,-.04,1.38,0,.05,.16,.10,0,-.72,-.20],
-    [-.42,.06,.01,.04,.86,0,.08,.10,.08,0,-.35,-.12],
+    [-2.0,-.05,-.12,1.35,-.10,0,-.08,-.055,-.10,0,-.68,-.36],
+    [-.82,.04,-.03,.85,1.38,0,.05,.16,.10,0,-.72,-.20],
+    [-.42,.06,.01,.92,.86,0,.08,.10,.08,0,-.35,-.12],
   ],
   hammer: [
-    [-.78,-.06,-.08,-.72,-.23,0,-.05,-.02,-.09,0,-.20,-.12],
-    [-.60,.04,-.03,-.12,1.18,0,.03,.065,.09,0,-.27,-.08],
-    [-.36,.05,.02,-.04,.58,0,.06,.035,.06,0,-.14,-.05],
+    [-.78,-.06,-.08,.45,-.23,0,-.05,-.02,-.09,0,-.20,-.12],
+    [-.60,.04,-.03,.65,1.18,0,.03,.065,.09,0,-.27,-.08],
+    [-.36,.05,.02,.50,.58,0,.06,.035,.06,0,-.14,-.05],
   ],
   scythe: [
-    [-.40,-.50,-.32,-.26,.88,-.25,.62,.035,-.48,-.035,-.38,-.24],
-    [-.55,.45,.22,-.08,1.15,.26,.62,.085,.42,.04,-.58,-.14],
-    [-.34,.64,.36,-.02,.87,.36,.48,.06,.55,.035,-.35,-.08],
+    [-.40,-.50,-.22,1.12,.88,-.12,.10,.035,-.48,-.035,-.38,-.24],
+    [-.25,.32,.15,.92,1.30,.12,.10,.085,.42,.04,-.58,-.14],
+    [-.25,.46,.22,1.00,1.12,.16,.10,.06,.55,.035,-.35,-.08],
   ],
   sword: [
     [-1.18,-.26,-.38,-.40,-.18,0,-.35,-.025,-.20,-.025,-.28,-.22],
@@ -42,9 +44,9 @@ const ACTION_POSES = {
     [-.42,.37,.35,.03,.65,.15,.48,.045,.34,.025,-.22,-.10],
   ],
   bow: [
-    [-1.55,-.18,-.1,-.20,.35,0,.05,-.02,-.25,0,-1.1,-1.0],
-    [-1.55,.04,-.1,-.05,.32,0,.05,.025,.1,0,-.72,-.35],
-    [-1.20,.04,-.08,-.12,.26,0,.04,0,.08,0,-.65,-.45],
+    [-1.23,-.04,-.04,1.16,0,0,0,-.02,-.08,0,-1.1,-1.0],
+    [-1.23,.04,-.04,1.18,0,0,0,.025,.04,0,-.72,-.35],
+    [-.95,.04,-.04,.94,0,0,0,0,.04,0,-.65,-.45],
   ],
   zombie: [
     [.16,-.08,-.08,-.16,0,0,0,-.045,-.10,-.02,.13,-.08],
@@ -155,8 +157,8 @@ function makeTool(id, tier=1) {
     mesh(g,'box',grain,0,.45,.047,.015,.51,.012);
   } else if (id === 'axe' || id === 'pickaxe' || id === 'scythe' || id === 'hammer') {
     const height = id === 'scythe' ? 1.32 : .95;
-    mesh(g,'cylinder',wood,0,height*.24,0,.037,height,.037,0,0,-.025);
-    mesh(g,'cylinder',grip,0,-.08,0,.046,.24,.046);
+    mesh(g,'cylinder',wood,0,height*.24,0,.031,height,.031);
+    mesh(g,'cylinder',grip,0,-.08,0,.032,.24,.032);
     if (id === 'axe') {
       mesh(g,'axe',head,-.025,.64,-.035);
       mesh(g,'box',grip,0,.66,.015,.12,.17,.115);
@@ -183,15 +185,15 @@ function makeTool(id, tier=1) {
       mesh(g,'cylinder',wood,(x1+x2)/2,(y1+y2)/2,0,.032,Math.hypot(x2-x1,y2-y1),.032,0,0,-Math.atan2(x2-x1,y2-y1));
     }
     mesh(g,'cylinder',material(0xe1d5b5),0,0,0,.009,1.3,.009);
-    mesh(g,'cylinder',grip,.28,0,0,.045,.23,.045);
-    mesh(g,'cylinder',grain,.10,0,.20,.012,.70,.012,Math.PI/2);
-    mesh(g,'cone',head,.10,0,.56,.035,.12,.035,Math.PI/2);
+    mesh(g,'cylinder',grip,.28,0,0,.032,.23,.032);
+    mesh(g,'cylinder',grain,.35,0,.025,.012,.70,.012,0,0,-Math.PI/2);
+    mesh(g,'cone',head,.76,0,.025,.035,.12,.035,0,0,-Math.PI/2);
   } else if (id === 'food') {
     mesh(g,'round',material(0xc6863f),0,.08,.03,.17,.1,.32);
     for(let i=0;i<3;i++) mesh(g,'box',material(0xf1c580),0,.17,-.10+i*.11,.19,.018,.02,0,.3,0);
   } else if (id === 'heal' || id === 'staff') {
     const brass=material(0xc3a360,.45,.5), glow=material(0x97eac6,.1,.4,0x438d6b);
-    mesh(g,'cylinder',wood,0,.26,0,.033,1.48,.033);
+    mesh(g,'cylinder',wood,0,.26,0,.031,1.48,.031);
     mesh(g,'cylinder',brass,0,.81,0,.045,.14,.045);
     mesh(g,'ring',brass,0,1.02,0,.16,.2,.16);
     mesh(g,'chunk',glow,0,1.02,0,.072,.11,.072);
@@ -256,12 +258,13 @@ export function createCharacter(kind='villager', seed=1) {
     toolId=id; toolTier=tier;
     heldTool=makeTool(id,tier);
     heldTool.name=`held-${id || 'empty'}`;
-    if(id==='sword') {
-      // The sculpted fingers curl around a transverse grip. Put the hilt
-      // through that opening, with the pommel past the little finger and the
-      // crossguard beyond the thumb, instead of piercing the palm lengthwise.
-      heldTool.position.set(0,-.104,.050);
-      heldTool.rotation.set(0,0,-Math.PI/2);
+    if(id==='sword' || UPRIGHT_TOOLS.has(id)) {
+      // Align every shaft with the finger curl, then offset the actual grip
+      // (working handles at y=-.08; bow at x=.28) into the closed hand.
+      // The elbow and wrist turn together below; rotating only a tool head
+      // would still leave its handle cutting through the sculpted fingers.
+      heldTool.position.set(WORK_TOOLS.has(id)?.08:0,id==='bow'?.176:-.104,.050);
+      heldTool.rotation.set(0,0,-Math.PI/2,'ZYX');
     } else {
       heldTool.position.set(-.025,-.045,.07);
       heldTool.rotation.set(.65,0,id==='staff'||id==='heal'?.16:.28);
@@ -320,6 +323,14 @@ export function createCharacter(kind='villager', seed=1) {
     const attackWeight=active?Math.sin(Math.PI*clamp(attackClock/duration,0,1)):0;
     const armStride=stride*(1-attackWeight*.85)*(1-spellAmount*.85);
     const settle=1-Math.exp(-dt*25);
+    if(toolId==='scythe' && heldTool) {
+      // Roll around the circular shaft while reaping, so the cutting blade
+      // sweeps parallel to the field. ZYX keeps this roll about the shaft's
+      // own axis and leaves its grip centered inside the fingers.
+      const phase=clamp(attackClock/duration,0,1);
+      const reap=active?smooth(clamp(phase/.30,0,1))*(1-smooth(clamp((phase-.72)/.28,0,1))):0;
+      heldTool.rotation.y+=(Math.PI/2*reap-heldTool.rotation.y)*settle;
+    }
     visual.rotation.z=-Math.PI*.49*downAmount;
     visual.position.y=.70*downAmount;
     visual.position.z=0;
@@ -346,12 +357,13 @@ export function createCharacter(kind='villager', seed=1) {
       poseJoint(rig.leftArm,(-s*.32*armStride-.06+a[10]-spellAmount*.70-.9*carryAmount-.65*mountAmount)*alive,spellAmount*.14,.09+spellAmount*.08,settle);
       poseJoint(rig.rightArm,(s*.24*armStride-.12+a[0]-spellAmount*.65-.9*carryAmount-.65*mountAmount)*alive,a[1],-.10+a[2]-spellAmount*.08,settle);
       poseJoint(rig.leftFore,(-.13+a[11]-spellAmount*.32-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
-      poseJoint(rig.rightFore,(-.14+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
-      // Turn the sword hand along the forearm so the blade leads forward in
-      // a low guard. This rotation moves the skinned fingers with the hilt;
-      // a tool-only tilt would leave the handle outside the closed grip.
-      const swordTwist=toolId==='sword'?-Math.PI/2:0;
-      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+swordTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
+      const uprightGrip=UPRIGHT_TOOLS.has(toolId);
+      const elbowRest=-.14-(uprightGrip?1.26*(1-mountAmount)*(1-carryAmount):0);
+      poseJoint(rig.rightFore,(elbowRest+a[3]-spellAmount*.18-.6*carryAmount-.35*mountAmount)*alive,0,0,settle);
+      // The same forearm twist seats each shaft through the fingers. Tools
+      // use a bent elbow for an upright carry, sword keeps its low guard.
+      const gripTwist=toolId==='sword'||uprightGrip?-Math.PI/2:0;
+      poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+gripTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
     }
   }
   function dispose() {
