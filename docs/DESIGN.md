@@ -48,7 +48,7 @@ The values below resolve earlier provisional details for this playtest and remai
 
 ## Map and visual direction
 
-The intended style is a cohesive low-poly fantasy world with terrain detail, lighting, shadows, readable silhouettes, and convincing animation. Third-person keyboard/mouse controls must feel smooth. The prototype's procedural meshes and movement provide a visual starting point; later art work can improve them without changing the game rules.
+The intended style is a cohesive fantasy world with terrain detail, lighting, shadows, readable silhouettes, and convincing animation. Tyler clarified that characters should look natural, with sculpted faces, connected anatomy and fitted clothing; smoothing visibly assembled primitive shapes is insufficient. The current character redesign is documented in CHARACTERS.md for visual review. Third-person keyboard/mouse controls must feel smooth, and art improvements must preserve the game rules.
 
 The village sits against mountains with its keep to the north, permanent services near the center, and **one southern gate**. The internal plan allows forty plots, with eight optional exposed plots outside. Trees grow around the village; there is no dedicated public timber section. A public quarry and an internal wheat field keep essential gathering available.
 

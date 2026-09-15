@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { buildBody } from './character-body.js';
+import { buildHead } from './character-head.js';
+import { buildClothing } from './character-clothing.js';
 
-// Original, articulated stylized actors. Smooth organic surfaces and shaped
-// clothing share cached geometry; rigid detail is still merged per joint/material.
+// Original sculpted characters: continuous skin, shaped faces and tailored
+// garments deform around the existing gameplay rig. Tools retain rigid batching.
 const geometryCache = new Map();
 const materialCache = new Map();
 const TAU = Math.PI * 2;
@@ -74,37 +77,8 @@ function geometry(type) {
   if (type === 'round') g = new THREE.SphereGeometry(1, 12, 8);
   else if (type === 'chunk') g = new THREE.IcosahedronGeometry(1, 0);
   else if (type === 'cylinder') g = new THREE.CylinderGeometry(1, 1, 1, 12);
-  else if (type === 'taper') g = new THREE.CylinderGeometry(.8, 1, 1, 12);
   else if (type === 'cone') g = new THREE.ConeGeometry(1, 1, 10);
   else if (type === 'ring') g = new THREE.TorusGeometry(1, .13, 6, 16);
-  else if (type === 'cap') g = new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, Math.PI * .54);
-  else if (type === 'softbox') {
-    // Rounded corners without adding another model loader or runtime dependency.
-    g = new THREE.BoxGeometry(1,1,1,3,3,3);
-    const p=g.attributes.position, n=g.attributes.normal;
-    const v=new THREE.Vector3(), core=new THREE.Vector3(), normal=new THREE.Vector3();
-    for(let i=0;i<p.count;i++) {
-      v.fromBufferAttribute(p,i); core.copy(v).clampScalar(-.34,.34);
-      normal.copy(v).sub(core).normalize(); v.copy(core).addScaledVector(normal,.16);
-      p.setXYZ(i,v.x,v.y,v.z); n.setXYZ(i,normal.x,normal.y,normal.z);
-    }
-  } else if (type === 'cloth' || type === 'braid') {
-    const profile = type==='cloth'
-      ? [[0,-.5],[.98,-.5],[1,-.45],[.94,-.27],[.88,0],[.79,.30],[.74,.47],[0,.5]]
-      : [[0,-.5],[.30,-.43],[.65,-.27],[.84,-.04],[1,.23],[.84,.42],[0,.5]];
-    g = new THREE.LatheGeometry(profile.map(([x,y])=>new THREE.Vector2(x,y)),12);
-    if(type==='cloth') {
-      const p=g.attributes.position;
-      for(let i=0;i<p.count;i++) {
-        const y=p.getY(i), angle=Math.atan2(p.getZ(i),p.getX(i));
-        const fold=1+.025*Math.cos(angle*6)*(1-(y+.5)*.6);
-        p.setX(i,p.getX(i)*fold); p.setZ(i,p.getZ(i)*fold);
-      }
-      g.computeVertexNormals();
-    }
-  } else if (type === 'apron') {
-    g = new THREE.CylinderGeometry(.83,1,1,12,3,true,-.78,1.56);
-  }
   else if (type === 'shield') {
     const s = new THREE.Shape();
     s.moveTo(-.35, .38); s.lineTo(.35,.38); s.lineTo(.34,-.04); s.lineTo(0,-.46); s.lineTo(-.34,-.04); s.closePath();
@@ -133,25 +107,37 @@ function pivot(parent,x=0,y=0,z=0) { const p = new THREE.Group(); p.position.set
 
 // Merge rigid detail without an additional loader or an external model dependency.
 function mergeRigid(root, owned) {
-  for (const child of [...root.children]) if (child.isGroup) mergeRigid(child,owned);
+  for (const child of [...root.children]) if (child.isGroup || child.isBone) mergeRigid(child,owned);
   const batches = new Map();
-  for (const child of root.children) if (child.isMesh) {
+  for (const child of root.children) if (child.isMesh && !child.isSkinnedMesh && !child.userData.tailored) {
     if (!batches.has(child.material)) batches.set(child.material,[]);
     batches.get(child.material).push(child);
   }
   for (const [mat, sources] of batches) {
     if (sources.length < 2) continue;
-    const positions=[], normals=[];
+    const positions=[], normals=[], colors=[], uvs=[];
+    const useColors=sources.some(m=>m.geometry.attributes.color),useUV=sources.some(m=>m.geometry.attributes.uv);
     for (const source of sources) {
       source.updateMatrix();
       const transformed = source.geometry.clone().applyMatrix4(source.matrix);
       const flat = transformed.index ? transformed.toNonIndexed() : transformed;
       positions.push(...flat.attributes.position.array); normals.push(...flat.attributes.normal.array);
+      if(useColors) {
+        if(flat.attributes.color)colors.push(...flat.attributes.color.array);
+        else for(let i=0;i<flat.attributes.position.count;i++)colors.push(1,1,1);
+      }
+      if(useUV) {
+        if(flat.attributes.uv)uvs.push(...flat.attributes.uv.array);
+        else for(let i=0;i<flat.attributes.position.count;i++)uvs.push(0,0);
+      }
       if (flat !== transformed) flat.dispose(); transformed.dispose(); root.remove(source);
+      if(owned.delete(source.geometry))source.geometry.dispose();
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
     g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+    if(useColors)g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    if(useUV)g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
     g.computeBoundingSphere(); owned.add(g);
     const m = new THREE.Mesh(g,mat); m.castShadow = true; m.receiveShadow = true; root.add(m);
   }
@@ -224,168 +210,39 @@ export function createCharacter(kind='villager', seed=1) {
   const variation = Math.abs(Math.trunc(Number(seed)||1)) % 4;
   const skin = material([0xdba779,0xc38d65,0xe9bc8e,0xa87354][variation]);
   const beard = material([0x6b4029,0x9a6137,0xc6a77d,0x4b3730][variation]);
-  const dark=material(0x302b29), boot=material(0x493831), brass=material(0xc9a25b,.55,.5), iron=material(0x809da2,.65,.45);
+  const dark=material(0x302b29), brass=material(0xc9a25b,.55,.5), iron=material(0x809da2,.65,.45);
 
   function build() {
     visual.clear();
-    for (const g of owned) g.dispose(); owned.clear();
+    for (const resource of owned) resource.dispose(); owned.clear();
     const zombie=role === 'zombie';
-    const body=pivot(visual,0,zombie?1.10:1.04,0);
-    const head=pivot(body,0,zombie?.81:.7,zombie?.12:.02);
-    const leftArm=pivot(body,zombie?.41:.59,zombie?.4:.30,0);
-    const rightArm=pivot(body,zombie?-.41:-.59,zombie?.4:.30,0);
-    const leftFore=pivot(leftArm,0,zombie?-.42:-.30,0);
-    const rightFore=pivot(rightArm,0,zombie?-.42:-.30,0);
-    const hand=pivot(rightFore,0,zombie?-.43:-.31,.035);
-    const leftLeg=pivot(body,zombie?.19:.26,zombie?-.28:-.27,0);
-    const rightLeg=pivot(body,zombie?-.19:-.26,zombie?-.28:-.27,0);
-    const leftShin=pivot(leftLeg,0,zombie?-.41:-.32,0);
-    const rightShin=pivot(rightLeg,0,zombie?-.41:-.32,0);
+    const bone=(parent,x=0,y=0,z=0)=>{const b=new THREE.Bone();b.position.set(x,y,z);parent.add(b);return b;};
+    const body=bone(visual,0,zombie?1.10:1.04,0);
+    const head=bone(body,0,zombie?.81:.76,.01);
+    const leftArm=bone(body,zombie?.35:.48,.36,0),rightArm=bone(body,zombie?-.35:-.48,.36,0);
+    const leftFore=bone(leftArm,0,-.34,0),rightFore=bone(rightArm,0,-.34,0);
+    const hand=bone(rightFore,0,-.30,.035);
+    const leftLeg=bone(body,zombie?.17:.21,-.27,0),rightLeg=bone(body,zombie?-.17:-.21,-.27,0);
+    const leftShin=bone(leftLeg,0,-.35,0),rightShin=bone(rightLeg,0,-.35,0);
     rig={body,head,leftArm,rightArm,leftFore,rightFore,hand,leftLeg,rightLeg,leftShin,rightShin,zombie};
+    for(const [name,joint] of Object.entries(rig))if(joint?.isBone)joint.name=name;
     attackClock=9; previousAttack=false; spellAmount=0;
-
-    if (zombie) {
-      const rot=material([0x7f9770,0x718a6c,0x8b9568,0x6b8e79][variation]);
-      const rotDark=material(0x4c6350), cloth=material([0x484852,0x534c42,0x474e43,0x535044][variation]);
-      const torn=material(0x303936), bone=material(0xc8c3a1), eye=material(0xe7b568,.1,.4,0xa1571d);
-      mesh(body,'round',rot,0,.29,0,.34,.45,.22,0,0,.09);
-      mesh(body,'cloth',cloth,0,.0,-.025,.34,.5,.24,0,0,.09);
-      mesh(body,'softbox',torn,0,.22,-.2,.48,.42,.055,0,0,.08);
-      for(let i=0;i<3;i++) mesh(body,'box',rotDark,-.045,.33-i*.085,.198,.29-i*.025,.018,.018,0,0,-.15);
-      for(let i=0;i<4;i++) mesh(body,'cone',cloth,-.23+i*.15,-.32,0,.1,.22+(i%2)*.13,.15,0,0,Math.PI);
-      mesh(head,'round',rot,0,0,0,.31,.37,.28,.04,0,-.09);
-      mesh(head,'round',rotDark,.19,-.1,.19,.15,.14,.1);
-      mesh(head,'round',rot,-.02,-.27,.11,.22,.17,.19,0,0,.12);
-      for(const side of [-1,1]) {
-        mesh(head,'round',torn,side*.126,.038,.251,.089,.078,.022);
-        mesh(head,'round',eye,side*.126,.035,.271,.043,.031,.017);
-        mesh(head,'round',rotDark,side*.126,.11,.24,.11,.038,.047,0,0,side*-.17);
-        mesh(head,'round',rot,side*.3,-.02,0,.072,.105,.1,0,0,side*.3);
-      }
-      mesh(head,'chunk',rotDark,0,-.063,.265,.058,.086,.047);
-      mesh(head,'softbox',torn,-.012,-.19,.266,.23,.061,.023,0,0,.1);
-      for(let i=0;i<4;i++) mesh(head,'box',bone,-.077+i*.046,-.178,.282,.024,.032,.014,0,0,.1);
-      for(let i=0;i<3;i++) mesh(head,'cone',torn,-.12+i*.1,.29,-.10,.04,.17,.035,0,0,.35-i*.2);
-      for(const [arm,fore,side] of [[leftArm,leftFore,1],[rightArm,rightFore,-1]]) {
-        mesh(arm,'round',cloth,0,-.11,0,.16,.24,.16);
-        mesh(arm,'taper',rot,0,-.28,0,.10,.35,.11,0,0,side*.05);
-        mesh(fore,'taper',rot,0,-.18,0,.077,.39,.08);
-        mesh(fore,'round',rot,0,-.42,.02,.105,.12,.07);
-        for(let i=0;i<3;i++) mesh(fore,'round',rot,(i-1)*.056,-.5,.08,.022,.084,.022,-.44,0,0);
-        mesh(fore,'box',rotDark,side*.038,-.18,.07,.054,.11,.015,0,0,.2);
-      }
-      for(const [leg,shin,side] of [[leftLeg,leftShin,1],[rightLeg,rightShin,-1]]) {
-        mesh(leg,'taper',cloth,0,-.21,0,.135,.43,.14,0,0,side*.025);
-        mesh(shin,'taper',rot,0,-.19,0,.08,.43,.083);
-        mesh(shin,'round',rotDark,0,-.37,.1,.125,.11,.23);
-        mesh(shin,'softbox',cloth,0,-.045,0,.2,.14,.18,0,0,side*.13);
-      }
-    } else {
-      const clothes=material(role==='guard'?0x345e80:role==='priest'?0xd4c7a1:0x3e8882);
-      const secondary=material(role==='guard'?0x213e58:role==='priest'?0x687c69:0x275953);
-      const leather=material(0x73503a), cream=material(0xe4d6b6);
-      mesh(body,'cloth',clothes,0,.04,0,.54,.74,.35);
-      mesh(body,'round',role==='guard'?iron:clothes,0,.29,-.015,.55,.38,.35);
-      mesh(body,'cylinder',leather,0,-.13,0,.55,.12,.36);
-      mesh(body,'softbox',brass,0,-.13,.36,.16,.12,.055);
-      mesh(body,'box',dark,0,-.13,.393,.072,.06,.008);
-      mesh(body,'softbox',leather,.4,-.15,.23,.18,.22,.13,0,0,-.15);
-      mesh(body,'softbox',leather,-.31,-.14,-.29,.23,.24,.15,0,0,.12);
-      mesh(body,'box',brass,.4,-.11,.31,.045,.055,.02);
-      mesh(body,'apron',secondary,0,-.37,0,.43,.26,.34);
-      if(role==='guard') {
-        mesh(body,'round',iron,0,.22,.18,.43,.35,.22);
-        mesh(body,'ring',iron,0,.49,0,.36,.27,.23,Math.PI/2);
-        mesh(body,'box',brass,0,.27,.393,.065,.4,.025);
-        mesh(body,'box',brass,0,.28,.399,.23,.06,.025);
-        mesh(body,'cloth',secondary,0,-.30,-.18,.49,.46,.18);
-        for(const side of [-1,1]) mesh(body,'softbox',iron,side*.32,-.25,.37,.24,.25,.12,0,side*.28,side*.14);
-        for(const side of [-1,1]) mesh(body,'round',brass,side*.35,.42,.25,.045,.045,.03);
-      } else if(role==='priest') {
-        mesh(body,'softbox',secondary,-.23,.08,.31,.14,.75,.052,0,0,-.04);
-        mesh(body,'softbox',secondary,.23,.08,.31,.14,.75,.052,0,0,.04);
-        mesh(body,'box',brass,0,.21,.367,.035,.14,.025);
-        mesh(body,'box',brass,0,.23,.375,.11,.035,.025);
-        mesh(body,'cloth',clothes,0,-.47,-.025,.53,.59,.36);
-        mesh(body,'cylinder',brass,0,-.75,-.025,.56,.035,.39);
-      } else {
-        mesh(body,'apron',leather,0,.025,.015,.47,.49,.365);
-        mesh(body,'softbox',leather,-.23,.33,.29,.085,.33,.045,0,0,-.17);
-        mesh(body,'softbox',leather,.23,.33,.29,.085,.33,.045,0,0,.17);
-        mesh(body,'softbox',leather,0,.24,-.337,.075,.47,.045,0,0,-.55);
-        mesh(body,'softbox',leather,0,.24,-.339,.075,.47,.045,0,0,.55);
-        mesh(body,'box',brass,-.23,.31,.33,.045,.05,.02);
-        mesh(body,'box',brass,.23,.31,.33,.045,.05,.02);
-        mesh(body,'softbox',secondary,.08,-.05,.373,.22,.17,.025);
-      }
-      // Soft cheeks, inset eyes, swept moustache, and full tapered beard locks.
-      mesh(head,'round',skin,0,.01,0,.39,.37,.32);
-      mesh(head,'round',skin,0,-.1,.15,.3,.25,.23);
-      for(const side of [-1,1]) {
-        mesh(head,'round',skin,side*.37,-.02,0,.115,.14,.10,0,0,side*-.3);
-        mesh(head,'round',skin,side*.21,-.08,.24,.12,.11,.095);
-        mesh(head,'round',cream,side*.14,.075,.311,.061,.037,.023);
-        mesh(head,'round',dark,side*.13,.075,.331,.024,.030,.011);
-        mesh(head,'round',cream,side*.13-.008,.087,.340,.008,.010,.006);
-        mesh(head,'round',beard,side*.14,.145,.298,.115,.038,.047,0,0,side*-.17);
-        mesh(head,'round',beard,side*.12,-.125,.343,.16,.076,.085,0,0,side*.24);
-        mesh(head,'braid',beard,side*.28,-.17,.145,.095,.30,.10,0,0,side*-.18);
-      }
-      mesh(head,'round',skin,0,-.015,.344,.107,.12,.125);
-      mesh(head,'round',beard,0,-.255,.17,.31,.24,.20);
-      for(let i=0;i<3;i++) {
-        const x=(i-1)*.15, length=i===1?.43:.31;
-        mesh(head,'braid',beard,x,-.32,.27,.115,length,.105,0,0,-(i-1)*.13);
-        mesh(head,'cylinder',brass,x,-.36-length*.18,.278,.061,.05,.059);
-        mesh(head,'round',beard,x,-.41-length*.24,.273,.062,.082,.063);
-      }
-      if(role==='priest') {
-        mesh(head,'round',clothes,0,.08,-.18,.5,.46,.28);
-        mesh(head,'ring',clothes,0,.06,.025,.45,.45,.27);
-        mesh(head,'ring',brass,0,.06,.068,.365,.369,.18);
-      } else if(role==='guard') {
-        mesh(head,'cap',iron,0,.19,-.005,.44,.37,.37);
-        mesh(head,'ring',brass,0,.21,-.005,.425,.35,.35,Math.PI/2);
-        mesh(head,'softbox',brass,0,.31,.342,.07,.28,.055);
-        for(const side of [-1,1]) mesh(head,'softbox',iron,side*.34,-.055,.11,.09,.3,.19,0,0,side*-.12);
-        mesh(head,'round',secondary,0,.50,-.045,.060,.19,.21);
-        mesh(head,'softbox',brass,0,.42,-.045,.13,.045,.39);
-      } else {
-        mesh(head,'cap',leather,0,.19,-.01,.40,.31,.34);
-        mesh(head,'cylinder',secondary,0,.20,-.01,.41,.08,.35);
-        mesh(head,'round',leather,0,.19,.28,.31,.035,.20,-.11,0,0);
-        mesh(head,'box',brass,.2,.215,.293,.08,.09,.032,0,.25,0);
-      }
-      for(const [arm,fore,side] of [[leftArm,leftFore,1],[rightArm,rightFore,-1]]) {
-        mesh(arm,'round',clothes,0,-.075,0,.235,.25,.235);
-        mesh(arm,'taper',clothes,0,-.19,0,.17,.34,.17);
-        if(role==='guard') {
-          mesh(arm,'cap',iron,0,.01,0,.29,.20,.29,0,0,side*.2);
-          mesh(arm,'cylinder',brass,0,.01,0,.275,.04,.26,0,0,side*.2);
-        }
-        mesh(fore,'taper',skin,0,-.115,0,.145,.30,.14);
-        mesh(fore,'cylinder',role==='priest'?cream:leather,0,-.21,0,.16,.14,.15);
-        mesh(fore,'round',skin,0,-.32,.026,.16,.14,.15);
-        mesh(fore,'round',skin,-side*.11,-.30,.115,.066,.073,.065);
-      }
-      if(role==='guard') {
-        const shield=pivot(leftFore,.06,-.1,.22);
-        mesh(shield,'shield',brass,0,0,0);
-        mesh(shield,'shield',secondary,0,.018,.078,.87,.85,.38);
-        mesh(shield,'box',brass,0,.02,.133,.06,.43,.025);
-        mesh(shield,'box',brass,0,.07,.136,.27,.055,.025);
-        mesh(shield,'round',iron,0,.045,.15,.075,.075,.04);
-      }
-      for(const [leg,shin] of [[leftLeg,leftShin],[rightLeg,rightShin]]) {
-        mesh(leg,'taper',secondary,0,-.16,0,.21,.32,.22);
-        mesh(shin,'taper',boot,0,-.12,0,.22,.31,.23);
-        mesh(shin,'round',boot,0,-.28,.10,.235,.15,.34);
-        mesh(shin,'softbox',dark,0,-.34,.12,.40,.075,.51);
-        mesh(shin,'cylinder',leather,0,-.005,0,.23,.08,.23);
-        mesh(shin,'box',brass,0,-.04,.235,.06,.065,.025);
-      }
-    }
+    const clothes=material(role==='guard'?0x364b5e:role==='priest'?0xb6ab91:role==='zombie'?0x50584f:0x4d6456);
+    const actualSkin=zombie?material([0x87917b,0x7d8a79,0x93917a,0x738779][variation],0,.92):skin;
+    const palette={skin:actualSkin,hair:beard,cloth:clothes,leather:material(0x66503a),iron,brass,dark};
+    buildBody(visual,rig,{skin:actualSkin,own:owned});
+    buildHead(head,{role,variation,palette,own:owned});
+    buildClothing(rig,{role,variation,palette,own:owned});
     mergeRigid(visual,owned);
+    if(role==='guard') {
+      const shield=pivot(leftFore,.045,-.12,.20);
+      mesh(shield,'shield',brass,0,0,0,.90,.94,1);
+      mesh(shield,'shield',clothes,0,.018,.078,.78,.80,.38);
+      mesh(shield,'box',brass,0,.02,.133,.045,.38,.022);
+      mesh(shield,'box',brass,0,.07,.136,.23,.040,.022);
+      mesh(shield,'round',iron,0,.045,.15,.065,.065,.035);
+      mergeRigid(shield,owned);
+    }
     toolId=''; heldTool=null;
     if(!zombie) setTool(role==='priest'?'heal':'sword');
   }
@@ -399,7 +256,7 @@ export function createCharacter(kind='villager', seed=1) {
     toolId=id; toolTier=tier;
     heldTool=makeTool(id,tier);
     // Keep held equipment clear of the forearm and visibly outside the silhouette.
-    heldTool.position.set(-.065,0,.10);
+    heldTool.position.set(-.025,-.045,.07);
     heldTool.rotation.set(.65,0,id==='sword'?.40:id==='staff'||id==='heal'?.16:.28);
     rig.hand.add(heldTool);
     mergeRigid(heldTool,owned);

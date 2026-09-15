@@ -1,33 +1,44 @@
-# Character design update
+# Natural character redesign
 
-The dwarfs and zombies retain their original articulated rigs with smoother silhouettes and shading. Rounded faces, inset eyes, fuller beard locks, contoured clothing, softened boots and armor, and raised headwear make the characters easier to read. Guard armor and villager straps also distinguish them from behind, where the third-person camera usually sits.
+This replaces the previous smoothing-only proposal after Tyler's feedback that the characters still looked assembled from obvious shapes. It uses more natural adult proportions, continuous facial surfaces, connected wrists and hands, fitted clothing, and formed armor. It remains a proposed visual direction awaiting Tyler's review and has not been deployed.
 
-![Revised villager, guard, priest and zombie models](previews/characters.jpg)
+![Villager, guard, priest and zombie redesign](previews/characters.jpg)
 
-This is a CPU render of the actual game meshes, using interpolated normals, a depth buffer, and fixed studio lighting. It is not a live-game screenshot; the game uses its own WebGL lighting and shadows. No generated concept art or external character assets are used.
+![Face and clothing close-up](previews/character-detail.jpg)
+
+## Construction
+
+- Face, nose, cheeks, eye sockets, lips, ears and skull share a sculpted surface. Eyes are inset patches with colored irises; the beard follows the jaw and grows into a continuous groomed shape. Hair detail comes from geometry and vertex shading.
+- A blended field creates connected forearm, wrist, palm, thumb and finger surfaces. Bone weights deform the exposed anatomy through the existing tool and movement poses.
+- Tailored garments follow the torso and shoulders, with seams, folds, pockets, laces and procedural fabric/leather grain. Sleeves and skirts use skeletal deformation, not cloth physics.
+- Zombies have narrower frames, hollowed cheeks, recessed eyes, slack mouths, receding gray hair and torn clothing.
+- Material batching preserves vertex colors and texture coordinates. Cached anatomy and shared garment materials are reused; owned geometry, head materials and skeletons are disposed on role changes and removal.
+
+No imported character assets or generated concept art are used. The images render actual game geometry and posed bone transforms with a CPU depth buffer and studio lighting. They do not reproduce the game's WebGL lighting, shadows or material bump maps.
 
 ## Validation
 
-The existing animation probe passes at 30, 60 and 120 Hz across seven role/tool combinations. A further 8,640 animation frames exercise four roles, eight equipment types and all three tiers, including mounting, carrying, downing, role changes and disposal. Geometry, normals and transforms remain finite. Six multiplayer motion tests pass. Server rules, saves and networking are unchanged by this character update.
+Nine targeted tests pass (`node --test test/characters.test.js test/motion.test.js`). They cover all sixteen role/appearance combinations, valid indexed geometry, vertex colors, normalized bone influences, translated actors in attack/riding/carrying/downed poses, shared-resource safety, skeleton cleanup and multiplayer pose playback. The existing animation probe was updated to include bones and passes at 30, 60 and 120 Hz across seven role/tool combinations, including distinct tool swings and role changes.
 
-Mesh counts stay unchanged in the neutral equipped preview. Triangle counts increase to soften the shapes:
+Front, reverse, face close-up and strike renders were inspected to correct open shoulders, elbow discontinuities, armor/cuff overlaps, apron interference, robe/hip clearance and belt clipping. Final front and detail images use the same geometry export.
 
-| Character | Previous triangles | Revised triangles | Meshes |
+| Character in the preview | Triangles | Meshes | Skinned meshes |
 | --- | ---: | ---: | ---: |
-| Villager | 2,528 | 8,616 | 32 |
-| Guard | 3,304 | 10,608 | 40 |
-| Priest | 2,716 | 8,692 | 30 |
-| Zombie | 1,638 | 5,284 | 25 |
+| Villager with axe | 41,782 | 34 | 6 |
+| Guard with sword/shield | 48,474 | 44 | 3 |
+| Priest with staff | 42,794 | 37 | 12 |
+| Zombie | 34,370 | 24 | 2 |
 
-These counts describe this pose and equipment, not a frame-rate guarantee. Geometry and materials are cached, and rigid details are merged per joint/material as before. Eight-player and large-wave performance still require a live playtest. Front and rear CPU renders were inspected and used to correct headwear occlusion and major armor/robe intersections. The available cloud browser has WebGL disabled, so this revision has not been visually playtested there.
+This proposal has more geometry than the earlier primitive models. These are scene measurements, not a frame-rate guarantee. Actual WebGL appearance, eight-player performance and large zombie waves still require live playtesting; the available cloud browser has WebGL disabled. Gameplay rules, save data, networking and the production branch are unchanged by this proposal.
 
-## Reproduce the preview
+## Reproduce the previews
 
-From the repository root, with normal npm dependencies installed and Python with NumPy, Pillow and DejaVu Sans available:
+From the repository root, with npm dependencies installed and Python with NumPy, Pillow and DejaVu Sans available:
 
 ```sh
 node scripts/preview-characters.mjs public/src/characters.js /tmp/characters.json
-python scripts/render-character-preview.py /tmp/characters.json /tmp/characters.jpg 'EMBERWATCH  /  CHARACTER UPDATE'
+python scripts/render-character-preview.py /tmp/characters.json /tmp/characters.jpg 'EMBERWATCH / CHARACTER REDESIGN'
+python scripts/render-character-preview.py /tmp/characters.json /tmp/character-detail.jpg 'EMBERWATCH / FACE AND CLOTHING DETAIL' --heads
 ```
 
-Pass `2.86` as a fourth argument to the exporter for the reverse view. The preview scripts are development tools and are not loaded by the game.
+The exporter accepts yaw as its fourth argument (`2.86` for the reverse view) and a pose as its fifth: `idle`, `walk`, `strike`, `mounted`, `carry` or `downed`. The scripts are development tools and are not loaded by the game.
