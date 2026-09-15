@@ -7,6 +7,7 @@ import { Store } from './store.js';
 import { Simulation } from './simulation.js';
 import { VillageChat } from './chat.js';
 import { randomUUID } from 'node:crypto';
+import { accountCrateSnapshot, crateAccountAction } from './crates.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary' };
@@ -41,6 +42,13 @@ export function createApp(options = {}) {
       if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, game: 'emberwatch' });
       if (req.method === 'GET' && url.pathname === '/api/config') return json(res, 200, { devTools: simulation.devTools });
       if (req.method === 'GET' && url.pathname === '/api/villages') return json(res, 200, { villages: simulation.list() });
+      if (url.pathname === '/api/crates' || url.pathname === '/api/crates/action') {
+        const account = store.accountFromToken(req.headers.authorization?.replace(/^Bearer /, ''));
+        if (!account) return json(res, 401, { error: 'Sign in to manage your crates and loadout.' });
+        if (req.method === 'GET' && url.pathname === '/api/crates') return json(res, 200, { crates: accountCrateSnapshot(store, account.id) });
+        if (req.method === 'POST' && url.pathname === '/api/crates/action') return json(res, 200, crateAccountAction(store, account.id, await readJson(req)));
+        return json(res, 405, { error: 'Method not allowed.' });
+      }
       if (req.method === 'POST' && url.pathname === '/api/auth') {
         const key = req.socket.remoteAddress, now = Date.now();
         const prior = (authAttempts.get(key) ?? []).filter(t => now - t < 60000);

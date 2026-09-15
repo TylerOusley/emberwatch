@@ -1,4 +1,4 @@
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carryCapacity, MAX_PLOTS, PLOT_PRICES, TOOL_WEIGHTS, inventoryWeight } from '../../shared/content.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carryCapacity, MAX_PLOTS, PLOT_PRICES, TOOL_WEIGHTS, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount, acquiredToolDurability } from '../../shared/content.js';
 import { BUILDINGS, PLOTS, CAVE_ENTRANCE } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
@@ -48,6 +48,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   const money = () => (me()?.wallet || 0) + (state()?.loan?.credit || 0);
   const plots = () => state()?.plots || [];
   const owned = () => plots().filter(p => p.ownerId === me()?.id);
+  const carriedText = id => `${num(me()?.inventory?.[id])} carried${boundInventoryCount(me(), id) ? ` · ${num(transferableCount(me(), id))} transferable · ${num(boundInventoryCount(me(), id))} kit-bound (eat only)` : ''}`;
   const head = (kicker, title, copy = '') => `<p class="eyebrow">${esc(kicker)}</p><h2>${esc(title)}</h2>${copy ? `<p>${esc(copy)}</p>` : ''}`;
   const row = (name, detail, control = '') => `<div class="settlement-row"><div><strong>${esc(name)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</div>${control}</div>`;
   const stat = (name, value) => `<div><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`;
@@ -60,7 +61,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function gearFacts(id, tier = 'wood') {
     const quality = TOOL_TIERS[tier] || TOOL_TIERS.wood;
-    return [[id === 'sword' || id === 'bow' ? 'Damage' : id === 'hammer' ? 'Repair' : 'Yield', id === 'sword' ? `${quality.swordDamage} base / hit` : id === 'bow' ? '22 base / arrow' : id === 'hammer' ? `${quality.repair} health / swing` : `${quality.yield} ${quality.yield === 1 ? 'resource' : 'resources'} / swing`], ['Durability', `${quality.durability} uses`]];
+    return [[id === 'sword' || id === 'bow' ? 'Damage' : id === 'hammer' ? 'Repair' : 'Yield', id === 'sword' ? `${quality.swordDamage} base / hit` : id === 'bow' ? '22 base / arrow' : id === 'hammer' ? `${quality.repair} health / swing` : `${quality.yield} ${quality.yield === 1 ? 'resource' : 'resources'} / swing`], ['Durability', `${acquiredToolDurability(me(), id, tier)} uses`]];
   }
   function materialDisplay(cost, stored) {
     return '<div class="shop-materials"><strong>Workshop materials</strong><p>' + esc(costText(cost)) + '</p><div>' + Object.entries(cost).map(([id, amount]) => `<span class="shop-material ${(stored?.[id] || 0) < amount ? 'short' : ''}">${itemArt(id)}<span>${num(amount)} ${esc(id)}<small>${num(stored?.[id])} stored</small></span></span>`).join('') + '</div></div>';
@@ -187,7 +188,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.boundInventory, p.crateEquipment, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
@@ -195,14 +196,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const backpack = BACKPACKS[p.backpackTier] || BACKPACKS[0];
     let html = head('YOUR PACK', 'Make room for the next watch.', 'Tools and items count toward your carrying limit. Store supplies at your own plots or in a cart.') + stats([['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Carrying gear', backpack.name], ['Wallet', `${num(p.wallet)} gold`], ['Plots', `${owned().length} / ${MAX_PLOTS}`]]);
     html += '<p>Buy larger backpacks at Oak &amp; Iron, the village starter tool shop.</p>' + button('Mark the backpack shop', () => markService('tools'));
-    html += '<h3>Carried supplies</h3>' + Object.keys(RESOURCE_WEIGHTS).map(id => row(label(id), `${num(RESOURCE_WEIGHTS[id])} weight each`, `<strong>${num(p.inventory?.[id])}</strong>`)).join('');
+    html += '<h3>Carried supplies</h3>' + Object.keys(RESOURCE_WEIGHTS).map(id => row(label(id), `${num(resourceWeight(p, id))} weight each${resourceWeight(p, id) < RESOURCE_WEIGHTS[id] ? ' with your equipped pack' : ''}${boundInventoryCount(p, id) ? ` · ${carriedText(id)}` : ''}`, `<strong>${num(p.inventory?.[id])}</strong>`)).join('');
     if (p.inventory?.cart) html += command('Place your cargo cart', 'deployCart');
     if (p.carryingId) html += command('Put down the carried dwarf', 'dropPlayer');
     if (p.mountedHorseId) html += command('Dismount your horse', 'dismountHorse');
     html += '<h3>Equipment</h3>' + equipment.map(id => {
       const tier = TOOL_TIERS[p.tiers?.[id] || 'wood'];
       const durability = p.durability?.[id] || 0;
-      return row(durability > 0 ? `${tier.name} ${label(id).toLowerCase()}` : label(id), durability > 0 ? `${num(durability)} uses remaining${['axe', 'pickaxe', 'scythe'].includes(id) ? ` · ${tier.yield} resources per swing` : ''}` : 'Not equipped');
+      return row(durability > 0 ? `${tier.name} ${label(id).toLowerCase()}` : label(id), durability > 0 ? `${num(durability)} / ${num(p.maxDurability?.[id] || tier.durability)} uses remaining${['axe', 'pickaxe', 'scythe'].includes(id) ? ` · ${tier.yield} resources per swing` : ''}` : 'Not equipped');
     }).join('');
     const options = [...equipment, 'food', 'good_food', 'best_food', ...(p.role === 'priest' ? ['heal'] : [])];
     html += '<h3>Your eight hotbar slots</h3><p>Choose which equipment and food each number selects. A tool’s current tier is equipped automatically.</p><div class="hotbar-editor">' + getHotbar().map((selected, index) => `<label>Slot ${index + 1}<select data-hotbar-slot="${index}">${options.map(id => `<option value="${id}" ${id === selected ? 'selected' : ''}>${id === 'heal' ? 'Priest blessing' : label(id)}</option>`).join('')}</select></label>`).join('') + '</div>';
@@ -229,14 +230,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     for (const [resource, info] of Object.entries(RESOURCE_MARKET)) {
       if (!tradeAmounts.has(resource)) tradeAmounts.set(resource, '10');
       const trade = quoteTrade(resource); displayedTrades.set(resource, trade);
-      html += `<section class="market-resource-card" data-market-resource="${resource}"><div class="market-resource-art">${itemArt(resource)}<span>${RESOURCE_WEIGHTS[resource]} weight each</span></div><div class="market-resource-body"><div class="market-heading"><h3>${esc(info.label)}</h3><span id="trade-stock-${resource}">${esc(trade.stockText)}</span></div>`;
+      html += `<section class="market-resource-card" data-market-resource="${resource}"><div class="market-resource-art">${itemArt(resource)}<span id="trade-weight-${resource}">${num(resourceWeight(p, resource))} weight each</span></div><div class="market-resource-body"><div class="market-heading"><h3>${esc(info.label)}</h3><span id="trade-stock-${resource}">${esc(trade.stockText)}</span></div>`;
       html += `<label class="trade-quantity" for="trade-amount-${resource}">Quantity ${quantity(`trade-amount-${resource}`, trade.maxAmount, tradeAmounts.get(resource)).replace('aria-label="Amount"', `aria-label="${esc(info.label)} quantity" aria-describedby="trade-limit-${resource}"`)}</label><p class="trade-limit" id="trade-limit-${resource}">${esc(trade.limitText)}</p>`;
       html += `<div class="trade-quotes"><p id="trade-sell-quote-${resource}">${esc(trade.sellText)}</p><p id="trade-buy-quote-${resource}">${esc(trade.buyText)}</p></div><div class="market-buttons">`;
       for (const direction of ['sell', 'buy']) html += button(trade[direction + 'Button'], () => submitTrade(resource, direction), !trade[direction + 'Allowed'], trade[direction + 'Reason']).replace('<button ', `<button id="trade-${direction}-${resource}" data-shop-focus="trade-${direction}-${resource}" `);
       html += button(trade.maxButton, () => submitMaxTrade(resource), !trade.maxAllowed, trade.maxReason, 'secondary-button market-sell-max').replace('<button ', `<button id="trade-max-${resource}" data-shop-focus="trade-max-${resource}" `);
       html += `</div><p class="trade-max-quote" id="trade-max-quote-${resource}">${esc(trade.maxText)}</p></div></section>`;
     }
-    html += '</div><section class="market-donation"><h3>Support the village</h3><p>Donate all raw resources in your pack without payment. For a posted reward, use “Requested deliveries” before making a donation.</p>' + command('Donate carried resources', 'donate', {}, !resources.some(id => p.inventory?.[id] > 0)).replace('<button ', '<button id="market-donate" ') + '</section>';
+    html += '</div><section class="market-donation"><h3>Support the village</h3><p>Donate all raw resources in your pack without payment. For a posted reward, use “Requested deliveries” before making a donation.</p>' + command('Donate carried resources', 'donate', {}, !resources.some(id => transferableCount(p, id) > 0)).replace('<button ', '<button id="market-donate" ') + '</section>';
     return html + '<div class="panel-actions">' + button('Find bank', () => markService('bank')) + '</div>';
   }
   function updateMarketSummary() {
@@ -244,7 +245,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     for (const [id, text] of [['market-wallet', `${num(p.wallet)} gold`], ['market-treasury', `${num(s.treasury)} gold`], ['market-carry', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['market-tax', `${num(s.policies?.tradeTax || 0)}%`]]) {
       const node = document.getElementById(id); if (node) node.textContent = text;
     }
-    const donate = document.getElementById('market-donate'); if (donate) donate.disabled = !resources.some(id => p.inventory?.[id] > 0);
+    const donate = document.getElementById('market-donate'); if (donate) donate.disabled = !resources.some(id => transferableCount(p, id) > 0);
   }
   const ownWorkers = () => (state()?.workers || []).filter(worker => worker.ownerId === me()?.id);
   const atTreasury = player => canUseBuilding(player, BUILDINGS.find(b => b.id === 'bank'));
@@ -287,7 +288,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const sourceValid = !order.sourcePlotId || sources.some(plot => plot.id === order.sourcePlotId);
       const destinationValid = order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId);
       const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker);
-      const room = carryCapacity(p) - inventoryWeight(p), canCollect = WORKER_RESOURCES.some(resource => worker.cargo?.[resource] > 0 && RESOURCE_WEIGHTS[resource] <= room);
+      const room = carryCapacity(p) - inventoryWeight(p), canCollect = WORKER_RESOURCES.some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
       const cargoText = WORKER_RESOURCES.filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
       const currentSource = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : 'Public gathering grounds';
       const currentDestination = worker.mode === 'store' ? workerPlotName(worker.destinationPlotId) : 'Sell to the village';
@@ -325,9 +326,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div>';
   }
   function quoteTrade(resource) {
-    const p = me(), s = state(), stock = s.stock?.[resource] || 0, carried = p.inventory?.[resource] || 0;
+    const p = me(), s = state(), stock = s.stock?.[resource] || 0, carried = transferableCount(p, resource);
     const count = Number(tradeAmounts.get(resource)), valid = Number.isSafeInteger(count) && count >= 1 && count <= MAX_TRADE_AMOUNT;
-    const room = Math.max(0, Math.floor((carryCapacity(p) - inventoryWeight(p)) / RESOURCE_WEIGHTS[resource]));
+    const room = Math.max(0, Math.floor((carryCapacity(p) - inventoryWeight(p) + 1e-8) / resourceWeight(p, resource)));
     let maximum = { amount: 0, quote: { gross: 0, tax: 0, total: 0 } };
     try { maximum = maxSaleQuote({ resource, stock, carried, treasury: s.treasury, percent: s.policies?.tradeTax || 0 }); } catch {}
     const sellMax = maximum.amount, buyMax = Math.min(stock, room, MAX_TRADE_AMOUNT);
@@ -344,7 +345,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       count, sale, purchase, maxAmount: Math.max(1, sellMax, buyMax), sellAllowed: !sellReason, buyAllowed: !buyReason, sellReason, buyReason,
       maximum, maxAllowed: !maxReason, maxReason, maxButton: sellMax ? `Sell max · ${num(sellMax)} for ${num(maximum.quote.total)}g` : 'Sell max',
       maxText: sellMax ? `Max sale: ${num(sellMax)} ${resource} · ${num(maximum.quote.gross)}g value − ${num(maximum.quote.tax)}g tax = ${num(maximum.quote.total)}g received.${sellMax < carried ? ' Treasury funds or the trade limit leave the rest in your pack.' : ''}` : maxReason,
-      stockText: `${num(carried)} carried · ${num(stock)} in village`, limitText: `Can sell up to ${num(sellMax)} with treasury funds · Can buy up to ${num(buyMax)} with current stock and pack space.`,
+      stockText: `${carriedText(resource)} · ${num(stock)} in village`, limitText: `Can sell up to ${num(sellMax)} with treasury funds · Can buy up to ${num(buyMax)} with current stock and pack space.`,
       sellText: (sale ? `Sell: receive ${num(sale.total)}g (${num(sale.gross)}g value − ${num(sale.tax)}g tax).` : 'Sell: no quote.') + (sellReason ? ' ' + sellReason : ''),
       buyText: (purchase ? `Buy: pay ${num(purchase.total)}g (${num(purchase.subtotal)}g price + ${num(purchase.tax)}g tax).` : 'Buy: no quote.') + (buyReason ? ' ' + buyReason : ''),
       sellButton: sale ? `Sell ${num(count)} · ${num(sale.total)}g` : 'Sell', buyButton: purchase ? `Buy ${num(count)} · ${num(purchase.total)}g` : 'Buy'
@@ -355,6 +356,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const trade = quoteTrade(resource); displayedTrades.set(resource, trade);
     const write = (id, text) => { const node = document.getElementById(id); if (node) node.textContent = text; };
     document.getElementById(`trade-amount-${resource}`).max = trade.maxAmount;
+    write(`trade-weight-${resource}`, `${num(resourceWeight(me(), resource))} weight each`);
     write(`trade-stock-${resource}`, trade.stockText); write(`trade-limit-${resource}`, trade.limitText);
     for (const direction of ['sell', 'buy']) {
       write(`trade-${direction}-quote-${resource}`, trade[direction + 'Text']);
@@ -384,13 +386,13 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     let html = head('THE BREADBOARD', 'Something warm for the road.', 'Meals go into your pack. Equip one on your hotbar or eat it here whenever you need it.') + stats([['Hunger', `${num(p.hunger)} / 100`], ['Village wheat', num(s.stock?.wheat)]]) + '<div class="shop-item-grid">';
     for (const id of ['food', 'good_food', 'best_food']) {
       const item = s.foodQuotes?.[id] || FOOD[id]; if (!item) continue;
-      const full = inventoryWeight(p) + RESOURCE_WEIGHTS[id] > carryCapacity(p), stocked = (s.stock?.wheat || 0) >= item.wheat;
+      const full = inventoryWeight(p) + resourceWeight(p, id) > carryCapacity(p) + 1e-8, stocked = (s.stock?.wheat || 0) >= item.wheat;
       const canBuy = wallet() >= item.price && stocked && !full;
       let controls = command(`Buy · ${item.price}g`, 'buyFood', { tier: id }, !canBuy);
       if (p.inventory?.[id]) controls += command('Eat ' + label(id).toLowerCase(), 'eat', { tier: id }, p.hunger >= 100);
       html += itemCard({ id, item: id, name: item.label || label(id), tag: id === 'food' ? 'Fresh bread' : id === 'good_food' ? 'Hearty meal' : 'Village feast',
-        facts: [['Hunger', `+${item.hunger}`], ['In your pack', num(p.inventory?.[id])]],
-        copy: `Restores ${item.hunger} hunger when eaten · uses ${item.wheat} village wheat · ${num(p.inventory?.[id])} carried. Each meal weighs ${RESOURCE_WEIGHTS[id]}. Buy now and eat later; buying never consumes it automatically.`,
+        facts: [['Hunger', `+${item.hunger}`], ['In your pack', num(p.inventory?.[id])], ...(boundInventoryCount(p, id) ? [['Transferable', num(transferableCount(p, id))], ['Kit-bound', `${num(boundInventoryCount(p, id))} · eat only`]] : [])],
+        copy: `Restores ${item.hunger} hunger when eaten · uses ${item.wheat} village wheat · ${carriedText(id)}. Each meal weighs ${num(resourceWeight(p, id))}. Buy now and eat later; buying never consumes it automatically.${boundInventoryCount(p, id) ? ' Kit food is eaten first and cannot be stored, sold, donated or traded.' : ''}`,
         status: !stocked ? 'The village needs more wheat.' : full ? 'Make room in your pack.' : wallet() < item.price ? 'Not enough wallet gold.' : `${item.wheat} wheat from village stores`, controls, available: canBuy });
     }
     return html + '</div>';
@@ -403,16 +405,16 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const use = { axe: 'Chop trees for timber.', pickaxe: 'Mine every stone, iron and coal outcrop.', scythe: 'Harvest individual wheat stalks.', hammer: 'Repair damaged structures using timber or stone from village supplies.' }[id];
       html += itemCard({ id: `wood_${id}`, item: id, tier: 'wood', name: 'Wooden ' + id, tag: 'Starter equipment', facts: gearFacts(id),
         copy: `${use} ${TOOL_WEIGHTS[id]} carrying weight. Wooden tools need no workshop materials. All tiers swing at the same speed.`,
-        status: owned ? `${num(p.durability[id])} uses remain · replace it once broken` : full ? 'Make room in your pack.' : money() < 10 ? 'Not enough gold or purchase credit.' : `100 durability · ${id === 'hammer' ? 'repairs damaged structures' : 'one resource per swing'}`,
+        status: owned ? `${num(p.durability[id])} / ${num(p.maxDurability?.[id] || TOOL_TIERS[p.tiers?.[id] || 'wood'].durability)} uses remain · replace it once broken` : full ? 'Make room in your pack.' : money() < 10 ? 'Not enough gold or purchase credit.' : `${acquiredToolDurability(p, id)} durability · ${id === 'hammer' ? 'repairs damaged structures' : 'one resource per swing'}`,
         controls: command('Buy · 10g', 'buyTool', { tool: id }, !available), available });
     }
     html += '</div><p>Wooden tools need no materials. Stocked player tool shops craft stone and iron tools for higher yields at the same swing speed.</p><h3>Backpacks</h3><p>Equip a larger backpack to carry more tools, food, and resources. Upgrades replace your current bag. Each price is the full purchase price.</p><div class="shop-item-grid">';
     html += itemCard({ id: 'equipped_pack', item: 'backpack', tier: backpack.tier, name: backpack.name, tag: 'Equipped', facts: [['Carry capacity', `${carryCapacity(p)} total`], ['Upgrade level', `${backpack.tier} / 3`]],
-      copy: `${carryCapacity(p)} total carrying capacity. Includes any carrying bonus from your role. Backpacks have no durability wear.`, controls: '<span class="status-pill">Equipped</span>' });
+      copy: `${carryCapacity(p)} total carrying capacity. Includes carrying bonuses from your role and deployed crate gear. Backpacks have no durability wear.`, controls: '<span class="status-pill">Equipped</span>' });
     for (const pack of BACKPACKS.filter(pack => pack.tier > backpack.tier)) {
       const capacity = carryCapacity({ ...p, backpackTier: pack.tier }), available = money() >= pack.price;
       html += itemCard({ id: `pack_${pack.tier}`, item: 'backpack', tier: pack.tier, name: pack.name, tag: 'Carry upgrade', facts: [['Carry capacity', `${capacity} total`], ['Extra room', `+${capacity - carryCapacity(p)}`]],
-        copy: `${capacity} total capacity · +${capacity - carryCapacity(p)} more weight. Includes your role bonus. No durability wear; replaces the equipped bag. The price is the full purchase price, not an upgrade difference.`,
+        copy: `${capacity} total capacity · +${capacity - carryCapacity(p)} more weight. Includes bonuses from your role and deployed crate gear. No durability wear; replaces the equipped bag. The price is the full purchase price, not an upgrade difference.`,
         status: available ? 'Wear it on your dwarf’s back.' : 'Not enough gold or purchase credit.', controls: command(`Equip · ${pack.price}g`, 'buyBackpack', { tier: pack.tier }, !available), available });
     }
     html += '</div>';
@@ -421,7 +423,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function watch() {
     const replacements = (state().guardReplacements || []).filter(g => !g.plotId && !g.ownerId);
-    return head('THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + `<p>Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.</p>` + replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !me().inventory?.wheat) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
+    return head('THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + `<p>Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.</p>` + replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !transferableCount(me(), 'wheat')) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
   }
   function deliveries(id) {
     if (typeof showDeliveries !== 'function') return '';
@@ -480,10 +482,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (m.present) {
       html += '<div class="shop-item-grid">';
       for (const [resource, stock] of Object.entries(m.stock || {})) {
-        const weight = RESOURCE_WEIGHTS[resource] || 1, full = inventoryWeight(me()) + weight > carryCapacity(me()), price = m.prices?.[resource];
+        const weight = resourceWeight(me(), resource), full = inventoryWeight(me()) + weight > carryCapacity(me()) + 1e-8, price = m.prices?.[resource];
         const available = stock > 0 && Number.isFinite(price) && wallet() >= price && !full;
         html += itemCard({ id: `merchant_${resource}`, item: resource, name: label(resource), tag: 'Traveling wares', facts: [['Available', num(stock)], ['Carried', num(me().inventory?.[resource])]],
-          copy: `${num(stock)} available · ${num(me().inventory?.[resource])} carried. One unit weighs ${weight}. Purchase transfers one item to your inventory for the listed wallet-gold price.`,
+          copy: `${num(stock)} available · ${carriedText(resource)}. One unit weighs ${num(weight)}. Purchase transfers one item to your inventory for the listed wallet-gold price.`,
           status: stock < 1 ? 'Sold out for this visit.' : full ? 'Make room in your pack.' : !available ? 'Not enough wallet gold.' : 'Available during this visit.',
           controls: command(`Buy one · ${num(price)}g`, 'merchant_buy', { resource, amount: 1 }, !available), available });
       }
@@ -524,8 +526,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function storage(stored, id, isCart = false, owner = true) {
     const transferable = Object.keys(RESOURCE_WEIGHTS);
-    const preferred = transferable.find(resource => me().inventory?.[resource] > 0 || stored[resource] > 0) || transferable[0];
-    let html = '<div class="storage-grid">' + transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r)).map(r => `<div><span>${esc(label(r))}</span><strong>${num(stored[r])} stored</strong><small>${num(me().inventory?.[r])} carried</small></div>`).join('') + '</div><label for="storage-resource">Resource or item</label><div class="transfer-form">' + choices('storage-resource', transferable.map(resource => [resource, label(resource)]), preferred) + '<label for="storage-amount">Amount ' + quantity('storage-amount', 1000000, 1) + '</label>';
+    const preferred = transferable.find(resource => transferableCount(me(), resource) > 0 || stored[resource] > 0) || transferable[0];
+    let html = '<div class="storage-grid">' + transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r)).map(r => `<div><span>${esc(label(r))}</span><strong>${num(stored[r])} stored</strong><small>${esc(carriedText(r))}</small></div>`).join('') + '</div><label for="storage-resource">Resource or item</label><div class="transfer-form">' + choices('storage-resource', transferable.map(resource => [resource, label(resource)]), preferred) + '<label for="storage-amount">Amount ' + quantity('storage-amount', 1000000, 1) + '</label>';
     html += transferButton('storage-store', 'Store', () => sendStorage(false, false)) + transferButton('storage-store-max', 'Store max', () => sendStorage(false, true));
     if (owner) html += transferButton('storage-take', 'Take', () => sendStorage(true, false)) + transferButton('storage-take-max', 'Take max', () => sendStorage(true, true));
     return html + '</div><p id="storage-transfer-status" aria-live="polite"></p>';
@@ -571,7 +573,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const limits = storageLimits(); if (!limits) return;
       for (const [id, allowed] of [['storage-store', limits.store], ['storage-take', limits.take], ['storage-store-max', limits.storeMax], ['storage-take-max', limits.takeMax]]) enable(id, allowed);
       const status = document.getElementById('storage-transfer-status');
-      if (status) status.textContent = `${label(limits.resource)}: ${num(me().inventory?.[limits.resource])} carried · ${num(limits.stored[limits.resource])} stored. Store up to ${num(limits.storeMax)}${limits.container.ownerId === me().id ? ` · take up to ${num(limits.takeMax)}` : ''}. Max uses the space available when the transfer completes.`;
+      if (status) status.textContent = `${label(limits.resource)}: ${carriedText(limits.resource)} · ${num(limits.stored[limits.resource])} stored. Store up to ${num(limits.storeMax)}${limits.container.ownerId === me().id ? ` · take up to ${num(limits.takeMax)}` : ''}. Max uses the space available when the transfer completes. Stored items use their full weight.`;
     }
   }
   function buildOptions(id) {
@@ -605,7 +607,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += '<h3>Crafted to order</h3><p>Each purchase uses this shop’s stored materials. Payment goes to its owner. Equipment replaces your current item of that type.</p><div class="shop-item-grid">';
       for (const [recipe, r] of recipes) {
         const stocked = hasCost(p.storage, r.cost), owned = r.tool && me().durability?.[r.tool] > 0;
-        const addedWeight = r.tool ? owned ? 0 : TOOL_WEIGHTS[r.tool] : (RESOURCE_WEIGHTS[r.item] || 1) * r.amount;
+        const addedWeight = r.tool ? owned ? 0 : TOOL_WEIGHTS[r.tool] : resourceWeight(me(), r.item) * r.amount;
         const cartOwned = r.item === 'cart' && ownedCartCount(state(), me()) >= TRANSPORT.maxCarts;
         const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= r.price && p.hp > 0 && !full && !cartOwned;
         const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One cart per dwarf']];

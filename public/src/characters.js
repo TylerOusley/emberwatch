@@ -10,6 +10,9 @@ const geometryCache = new Map();
 const materialCache = new Map();
 const backpackCache = new Map();
 const TAU = Math.PI * 2;
+// These named surfaces must remain independently hideable when live equipment
+// replaces hair or a role's hat. Face, eye and beard detail can still be batched.
+const REMOVABLE_HEAD_COVERS = new Set(['swept grooved scalp hair','forged helmet and cheek protection','rolled helmet edge','draped linen hood','cloth opening seam','soft stitched leather cap']);
 const clamp = THREE.MathUtils.clamp;
 const smooth = t => t * t * (3 - 2 * t);
 
@@ -113,7 +116,7 @@ function pivot(parent,x=0,y=0,z=0) { const p = new THREE.Group(); p.position.set
 function mergeRigid(root, owned) {
   for (const child of [...root.children]) if (child.isGroup || child.isBone) mergeRigid(child,owned);
   const batches = new Map();
-  for (const child of root.children) if (child.isMesh && !child.isSkinnedMesh && !child.userData.tailored) {
+  for (const child of root.children) if (child.isMesh && !child.isSkinnedMesh && !child.userData.tailored && !child.userData.removableEquipment) {
     if (!batches.has(child.material)) batches.set(child.material,[]);
     batches.get(child.material).push(child);
   }
@@ -371,8 +374,9 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     buildHead(head,{role,variation,palette,own:owned});
     clothing=buildClothing(rig,{role,variation,palette,own:owned});
     if(clothingColor)clothing.setColor(clothingColor);
-    // The isolated equipment studio needs removable head coverings. Preserve
-    // those named surfaces there; normal game actors keep the original batches.
+    // Preserve just removable coverings in live rigs; the studio additionally
+    // keeps individual facial surfaces for its inspection tools.
+    if(!zombie)head.traverse(object=>{if(object.isMesh&&REMOVABLE_HEAD_COVERS.has(object.name))object.userData.removableEquipment=true;});
     if(equipmentPreview) head.traverse(object=>{if(object.isMesh)object.userData.tailored=true;});
     mergeRigid(visual,owned);
     if(role==='guard') {

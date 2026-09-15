@@ -1,7 +1,7 @@
 import { canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
-import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight } from '../shared/content.js';
+import { carryCapacity, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount } from '../shared/content.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE } from '../shared/market.js';
 import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 
@@ -18,7 +18,7 @@ const addIncome = (sim, v, p, amount) => {
   else p.wallet += amount;
 };
 const capacity = (p, id, amount) => {
-  if (inventoryWeight(p) + (RESOURCE_WEIGHTS[id] ?? 1) * amount > carryCapacity(p) + .00001) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store or sell some items first.');
+  if (inventoryWeight(p) + resourceWeight(p, id) * amount > carryCapacity(p) + .00001) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store or sell some items first.');
 };
 
 export function ensureEconomy(v) {
@@ -138,7 +138,7 @@ export function economyAction(sim, v, p, action) {
     const { resource, amount, minTotal } = action;
     const quote = taxedSaleQuote(resource, v.stock[resource], amount, v.policies.tradeTax);
     if (!whole(minTotal, 1)) throw new Error('Request a current whole-gold sale quote.');
-    if (!whole(p.inventory[resource]) || p.inventory[resource] < amount) throw new Error(`You do not have enough ${resource} to sell.`);
+    if (!whole(p.inventory[resource]) || transferableCount(p, resource) < amount) throw new Error(`You do not have enough ${resource} to sell.${boundInventoryCount(p, resource) ? ' Kit supplies stay with their owner until eaten.' : ''}`);
     if (quote.total < minTotal) throw new Error('The price changed as village stock increased. Review the new quote and try again.');
     if (!whole(v.treasury) || v.treasury - quote.total < TREASURY_RESERVE) throw new Error(`The village must keep ${TREASURY_RESERVE} gold for essential expenses. Try a smaller sale or return later.`);
     if (!whole(p.wallet) || !whole(p.wallet + quote.total)) throw new Error('Your wallet cannot accept this sale.');
@@ -172,6 +172,8 @@ export function economyAction(sim, v, p, action) {
     if (!own(FOOD, tier)) throw new Error('Choose food, good food or best food.');
     if (!whole(p.inventory[tier], 1)) throw new Error('Buy food from The Breadboard first.');
     if ((p.hunger ?? 100) >= 100) throw new Error('You are already well fed.');
+    const bound = boundInventoryCount(p, tier);
+    if (bound > 0) p.boundInventory[tier] = bound - 1;
     p.inventory[tier]--; p.hunger = Math.min(100, (p.hunger ?? 100) + FOOD[tier].hunger);
     return `You ate ${FOOD[tier].label.toLowerCase()}. Hunger restored.`;
   }
@@ -196,9 +198,9 @@ export function economyAction(sim, v, p, action) {
     return `Paid ${amount} gold in land-tax arrears.`;
   }
   requireMarket(p);
-  const total = materials.reduce((sum, id) => sum + p.inventory[id], 0);
+  const total = materials.reduce((sum, id) => sum + transferableCount(p, id), 0);
   if (!total) throw new Error('You have no materials to donate.');
-  for (const id of materials) { v.stock[id] += p.inventory[id]; p.inventory[id] = 0; }
+  for (const id of materials) { const amount = transferableCount(p, id); v.stock[id] += amount; p.inventory[id] -= amount; }
   return `${total} materials donated to village supplies.`;
 }
 

@@ -1,5 +1,6 @@
 // Shared, inspectable balance values. Prices and recipes are validated again by the server.
 import { ROLE_STATS } from './roles.js';
+import { equippedItem, GATHERING_TOOLS } from './crates.js';
 export const MAX_PLOTS = 5;
 export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800]);
 export const CARRY_CAPACITY = 100;
@@ -12,7 +13,7 @@ export const BACKPACKS = Object.freeze([
 // Equipped capacity comes from the saved tier, never a capacity sent by a client.
 export function carryCapacity(player = {}) {
   const equipmentCapacity = (Number.isInteger(player.backpackTier) ? BACKPACKS[player.backpackTier] : null)?.capacity ?? CARRY_CAPACITY;
-  return equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0);
+  return equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0) + (equippedItem(player, 'utility')?.capacity ?? 0);
 }
 export const STORAGE_CAPACITY = 1500;
 export const TOOL_TIERS = Object.freeze({
@@ -57,9 +58,36 @@ recipes.cart = { name: 'Cargo cart', shop: 'tinker_shop', item: 'cart', amount: 
 export const RECIPES = Object.freeze(recipes);
 export const RESOURCE_WEIGHTS = Object.freeze({ timber: 2, stone: 3, wheat: 1, iron: 3, coal: 2, food: 1, good_food: 1, best_food: 1, arrows: .1, cart: 12 });
 export const TOOL_WEIGHTS = Object.freeze({ sword: 2, axe: 3, pickaxe: 3, scythe: 2, hammer: 2, bow: 2 });
+export function resourceWeight(player, id) {
+  return (RESOURCE_WEIGHTS[id] ?? 1) * (equippedItem(player, 'utility')?.weights?.[id] ?? 1);
+}
+export function boundInventoryCount(player, id) {
+  const count = player?.inventory?.[id] ?? 0, bound = player?.boundInventory?.[id] ?? 0;
+  return Number.isSafeInteger(count) && count > 0 && Number.isSafeInteger(bound) && bound > 0 ? Math.min(count, bound) : 0;
+}
+export function transferableCount(player, id) {
+  const count = player?.inventory?.[id] ?? 0;
+  return Number.isSafeInteger(count) && count >= 0 ? count - boundInventoryCount(player, id) : 0;
+}
+export function acquiredToolDurability(player, tool, tier = 'wood', { starter = false } = {}) {
+  const base = TOOL_TIERS[tier]?.durability ?? TOOL_TIERS.wood.durability;
+  const multiplier = !starter && GATHERING_TOOLS.includes(tool) ? equippedItem(player, 'utility')?.gatheringDurability ?? 1 : 1;
+  return Math.round(base * multiplier);
+}
+// Recovery fills metadata only. Equipping a buckle never repairs an existing tool.
+export function normalizeToolDurability(player) {
+  if (!player.maxDurability || typeof player.maxDurability !== 'object' || Array.isArray(player.maxDurability)) player.maxDurability = {};
+  for (const tool of Object.keys(TOOL_WEIGHTS)) {
+    if (Number.isSafeInteger(player.maxDurability[tool]) && player.maxDurability[tool] > 0) continue;
+    const base = TOOL_TIERS[player.tiers?.[tool]]?.durability ?? TOOL_TIERS.wood.durability;
+    const remaining = Number.isSafeInteger(player.durability?.[tool]) ? player.durability[tool] : 0;
+    player.maxDurability[tool] = Math.max(base, remaining);
+  }
+  return player.maxDurability;
+}
 export function inventoryWeight(value = {}) {
   const inventory = value.inventory ?? value;
-  let weight = Object.entries(inventory).reduce((sum, [id, amount]) => sum + (Number.isFinite(amount) && amount > 0 ? amount * (RESOURCE_WEIGHTS[id] ?? 1) : 0), 0);
+  let weight = Object.entries(inventory).reduce((sum, [id, amount]) => sum + (Number.isFinite(amount) && amount > 0 ? amount * resourceWeight(value.inventory ? value : null, id) : 0), 0);
   if (value.inventory) for (const [id, amount] of Object.entries(value.durability ?? {})) if (amount > 0) weight += TOOL_WEIGHTS[id] ?? 0;
   return Math.round(weight * 100) / 100;
 }

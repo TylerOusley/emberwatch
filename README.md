@@ -2,11 +2,15 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 14.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — crate gameplay build 15.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 15 connects the crate collection to gameplay. Open **Crates & equipment** from the signed-in lobby or village menu to open earned crates, spend personal bank gold or shared crate credits, and choose the next run’s loadout. Each tier shows its exact pool, equal odds and duplicate return before opening. The server saves the result before a short reel animation; Skip and reconnect keep the same outcome.
+
+The 19 random rewards include fitted armor, carrying utilities, the Mining Pack and Lumber Pack, starting kits and consumable Phoenix Ember charges. Permanent unlocks survive villages; equipment and bound starter supplies deploy once on a new run. Manual respawn forfeits current run gear. Lifetime credited nights earn crates every ten nights, with the Sunforged Viking Helm and Last Stand at 100. See [the crate rules](docs/CRATE-PROPOSAL.md) for prices, effects, loadouts and the 70% source-specific duplicate returns.
 
 Build 14 addresses the interaction and reliability feedback. Click the world once to capture the mouse, then move it to look around; Escape releases it for menus. Hold left click to keep gathering the selected nearby node. Press **E** to mount/dismount your horse or put down a carried companion. Priests can heal injured living Watch guards and recruited troops. The treasury wall board has a wider reachable interaction area and a direct request-menu action.
 
@@ -16,7 +20,7 @@ Workers continue through day and night. Productive gathering earns attribute poi
 
 Connection recovery now uses heartbeats, bounded retry delays, resumable connection identity and fresh state baselines. Temporary connection loss is shown in the HUD; disconnected actions are not replayed. Server restarts still briefly interrupt play on the current single-service host.
 
-The crate **art collection** is prepared for review: 19 crate item models plus the Sunforged Viking Helm, with fitted armor, distinct utility packs, three tool choices for expedition kits, and the Phoenix Ember. Open **`/crate-gallery.html`** on the game server to rotate each model, change lighting, or preview wearable pieces on a moving dwarf. The [collection sheet](docs/previews/crate-collection.jpg), individual PNG renders and reusable GLB files are included. See the [art guide](docs/CRATE-ART.md). Crate opening, rewards and equipment bonuses remain disabled.
+The crate **art collection** supports the playable rewards: 19 crate item models plus the Sunforged Viking Helm, with fitted armor, distinct utility packs, three tool choices for expedition kits, and the Phoenix Ember. Open **`/crate-gallery.html`** on the game server to rotate each model, change lighting, or preview wearable pieces on a moving dwarf. The [collection sheet](docs/previews/crate-collection.jpg), individual PNG renders and reusable GLB files are included. See the [art guide](docs/CRATE-ART.md). The gallery is an art inspection tool; use Crates & equipment to open rewards and save loadouts.
 
 Build 13 separates the **Resource Exchange**, north of the stables, from the **Village Treasury**. The exchange handles illustrated resource buying, selling, donations and communal supply-request deliveries. Each resource has **Sell max**, which sells the largest carried bundle the village can afford at the displayed price and tax while preserving its reserve. Typed quantities remain available. The treasury's illustrated vault focuses on savings, loans and accounts; worker hiring and council links remain there. Workers physically bring resource sales to the exchange. [Resource Exchange geometry](docs/previews/resource-exchange.jpg).
 
@@ -30,7 +34,7 @@ Shops now display illustrated tools, weapons, food, backpacks, horses and mercha
 
 Build 11 refines the lifting gate with beveled timber, forged metal joints and moving chains, and fixes the well with thick inward-facing masonry. [Gate and well preview](docs/previews/gate-well.jpg). Read village requests by walking up to the treasury noticeboard and pressing **E**. The HUD/menu can mark the board on the map; requests for a particular delivery destination are available at that destination’s entrance.
 
-Crate gameplay, functional armor and the 100-night helmet reward are **not implemented**; their artwork is prepared in the separate review gallery. Shared duplicate credits are accepted in the proposal; earned and credit-funded duplicate crates return credits usable across tiers, while bank-funded duplicates return 70% of their actual gold price. The approved credit prices and original item pool, plus the Phoenix Ember, Mining Pack and Lumber Pack designs, are recorded separately in [the crate proposal](docs/CRATE-PROPOSAL.md).
+Builds 11–14 prepared the crate proposal and artwork. Build 15 implements the expanded pools and reward mechanics described above.
 
 Build 10 adds six zombie types, graveyard emergence, sword cleave and dodgeable enemy attacks. Players and guards can strike multiple zombies in a forward arc; a short blade trail and swoosh follow the swing. Red ground circles mark enemy attacks before impact. The large Brood husk releases up to three weak Grave mites when killed, subject to the 120-enemy battlefield limit, and a Gravebreaker leads every fifth night. Archer towers now fire without ammunition, including existing empty towers; bows and cannons still need their normal supplies.
 
