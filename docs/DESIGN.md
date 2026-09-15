@@ -4,7 +4,7 @@ This document records Tyler's game plan so later implementation does not silentl
 
 The game has its own codebase, GitHub repository and Railway service, linked from Tyler's website. No previous game code is part of this project.
 
-## Build 08: building entrances and visiting merchant
+## Build 09: detailed landscape and a living sky
 
 Build 04 implements the forty internal and eight exposed plots, ownership and construction, private harvesting, stocked crafting shops, upgraded equipment, the treasury market and policies, merchant trade, owned defenses, church care, and horses/carts with protected loans. The Watch now faces the street; its guard exit and road agree with that entrance. Existing villages and account savings migrate without resetting the run.
 
@@ -19,6 +19,8 @@ Build 06 corrects the working-tool hand poses, gives each backpack upgrade a vis
 Build 07 adds articulated knees, ankles, elbows and hip rotation to walking and running, blended by movement speed. The upper body counters the hips and leans gently into turns. Zombie movement remains slower and uneven. Boots and trousers now deform around the extra joints. These are client visual changes; authoritative movement speed, collision, combat timing and saved game rules remain the same. Road border stones stop at adjoining path surfaces so junctions do not contain internal curb rows.
 
 Build 08 requires residents to approach the front door or counter for building services. Owned structures use their building entrance; unbuilt plots, ruins, farms and mines use their frontage gate. Client prompts and authoritative transactions share these access points, while church beds remain separate care interaction points. The atlas marks entrances. A merchant character, a covered carriage and two harnessed horses appear during the authoritative merchant visit and disappear when it ends. They are visual visitors, separate from residents’ owned horses and carts.
+
+Build 09 adds decorative grass, ferns, shrubs, wildflowers, clover, leaf litter and limited wall ivy, with clearances around roads, permanent services, all plots, church beds, harvest nodes and the merchant caravan. Two drifting cloud decks, the sun, moon, stars and gradual lighting changes show the actual village cycle. Sunrise starts the day; sunset starts the night. Daytime remains eight minutes and nighttime four minutes. Everyone joining the same village sees its current phase, and the sky stops advancing when the simulation pauses. The camera can look upward without orbiting underground.
 
 ### Current implementation choices
 

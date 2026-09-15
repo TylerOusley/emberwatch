@@ -135,7 +135,11 @@ export class Simulation {
     if (canEquip(player, input.tool) || input.tool === 'food' && FOOD_IDS.some(id => canEquip(player, id))) player.tool = input.tool;
   }
   snapshot(village, viewerId) {
-    return { id: village.id, name: village.name, clock: village.clock, day: village.day, phase: village.phase, phaseRemaining: Math.ceil(village.phaseRemaining), gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
+    return { id: village.id, name: village.name, clock: village.clock, day: village.day, phase: village.phase, phaseRemaining: Math.ceil(village.phaseRemaining),
+      phaseDuration: village.phase === 'night' ? this.nightSeconds : this.daySeconds,
+      phaseEndsAt: Math.round((village.clock + Math.max(0, village.phaseRemaining)) * 1000) / 1000,
+      clockRunning: village.status === 'active' && Object.values(village.players).some(p => p.online),
+      gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         tiers: p.tiers, backpackTier: p.backpackTier, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,

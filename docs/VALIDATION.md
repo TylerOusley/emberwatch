@@ -1,5 +1,15 @@
 # Emberwatch build validation
 
+## Build 09: foliage, moving clouds and the day/night sky
+
+The complete `npm test` run passes **228/228 tests**. All 41 client, shared and server JavaScript modules pass syntax checks. The new timing metadata exposes the configured phase duration, fractional deadline and running state without changing the simulation clock or save format. Checks cover joining at each phase, rounded HUD countdowns, custom day/night lengths, bounded extrapolation during a stalled connection, phase boundaries, paused/fallen villages, and reconnects.
+
+Sky checks verify continuous sunrise, noon, sunset and moon travel; gradual lighting, fog and visibility; camera-relative sky positioning with world-anchored directional lights; clock-driven cloud drift; and disposal. The [sky preview](previews/sky-cycle.jpg) was rendered and visually inspected using the actual Three.js geometry, shader code and cycle uniforms in a software OpenGL context. All six sky shader programs compiled and rasterized. A fixed-camera midday comparison at simulation seconds 180 and 300 confirms cloud motion (mean RGB difference 14.367/255). The preview follows the sun/moon to show the cycle; it is a sky-only render, not a browser gameplay capture.
+
+Foliage uses 4,345 instances across seven draw calls and 163,660 triangles, with no new shadow casters. A shared wind uniform updates without rewriting instance matrices. Its actual material hook, expanded into Three's standard vertex shader with instancing, color, fog and shadow defines, compiles in a Mesa OpenGL ES 3.2 context. Deterministic placement checks cover complete plant footprints against actual curved roads, all 48 plots, buildings and entrances, church beds, resources, and the parked caravan. Existing road-junction checks remain green. A local geometry crop was inspected for plant scale and clear approaches. Camera tests verify normal player-centered orbit and upward viewing while keeping the physical camera above ground and collision rays anchored to the dwarf.
+
+Interactive browser appearance and sustained multiplayer frame rate still need a live playtest. Existing villages, accounts, balances, resource identities, phase lengths and gameplay rules are preserved.
+
 ## Build 08: entrance access and the visiting merchant
 
 The complete `npm test` run passes **212/212 tests**. All 39 client, shared and server JavaScript modules pass syntax checks. Shared entrance rules cover the actual rotated front doors and projecting shop counters. The checks verify reachable approach points for every permanent building and all 48 plots across supported building types, reject side/rear/interior positions, and use frontage gates for open land and ruins.

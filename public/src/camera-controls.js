@@ -1,4 +1,18 @@
 // Downed overlays are camera surfaces too; left clicks keep their normal UI action.
+// Low-angle orbit stops above the ground; further upward look raises the aim
+// point instead of driving the camera below the terrain. Collision rays still
+// start at the dwarf's body anchor rather than at that raised sky-view target.
+export function placeOrbitCamera(player, yaw, pitch, distance, position, anchor, lookAt) {
+  const viewPitch = Math.max(-.95, Math.min(.95, pitch));
+  const orbitPitch = Math.max(-.10, viewPitch), horizontal = Math.cos(orbitPitch) * distance;
+  anchor.x = lookAt.x = player.x; anchor.z = lookAt.z = player.z;
+  anchor.y = 1.45;
+  position.x = player.x + Math.sin(yaw) * horizontal;
+  position.z = player.z + Math.cos(yaw) * horizontal;
+  position.y = Math.max(.5, anchor.y + Math.sin(orbitPitch) * distance);
+  lookAt.y = anchor.y + Math.max(0, Math.tan(-viewPitch) - Math.tan(.10)) * horizontal;
+}
+
 export function bindCameraLook({ surfaces, host, enabled, rotate }) {
   let dragging = false;
   const stop = () => { dragging = false; };
