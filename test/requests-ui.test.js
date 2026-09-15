@@ -32,7 +32,11 @@ test('request board has reachable frontage, rejects reading through the wall, an
   assert.equal(noticeboardTakesPriority(buildingEntrance(bank), candidate), false);
   assert.equal(noticeboardTakesPriority({ x: -11.65, z: -24.8 }, candidate), true);
   assert.equal(noticeboardTakesPriority({ x: -11.65, z: -24.55 }, candidate), false);
-  assert.equal(noticeboardTakesPriority(NOTICEBOARD_POINT, { kind: 'gather' }), false, 'selected gathering intent retains priority');
+  assert.equal(noticeboardTakesPriority(NOTICEBOARD_POINT, { kind: 'gather' }), true, 'E opens the board even with a gathering tool selected; left click still gathers');
+  assert.equal(canReadNoticeboard(buildingEntrance(bank)), true, 'the treasury task-board button can open it from the actual entrance');
+  const wallEdge = { x: -12.5, z: -26.25 };
+  assert.ok(canStand(wallEdge.x, wallEdge.z));
+  assert.equal(canReadNoticeboard(wallEdge), true, 'walking up to the board cannot put the dwarf outside its narrow trigger');
 });
 
 test('board requires walking up, only marks deliveries, and releases the modal before travel', () => {
@@ -42,7 +46,8 @@ test('board requires walking up, only marks deliveries, and releases the modal b
   assert.equal(f.inputs.length, 0); assert.equal(f.buttons[0].text, 'Mark delivery entrance');
   f.buttons[0].onclick(); assert.deepEqual(f.marks.at(-1), f.request.point); assert.equal(f.dialog.open, false); assert.equal(f.sent.length, 0);
   f.ui.show(); const renders = f.renders; f.p.x = 0; f.ui.update(); assert.equal(f.dialog.open, false); assert.equal(f.renders, renders, 'moving out of range closes instead of reopening a remote board');
-  Object.assign(f.p, NOTICEBOARD_POINT); f.ui.show(); f.ui.findBoard(); assert.equal(f.dialog.open, false); assert.deepEqual(f.marks.at(-1), NOTICEBOARD_POINT);
+  Object.assign(f.p, NOTICEBOARD_POINT); f.ui.findBoard(); assert.equal(f.dialog.open, true, 'the HUD board button opens the board when the dwarf is standing beside it');
+  f.p.x = 0; f.ui.findBoard(); assert.equal(f.dialog.open, false); assert.deepEqual(f.marks.at(-1), NOTICEBOARD_POINT);
 });
 
 test('destination views offer only that entrance’s deliveries and cannot be opened remotely', () => {

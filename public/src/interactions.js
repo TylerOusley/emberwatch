@@ -49,3 +49,23 @@ export function choosePlotInteraction(player, sites, states = []) {
   return selected;
 }
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
+
+// Guards use the same blessing as player allies. Ignore healthy/dead guards and
+// offline residents so an invalid nearer entity cannot hide a valid patient.
+export function nearestHealingTarget(player, players = [], guards = []) {
+  if (!player || player.role !== 'priest' || player.downed) return null;
+  return [...players.filter(p => p.id !== player.id && p.online && (p.downed || p.hp < p.maxHp)),
+    ...guards.filter(g => g.hp > 0 && g.hp < g.maxHp)]
+    .filter(target => distance(player, target) <= 3.5)
+    .sort((a, b) => distance(player, a) - distance(player, b))[0] ?? null;
+}
+
+// Immediate transport/carry actions must not disappear behind a shop or a tree.
+export function directCompanionInteraction(player, horses = []) {
+  if (!player || player.downed || player.carriedBy || player.bedPlotId) return null;
+  if (player.mountedHorseId) return { kind: 'dismountHorse', id: player.mountedHorseId, title: 'Dismount your horse', subtitle: 'Press E to get off · Cargo and hitching in your pack' };
+  if (player.carryingId) return { kind: 'dropPlayer', id: player.carryingId, title: 'Put your companion down', subtitle: 'Press E or G to put down · Carry them to a church for treatment' };
+  const horse = horses.filter(h => h.ownerId === player.id && !h.riderId && distance(player, h) <= 3)
+    .sort((a, b) => distance(player, a) - distance(player, b))[0];
+  return horse ? { kind: 'mountHorse', id: horse.id, title: 'Mount your horse', subtitle: 'Press E to get on · Cargo and hitching in your pack' } : null;
+}

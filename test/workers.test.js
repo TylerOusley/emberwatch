@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildingEntrance } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES, canStand, plotFront, plotSolids } from '../shared/world.js';
-import { WORKER_RULES } from '../shared/workers.js';
+import { WORKER_RULES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../shared/workers.js';
 import { inventoryWeight } from '../shared/content.js';
 import { taxedSaleQuote } from '../shared/economy.js';
 import { ensureOwnership } from '../server/ownership.js';
@@ -104,6 +104,18 @@ test('private workers use their own mine, share its depletion, and retain privat
   assert.equal(plot.storage.coal ?? 0, 0, 'the owner is not awarded a duplicate visitor cut');
 });
 
+test('workers use level-two regrowth and the expanded destination capacity', () => {
+  const { v, hire, assign, advance, atNode, built } = fixture();
+  const plot = built('mine'); plot.level = 2;
+  const w = hire(), node = v.plotResources.find(node => node.plotId === plot.id && node.type === 'coal'); node.remaining = 1;
+  assign(w, { sourcePlotId: plot.id, resource: 'coal' }); atNode(w, node); advance(4);
+  assert.equal(w.cargo.coal, 1); assert.ok(Math.abs(node.regrowAt - v.clock - 73.125) < 1e-6);
+  plot.storage.stone = 499; w.cargo.stone = 5;
+  assign(w, { mode: 'store', destinationPlotId: plot.id }); Object.assign(w, plotFront(PLOTS.find(p => p.id === plot.id), 1));
+  advance(.1); assert.equal(plot.storage.stone, 504); assert.equal(plot.storage.coal, 1);
+  assert.equal(w.cargo.stone, 0); assert.equal(w.cargo.coal, 0);
+});
+
 test('cargo is delivered physically, fills only available storage, and survives full or demolished destinations', () => {
   const { v, owner, hire, assign, advance, built } = fixture();
   const plot = built('house'), w = hire();
@@ -159,15 +171,13 @@ test('partial sales preserve the treasury reserve and unsold cargo without idle 
   assert.equal(w.cargo.iron, 0); assert.equal(v.stock.iron, 5);
 });
 
-test('wages stop while paused, owner offline, at night, near zombies, or unable to pay', () => {
-  for (const reason of ['paused', 'offline', 'night', 'zombie', 'unpaid']) {
+test('wages stop while paused, owner offline, or unable to pay', () => {
+  for (const reason of ['paused', 'offline', 'unpaid']) {
     const { v, owner, hire, assign, advance, nodeOnly, atNode } = fixture();
     const w = hire(), { node, state } = nodeOnly('stone'); assign(w); atNode(w, node);
     w.gatherProgress = 3.9; w.cargo.stone = 1;
     if (reason === 'paused') w.paused = true;
     if (reason === 'offline') owner.online = false;
-    if (reason === 'night') v.phase = 'night';
-    if (reason === 'zombie') v.zombies.push({ x: w.x + 4, z: w.z, hp: 100 });
     if (reason === 'unpaid') owner.wallet = 0;
     const wallet = owner.wallet, before = { x: w.x, z: w.z };
     advance(1);
@@ -175,6 +185,67 @@ test('wages stop while paused, owner offline, at night, near zombies, or unable 
     assert.equal(w.cargo.stone, 1, reason); assert.equal(state.remaining, 8, reason);
     assert.equal(w.gatherProgress, 0, reason); assert.ok(apart(w, before) > .1, `${reason}: worker walks home`);
   }
+});
+
+test('workers harvest through night and nearby zombies while consuming wages normally', () => {
+  const { v, owner, hire, assign, advance, nodeOnly, atNode } = fixture();
+  const w = hire(), { node, state } = nodeOnly('stone', 3); assign(w); atNode(w, node);
+  v.phase = 'night'; v.zombies.push({ x: w.x + 4, z: w.z, hp: 100 });
+  const wallet = owner.wallet; advance(8);
+  assert.equal(w.cargo.stone, 2); assert.equal(state.remaining, 1);
+  assert.equal(w.workXp, 2); assert.equal(owner.wallet, wallet - 1);
+  assert.ok(Math.abs(w.paidWorkSeconds - 22) < 1e-6);
+  assert.match(w.status, /Gathering/);
+});
+
+test('only completed harvests earn points; spending a point improves gathering and cannot be repeated', () => {
+  const { v, visitor, act, hire, assign, advance, nodeOnly, atNode } = fixture();
+  const w = hire(), { node } = nodeOnly('stone', 4); assign(w); atNode(w, node); w.workXp = 24;
+  advance(3.9); assert.equal(w.workXp, 24); assert.equal(w.upgradePoints, 0);
+  assert.throws(() => act({ kind: 'worker_upgrade', workerId: w.id, attribute: 'gathering' }), /earns an upgrade point/);
+  advance(.1); assert.equal(w.workXp, 25); assert.equal(w.upgradePoints, 1); assert.equal(w.level, 2);
+  assert.throws(() => act({ kind: 'worker_upgrade', workerId: w.id, attribute: 'gathering' }, visitor), /own workers/);
+  assert.throws(() => act({ kind: 'worker_upgrade', workerId: w.id, attribute: '__proto__' }), /Choose gathering/);
+  act({ kind: 'worker_upgrade', workerId: w.id, attribute: 'gathering' });
+  assert.equal(w.attributes.gathering, 1); assert.equal(w.upgradePoints, 0);
+  assert.throws(() => act({ kind: 'worker_upgrade', workerId: w.id, attribute: 'carry' }), /earns an upgrade point/);
+  advance(3.5); assert.equal(w.cargo.stone, 1);
+  advance(.1); assert.equal(w.cargo.stone, 2); assert.equal(w.workXp, 26);
+  act({ kind: 'worker_pause', workerId: w.id, paused: true }); advance(5);
+  assert.equal(w.workXp, 26, 'returning and idle time never grants experience');
+  ensureWorkers(v); assert.equal(w.upgradePoints, 0, 'normalization never reissues spent points');
+});
+
+test('attribute caps, carry space, movement and saved progression use server-owned values', () => {
+  const { v, act, hire, assign, advance, nodeOnly, atNode } = fixture();
+  const w = hire(); w.workXp = WORKER_MAX_XP;
+  for (const attribute of ['gathering', 'speed', 'carry']) for (let i = 0; i < 5; i++) act({ kind: 'worker_upgrade', workerId: w.id, attribute, points: 100 });
+  assert.deepEqual(workerStats(w), { gatherSeconds: 2, speed: 4.5, carryCapacity: 90 });
+  assert.equal(w.upgradePoints, 0); assert.equal(w.level, 16);
+  assert.throws(() => act({ kind: 'worker_upgrade', workerId: w.id, attribute: 'carry' }), /fully upgraded/);
+  const { node } = nodeOnly('stone'); assign(w); atNode(w, node); w.cargo.stone = 27;
+  advance(2); assert.equal(w.cargo.stone, 28, 'upgraded worker gathers beyond the old 40 weight capacity');
+  assert.equal(w.workXp, WORKER_MAX_XP);
+  const color = WORKER_COLORS[3].value; act({ kind: 'worker_color', workerId: w.id, color });
+  const restored = JSON.parse(JSON.stringify(v)); ensureWorkers(restored);
+  assert.deepEqual(restored.workers[0].attributes, w.attributes); assert.equal(restored.workers[0].color, color);
+  assert.equal(restored.workers[0].workXp, WORKER_MAX_XP); assert.equal(restored.workers[0].upgradePoints, 0);
+  assert.deepEqual(restored.workers[0].cargo, w.cargo);
+});
+
+test('worker color changes are owner-only, allowlisted, and shared without private progression', () => {
+  const { v, owner, visitor, act, hire } = fixture(); const w = hire(), wallet = owner.wallet;
+  const color = WORKER_COLORS[2].value;
+  assert.throws(() => act({ kind: 'worker_color', workerId: w.id, color }, visitor), /own workers/);
+  assert.throws(() => act({ kind: 'worker_color', workerId: w.id, color: 'red;url(x)' }), /clothing colors/);
+  act({ kind: 'worker_color', workerId: w.id, color });
+  const other = workersSnapshot(v, 'visitor').workers[0];
+  assert.equal(other.color, color); assert.equal(owner.wallet, wallet);
+  for (const key of ['attributes', 'upgradePoints', 'workXp']) assert.equal(Object.hasOwn(other, key), false);
+  delete w.attributes; delete w.workXp; delete w.color; w.upgradePoints = 999;
+  const cargo = { ...w.cargo }; ensureWorkers(v);
+  assert.equal(w.level, 1); assert.equal(w.upgradePoints, 0); assert.equal(w.color, WORKER_COLORS[0].value);
+  assert.deepEqual(w.cargo, cargo, 'legacy migration retains earned cargo');
 });
 
 test('save/reload preserves remaining wages, cargo and elapsed gathering without a reconnect reward', () => {

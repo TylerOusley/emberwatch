@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseInteraction, choosePlotInteraction, nearestGatherable } from '../public/src/interactions.js';
+import { chooseInteraction, choosePlotInteraction, nearestGatherable, nearestHealingTarget, directCompanionInteraction } from '../public/src/interactions.js';
 import { BUILDINGS, PLOTS, plotBedPoint, plotFront } from '../shared/world.js';
 import { buildingEntrance, plotEntrance } from '../shared/access.js';
 
@@ -77,4 +77,26 @@ test('cave prompts show the shared rolled ore and do not offer mining through a 
   const selected=nearestGatherable({x:6,z:-164},'pickaxe',[node],current);
   assert.equal(selected.type,'coal');assert.equal(selected.roll,3);
   assert.equal(nearestGatherable({x:6,z:-164},'pickaxe',[node],[{...current[0],available:false}]),null);
+});
+
+
+test('priest targets wounded living guards as well as online wounded players', () => {
+  const priest = { id: 'priest', role: 'priest', x: 0, z: 0, hp: 90, maxHp: 125, online: true };
+  const players = [priest, { id: 'offline', x: 0, z: 0, hp: 50, maxHp: 100, online: false }, { id: 'ally', x: 2, z: 0, hp: 0, maxHp: 100, downed: true, online: true }];
+  const guards = [{ id: 'dead', x: 0, z: 0, hp: 0, maxHp: 160 }, { id: 'healthy', x: .2, z: 0, hp: 160, maxHp: 160 }, { id: 'watch', x: 1, z: 0, hp: 100, maxHp: 160 }];
+  assert.equal(nearestHealingTarget(priest, players, guards).id, 'watch');
+  guards[2].hp = 160;
+  assert.equal(nearestHealingTarget(priest, players, guards).id, 'ally');
+  assert.equal(nearestHealingTarget({ ...priest, role: 'villager' }, players, guards), null);
+  assert.equal(nearestHealingTarget({ ...priest, x: 10 }, players, guards), null);
+});
+
+test('E offers immediate owned-horse mounting, dismounting, and safe companion release', () => {
+  const player = { id: 'owner', x: 0, z: 0 };
+  const horses = [{ id: 'stranger', ownerId: 'else', x: 0, z: 0 }, { id: 'owned', ownerId: 'owner', x: 1, z: 0 }];
+  assert.deepEqual(directCompanionInteraction(player, horses), { kind: 'mountHorse', id: 'owned', title: 'Mount your horse', subtitle: 'Press E to get on · Cargo and hitching in your pack' });
+  assert.equal(directCompanionInteraction({ ...player, mountedHorseId: 'owned' }, horses).kind, 'dismountHorse');
+  assert.equal(directCompanionInteraction({ ...player, carryingId: 'ally' }, horses).kind, 'dropPlayer');
+  assert.equal(directCompanionInteraction({ ...player, downed: true }, horses), null);
+  assert.equal(directCompanionInteraction({ ...player, x: 10 }, horses), null);
 });

@@ -321,7 +321,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   const group = new THREE.Group();
   const visual = pivot(group);
   const owned = new Set();
-  let rig, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, disposed=false;
+  let rig, clothing, clothingColor=null, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, disposed=false;
   let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0, turnAmount=0;
   const actionOffsets = new Float64Array(12);
   const leftStep=new Float64Array(3),rightStep=new Float64Array(3),stepScratch=new Float64Array(3);
@@ -369,7 +369,8 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     const palette={skin:actualSkin,hair:beard,cloth:clothes,leather:material(0x66503a),iron,brass,dark};
     buildBody(visual,rig,{skin:actualSkin,own:owned});
     buildHead(head,{role,variation,palette,own:owned});
-    buildClothing(rig,{role,variation,palette,own:owned});
+    clothing=buildClothing(rig,{role,variation,palette,own:owned});
+    if(clothingColor)clothing.setColor(clothingColor);
     // The isolated equipment studio needs removable head coverings. Preserve
     // those named surfaces there; normal game actors keep the original batches.
     if(equipmentPreview) head.traverse(object=>{if(object.isMesh)object.userData.tailored=true;});
@@ -426,6 +427,12 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     if(backpack)backpack.removeFromParent();
     backpack=null;
     if(next>0&&!rig.zombie){backpack=makeBackpack(next,role==='guard');rig.body.add(backpack);}
+  }
+  function setClothingColor(value) {
+    if(disposed)return;
+    const next=typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)?value.toLowerCase():null;
+    if(next===clothingColor)return;
+    clothingColor=next;clothing?.setColor(next);
   }
   build();
 
@@ -544,5 +551,5 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   }
   update(0,0);
   group.name=`${kind}-character`;
-  return {group,update,setRole,setTool,setBackpackTier,dispose};
+  return {group,update,setRole,setTool,setBackpackTier,setClothingColor,dispose};
 }

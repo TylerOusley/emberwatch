@@ -14,35 +14,86 @@ export function placeOrbitCamera(player, yaw, pitch, distance, position, anchor,
   lookAt.y = anchor.y + Math.max(0, Math.tan(-viewPitch) - Math.tan(.10)) * horizontal;
 }
 
-export function bindCameraLook({ surfaces, host, enabled, rotate }) {
-  let dragging = false;
-  const stop = () => { dragging = false; };
+// Pointer lock keeps the cursor fixed and routes relative movement to the camera.
+// The first click captures the mouse; it never also swings a tool. UI buttons
+// on downed overlays retain their normal click behavior.
+export function bindCameraLook({ surfaces, host, document: doc = host.document, enabled, rotate, onLockChange = () => {}, onError = () => {} }) {
+  let disposed = false, pending = false, released = false, reportedLocked = false;
+  const reportLock = value => { if (value !== reportedLocked) { reportedLocked = value; onLockChange(value); } };
+  const isLocked = () => surfaces.includes(doc?.pointerLockElement);
+  function stop() {
+    released = true;
+    if (isLocked()) doc.exitPointerLock?.();
+    reportLock(false);
+  }
+  function change() {
+    if (isLocked() && (disposed || released || !enabled())) return stop();
+    pending = false;
+    reportLock(isLocked());
+  }
+  function failed() { pending = false; if (!disposed && !released) onError(); }
+  function request(surface = surfaces[0]) {
+    if (disposed || !enabled() || isLocked() || pending) return;
+    released = false;
+    if (!surface?.requestPointerLock) return failed();
+    pending = true;
+    try { surface.requestPointerLock()?.catch?.(failed); } catch { failed(); }
+  }
   const start = event => {
-    if (event.button !== 2 || !enabled()) return;
-    dragging = true;
+    if (event.button !== 0 || !enabled() || isLocked()) return;
+    if (event.target?.closest?.('button, input, select, textarea, a, [contenteditable="true"]')) return;
     event.preventDefault();
+    request(event.currentTarget);
   };
   const move = event => {
     if (!enabled()) return stop();
-    if (dragging) rotate(event.movementX || 0, event.movementY || 0);
+    if (isLocked()) rotate(event.movementX || 0, event.movementY || 0);
   };
-  const up = event => { if (event.button === 2) stop(); };
   const context = event => event.preventDefault();
+  const visibility = () => { if (doc.hidden) stop(); };
   for (const surface of surfaces) {
     surface.addEventListener('mousedown', start);
     surface.addEventListener('contextmenu', context);
   }
   host.addEventListener('mousemove', move);
-  host.addEventListener('mouseup', up);
   host.addEventListener('blur', stop);
-  return { stop, dispose() {
-    stop();
+  doc?.addEventListener('pointerlockchange', change);
+  doc?.addEventListener('pointerlockerror', failed);
+  doc?.addEventListener('visibilitychange', visibility);
+  return { stop, request, isLocked, dispose() {
+    disposed = true; stop();
     for (const surface of surfaces) {
       surface.removeEventListener('mousedown', start);
       surface.removeEventListener('contextmenu', context);
     }
     host.removeEventListener('mousemove', move);
-    host.removeEventListener('mouseup', up);
     host.removeEventListener('blur', stop);
+    doc?.removeEventListener('pointerlockchange', change);
+    doc?.removeEventListener('pointerlockerror', failed);
+    doc?.removeEventListener('visibilitychange', visibility);
   } };
+}
+
+// One held click belongs to one selected resource and tool. Releasing, moving
+// out of reach, depletion, or opening a UI ends it; a later target needs a new click.
+export function createHeldGather({ now = () => performance.now(), canContinue, getTarget, use, cooldown = 620 }) {
+  let held = null, nextAt = 0;
+  const stop = () => { held = null; };
+  return {
+    start(target) {
+      stop();
+      if (target && canContinue()) { held = { ...target }; nextAt = now() + cooldown; }
+    },
+    tick() {
+      if (!held) return;
+      if (!canContinue()) return stop();
+      if (now() < nextAt) return;
+      const target = getTarget();
+      if (!target || target.id !== held.id || target.tool !== held.tool) return stop();
+      nextAt = now() + cooldown;
+      if (use(held) === false) stop();
+    },
+    stop,
+    isActive: () => Boolean(held)
+  };
 }

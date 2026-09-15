@@ -48,6 +48,37 @@ test('voices and cached buffers remain bounded and disconnect on end/reset/dispo
   audio.dispose();audio.dispose();assert.equal(context.closed,1);assert.equal(audio.debug.buffers,0);assert.equal(await audio.unlock(),false);
 });
 
+test('repeated work cycles distinct cached timbres without adjacent repeats or an extra voice per strike',async()=>{
+  const {audio,context}=fixture();await audio.unlock();let time=0;
+  for(const kind of ['wood','stone','tap','gather','repair']){
+    const heard=[];
+    for(let i=0;i<20;i++){
+      for(const source of context.sources)source.onended?.();
+      update(audio,time+=.1);
+      const before=context.sources.length;
+      assert.equal(audio.play(kind),true);assert.equal(context.sources.length,before+1,'one work event owns one bounded voice');
+      const buffer=context.sources.at(-1).buffer;
+      assert.notEqual(buffer,heard.at(-1),'consecutive strikes use different authored waveforms');heard.push(buffer);
+      assert.equal(audio.play(kind),false,'variation cannot bypass the family cooldown');
+    }
+    assert.equal(new Set(heard).size,4,`${kind} uses exactly four cached variants`);
+    for(let start=0;start<heard.length;start+=4)assert.equal(new Set(heard.slice(start,start+4)).size,4,'every bag visits the complete family');
+    assert.equal(new Set(heard.map(buffer=>buffer.duration)).size,4,'variants differ in envelope, not just playback pitch');
+  }
+  for(const buffer of context.buffers){const data=buffer.getChannelData(0);assert.ok(data.every(Number.isFinite));assert.ok(data.every(value=>Math.abs(value)<=.93));}
+  assert.ok(audio.debug.buffers<=22,'five finite task families plus occasional ambience');
+  audio.setMuted(true);assert.equal(audio.play('gather'),false);assert.equal(audio.debug.activeVoices,0);audio.dispose();
+});
+
+test('observed repairs have their own work cue and do not replay while the animation is unchanged',async()=>{
+  const {audio}=fixture();await audio.unlock();
+  const other={id:'builder',x:0,z:5,hp:100,anim:'idle'};
+  update(audio,0,{players:[frame().me,other]});
+  update(audio,.1,{players:[frame().me,{...other,anim:'repair'}]});
+  update(audio,.2,{players:[frame().me,{...other,anim:'repair'}]});
+  assert.equal(audio.debug.events.repair,1);assert.equal(audio.debug.events.wood,undefined);audio.dispose();
+});
+
 test('night warning happens once at threshold and is not repeated by sunset, join, reconnect, or unmute',async()=>{
   const {audio}=fixture();await audio.unlock();
   update(audio,0,{phaseRemaining:31});update(audio,.1,{phaseRemaining:30});

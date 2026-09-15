@@ -2,11 +2,19 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — playtest feedback build 13.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — playtest feedback build 14.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 14 addresses the interaction and reliability feedback. Click the world once to capture the mouse, then move it to look around; Escape releases it for menus. Hold left click to keep gathering the selected nearby node. Press **E** to mount/dismount your horse or put down a carried companion. Priests can heal injured living Watch guards and recruited troops. The treasury wall board has a wider reachable interaction area and a direct request-menu action.
+
+Storage and cart panels preserve entered quantities across live updates and provide **Store max / Take max** using current inventory and free space. The bank adds **Deposit all / Withdraw all** and preserves typed amounts. New cart purchases count packed, stored and deployed carts toward one cart per resident. Existing extra carts are preserved, but additional purchases are blocked.
+
+Workers continue through day and night. Productive gathering earns attribute points for gathering speed, travel speed and carrying capacity, and workers have eight selectable clothing colors. Owned timber/wheat farms and stone/iron/coal mines can be upgraded to level 2. Player trading exchanges resources, food, arrows and wallet gold after both players confirm the latest terms. The Deepworks entrance has a more substantial carved stone portal, and gathering/repair sounds use varied profiles. [Updated mine geometry preview](docs/previews/cave-build14.jpg).
+
+Connection recovery now uses heartbeats, bounded retry delays, resumable connection identity and fresh state baselines. Temporary connection loss is shown in the HUD; disconnected actions are not replayed. Server restarts still briefly interrupt play on the current single-service host.
 
 The crate **art collection** is prepared for review: 19 crate item models plus the Sunforged Viking Helm, with fitted armor, distinct utility packs, three tool choices for expedition kits, and the Phoenix Ember. Open **`/crate-gallery.html`** on the game server to rotate each model, change lighting, or preview wearable pieces on a moving dwarf. The [collection sheet](docs/previews/crate-collection.jpg), individual PNG renders and reusable GLB files are included. See the [art guide](docs/CRATE-ART.md). Crate opening, rewards and equipment bonuses remain disabled.
 
@@ -28,7 +36,7 @@ Build 10 adds six zombie types, graveyard emergence, sword cleave and dodgeable 
 
 Read steward-funded deliveries at the board on the treasury wall. Press **R** to command your own barracks troops to defend, hold your current position, follow, or retreat. The village menu includes **Honors & appearance** and the optional **First-watch guide**. Surviving credited nights unlocks permanent cosmetic colors and crests. New footsteps, village ambience, zombie cues and the dusk bell share the saved Game sound setting.
 
-Grass clumps, ferns, wildflowers, shrubs, clover, fallen leaves and small patches of wall ivy give the village and woodland more detail. Plants sway in a breeze, with clear roads, doors, plots and gathering approaches. The sky now has drifting cloud layers, a sun that rises and sets, a visible moon and stars, and warm dawn/dusk lighting. It follows the village’s actual clock, including joining mid-cycle and pausing. Right-drag can look upward to follow the sky. [Sky cycle preview](docs/previews/sky-cycle.jpg).
+Grass clumps, ferns, wildflowers, shrubs, clover, fallen leaves and small patches of wall ivy give the village and woodland more detail. Plants sway in a breeze, with clear roads, doors, plots and gathering approaches. The sky now has drifting cloud layers, a sun that rises and sets, a visible moon and stars, and warm dawn/dusk lighting. It follows the village’s actual clock, including joining mid-cycle and pausing. Mouse look can look upward to follow the sky. [Sky cycle preview](docs/previews/sky-cycle.jpg).
 
 Mineral seams sit in the cave floor and walls, with loose fragments around each deposit. Trees react and fall when exhausted; mineral deposits chip and crumble as they are mined. Horses have sculpted, articulated models and share the rendered rider transform while mounted. Sword grips follow the hand. Routine successful strikes, gathering and repairs no longer produce pop-ups; other notices sit in a corner. Downed players can rotate the camera while deciding whether to wait for a rescue.
 
@@ -98,7 +106,7 @@ These are tunable implementation values, not a claim that the economy is already
 | Barracks | At most two per Guard, three recruited slots each, counting living and pending replacements. Recruitment costs 35 gold plus five timber and two iron in barracks storage. Each troop consumes one wheat per night; unfed troops deal 25% less damage. A fallen recruited guard returns after 30 active seconds for one stored wheat, which covers that night’s ration. Empty wheat storage delays replacement. The public Watch follows the same replacement rule. |
 | Towers | All archer towers fire without ammunition and grant no starter arrows. Existing stored arrows remain cargo. Cannons consume one stored stone and one coal per shot. Both defense types need repairs and can be upgraded. |
 | Horses | Stable capacity three. When empty, the steward can buy horses from the visiting merchant for 50 gold each; residents pay 100 gold. One owned horse per resident in the run. |
-| Carts | One deployed cart per resident; 300 cargo weight in owner-controlled storage. Attach it to your horse for hauling. |
+| Carts | One cart per resident across packed, owned storage and deployed forms; 300 cargo weight in owner-controlled storage. Attach it to your horse for hauling. |
 | Loans | At most 200 outstanding debt per account, a 500-gold lending pool per run, and a 1,000-gold treasury floor for new loans. Credit can fund approved purchases; it cannot be banked or withdrawn. Twenty percent of cumulative earnings repays debt, up to the remaining balance. |
 
 Horses and deployed carts remain in the current village when their owner disconnects. Riding ends safely on disconnect or downing. A cart caught behind an obstacle detaches with its contents intact. Their current persistence is within the run; personal savings, outstanding debt and unused purchase credit follow the account into later runs.
@@ -136,9 +144,25 @@ New accounts receive a compact optional guide covering their first tool, gatheri
 
 Visit the treasury to hire up to two workers per resident for 75 wallet gold each. Open **Workers** from the treasury or your inventory to choose wheat, timber, stone, iron or coal, select public resources or one of your matching production plots, and order delivery to one of your buildings or automatic sale at the Resource Exchange. Other residents’ private plots cannot be assigned.
 
-A worker gathers one unit every four seconds, travels between the actual resource and destination, and carries up to 40 weight. Tools are included in the contract. Pay is one wallet gold per 30 seconds of work, prepaid in small installments; bank savings and purchase credit are never charged. Workers work while their employer is online during the day and return to the treasury at night, when paused, or when their employer goes offline. Nearby zombies interrupt work. Returning to shelter and waiting for resources, storage, or affordable sales do not incur wages.
+A new worker gathers one unit every four seconds, travels between the actual resource and destination, and carries up to 40 weight. Tools are included in the contract. Pay is one wallet gold per 30 seconds of work, prepaid in small installments; bank savings and purchase credit are never charged. Workers work day and night while their employer is online, including near enemies. Pausing or going offline returns them to the treasury. Returning and waiting for resources, storage, or affordable sales do not incur wages.
 
 Sales use current stock prices, tax, the treasury’s emergency reserve and normal loan repayments. Full or unavailable storage and an underfunded treasury leave cargo with the worker. You can collect cargo beside the worker, change orders, pause/resume, or dismiss an empty worker at the treasury without a refund. Workers and their orders persist within the village run. Fallen villages disappear from the selection list; account savings remain available in the next run.
+
+Every 25 successful harvests earns one upgrade point, up to 15 points total. Each of the three attributes accepts five points: gathering reduces the work interval by 0.4 seconds per point (4 to 2 seconds); movement adds 0.3 m/s per point (3 to 4.5 m/s); carrying adds 10 weight per point (40 to 90). The Workers panel shows progress, spent/available points and eight free clothing colors. Existing workers begin with zero earned points and retain their orders, cargo and prepaid wages.
+
+## Level 2 production
+
+Upgrade an owned production building at its entrance, using wallet gold and materials from its storage first, then your pack. Level 2 adds 50% more harvests per node (rounded up), reduces regrowth time by 25%, increases building health by 50%, and raises storage from 1,500 to 2,000 weight. The same upgrade applies to stone, iron and coal mine nodes. Active nodes gain only the additional reserve; depleted nodes stay depleted with a shorter remaining regrowth timer.
+
+| Building | Gold | Stored materials |
+| --- | ---: | --- |
+| Wheat farm | 80 | 20 timber, 15 stone, 3 iron |
+| Tree farm | 100 | 25 timber, 20 stone, 5 iron |
+| Mine | 150 | 30 timber, 30 stone, 10 iron |
+
+## Player trading
+
+Open **Trade** from the village menu while standing within four meters of another player. Invite them, accept the invitation, and set each side's resources and wallet gold. Both players must confirm the same offer version; changing either offer clears both confirmations. The exchange checks current quantities, gold and resulting pack weights immediately before transferring anything. Cancellation, disconnect, downing or moving out of range ends the trade without transferring resources. Equipment, carts, savings and purchase credit are not exchangeable.
 
 ## Controls
 
@@ -146,18 +170,19 @@ Sales use current stock prices, tax, the treasury’s emergency reserve and norm
 | --- | --- |
 | W / A / S / D | Walk, or ride while mounted. |
 | Shift | Sprint while hunger allows. |
-| Hold right mouse and move | Turn the third-person camera and look upward, including while downed. |
-| Left mouse | Use the selected weapon, tool, food, or blessing. |
+| Mouse movement | After clicking the world to capture the pointer, turn the camera without holding a button. |
+| Left mouse | Use the selected weapon, tool, food, or blessing. Hold to repeat gathering on the same node. |
 | 1–8 / mouse wheel | Select a configured hotbar slot. |
-| E | Gather a matching nearby resource or interact with the noticeboard, a service, plot, horse, cart, or downed companion. |
+| E | Mount/dismount your horse, put down a carried companion, or interact with the nearby resource, noticeboard, service, plot or cart. |
 | I | Open your pack, equipment and hotbar setup. |
 | M | Open the village atlas and mark a destination. |
 | R | Command troops belonging to your own barracks. |
+| G | Put down a carried companion, leave a church bed, or dismount. |
 | Enter | Focus chat; send the typed message. |
 | T | Toggle village chat. |
 | H | Open controls and help. |
 | F | Toggle fullscreen. |
-| Escape | Close the active panel or open the village menu. |
+| Escape | Release mouse capture, close the active panel or open the village menu. Click the world to resume mouse look. |
 
 Use an axe on trees, a pickaxe on stone/iron/coal inside the northern mountain mine, and a scythe on individual wheat stalks. Open the atlas to mark the mine entrance; underground, follow the local cave map and torches to return. Higher tier tools increase the resource count, not gathering speed. A matching resource takes priority over a nearby building menu. Equip a weapon or step away from the resource when you want the service instead.
 

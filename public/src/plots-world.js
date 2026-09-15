@@ -134,7 +134,7 @@ export function createPlotsWorld(parent){
   }
   for(const y of [.34,.69])box('trim',0,y,-d/2,w,.08,.09);
   box('dark',-w/2+.75,.85,d/2,.1,1.7,.1);
-  textSign(state?.ownerId?(group.userData.ruined?'RUINS':labels[state.building]??'OWNED PLOT'):plot.id.replace('outpost-','OUTPOST ').replace('west-','WEST ').replace('east-','EAST ').toUpperCase(),group,-w/2+1.05,1.6,d/2+.07,2.15);
+  textSign(state?.ownerId?(group.userData.ruined?'RUINS':`${labels[state.building]??'OWNED PLOT'}${state.level>=2?' II':''}`):plot.id.replace('outpost-','OUTPOST ').replace('west-','WEST ').replace('east-','EAST ').toUpperCase(),group,-w/2+1.05,1.6,d/2+.07,2.15);
   const type=state?.building;
   function window(x,y,z){box('dark',x,y,z,.94,1.22,.13);box('glass',x,y,z+.09,.74,.98,.035);box('wood',x,y,z+.13,.075,1.03,.06);box('wood',x,y,z+.13,.8,.07,.06);}
   function roof(bw,bd,height,rise=2.3){
@@ -204,12 +204,34 @@ export function createPlotsWorld(parent){
    box('dark',-3.4,.09,.2,1.25,.18,1.4);for(const x of [-3.88,-2.92])box('wood',x,.58,.2,.16,.98,.18);
    add('cylinder','wood',-3.4,.94,.2,.18,.98,.18,0,0,Math.PI/2);box('iron',-2.81,1.1,.2,.1,.48,.1);
    for(const x of [-.55,.55])box('iron',x,.05,1.3,.065,.06,4.2);for(let i=0;i<6;i++)box('wood',0,.025,-.5+i*.65,1.55,.08,.17);
-   textSign('MINE',group,0,1.71,-1.37,1.8);
+   if(state.level>=2){
+    // The upgraded gantry stays behind the shared harvest anchors.
+    for(const x of [-1.65,1.65]){box('dark',x,1.8,-2.3,.3,3.6,.34);box('iron',x,.7,-2.3,.36,.16,.4);box('iron',x,3.2,-2.3,.36,.16,.4);}
+    box('wood',0,3.62,-2.3,3.7,.3,.4);add('cylinder','iron',0,3.3,-2.3,.34,.18,.34,Math.PI/2);
+    box('trim',0,2.45,-2.24,.045,1.55,.045);box('iron',0,1.67,-2.24,.65,.25,.6);
+    for(const side of [-1,1]){box('wood',side*3.6,1.1,-3.1,.14,2.2,.14);box('glass',side*3.6,2.12,-3.1,.26,.38,.26);}
+    box('dark',3.4,.26,-.5,1.1,.52,1.15);box('trim',3.4,.55,-.5,1.2,.1,1.25);
+   }
+   textSign(state.level>=2?'MINE II':'MINE',group,0,1.71,-1.37,1.8);
   }else if(type==='wheat_farm'||type==='tree_farm'){
    box('dirt',0,-.03,0,w-1,.06,d-1.2);
    if(type==='wheat_farm')for(let i=0;i<8;i++)box('dark',-w/2+.8+i*(w-1.6)/7,.025,0,.08,.04,d-1.5);
    // Actual crops and trees are stateful harvest nodes supplied by the server.
    else{box('wood',-w/2+1,.4,-d/2+1,1.3,.8,1);box('trim',-w/2+1,.83,-d/2+1,1.4,.08,1.1);}
+   if(state.level>=2){
+    if(type==='wheat_farm'){
+     // Rain barrels feed narrow irrigation channels along the fence line.
+     cylinder('wood',w/2-.9,.68,-d/2+.8,.42,1.3);for(const y of [.2,1.12])cylinder('iron',w/2-.9,y,-d/2+.8,.44,.075);
+     for(const side of [-1,1]){box('stone',side*(w/2-.65),.08,0,.24,.16,d-1.2);box('roof',side*(w/2-.65),.17,0,.13,.025,d-1.4);}
+     box('wood',0,.48,-d/2+.65,2.5,.82,.6);box('gold',0,.94,-d/2+.65,2.6,.12,.7);
+    }else{
+     // A raised saw table and bound logs distinguish a working level-two grove.
+     const bz=-d/2+.8;box('trim',.6,1.05,bz,3.3,.16,.9);
+     for(const x of [-.7,1.9])box('dark',x,.5,bz,.15,1,.65);
+     for(const x of [-.25,.25,.75])add('cylinder','wood',x,1.32,bz,.2,2.2,.2,0,0,Math.PI/2);
+     box('iron',1.65,1.23,bz,.08,.55,.8,0,-.2);box('wood',1.65,1.6,bz,.15,.16,1);
+    }
+   }
   }else if(type==='archer_tower'){
    for(const x of [-1.7,1.7])for(const z of [-1.7,1.7]){box('stone',x,.35,z,.6,.7,.6);box('wood',x,3.2,z,.38,6.4,.38);}
    for(const z of [-1.7,1.7])for(const side of [-1,1])box('trim',0,3,z,.2,6.7,.19,0,side*.51);

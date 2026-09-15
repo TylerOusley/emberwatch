@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { CONFIG, ROAD, GUARD_ROAD, RESOURCES, BUILDINGS, SOLIDS, canStand, moveWithCollision, plotSolids } from '../shared/world.js';
 import { ensureOwnership, ownershipAction, ownershipTick, ownershipSnapshot } from './ownership.js';
 import { ensureEconomy, economyAction, economyDawn, economySnapshot } from './economy.js';
-import { ensureCare, careAction, careTick, careNight, careSnapshot, guardPathFor, tickDefenseAttack, cancelCarry, cancelTreatment } from './care-defense.js';
-import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer, chargePurchase } from './transport.js';
+import { ensureCare, careAction, careTick, careNight, careSnapshot, guardPathFor, tickDefenseAttack, cancelCarry, cancelTreatment, resolveHealTarget } from './care-defense.js';
+import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer, chargePurchase, bankTransfer } from './transport.js';
 import { ensureWorkers, workersAction, workersTick, workersSnapshot } from './workers.js';
 import { TRANSPORT } from '../shared/transport.js';
 import { stepNpcNavigation } from './navigation.js';
@@ -18,7 +18,11 @@ import { ensureRequests, requestsTick, requestsSnapshot, requestsAction, request
 import { ensureProgression, joinProgression, progressionNight, progressionTick, progressionDawn, progressionAction, recordProgressionAction, progressionSnapshot } from './progression.js';
 import { guardOrdersAction, guardOrdersSnapshot, guardDirective, guardOrderCanEngage } from './guard-orders.js';
 import { ensureCaves, regrowCaveResource, publicResourceSnapshot } from './caves.js';
+import { ensureTrading, tradingAction, tradingTick, tradingSnapshot, cancelPlayerTrades } from './trading.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
+// Form transfers and release actions are immediately validated transactions;
+// they should not inherit the swing delay used for tools and combat.
+const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, cart: 0 });
@@ -51,6 +55,7 @@ function ensureVillage(village) {
   }
   ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village); ensureWorkers(village); ensureEnemies(village); ensureRequests(village); ensureProgression(village);
   ensureCaves(village);
+  ensureTrading(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
     player.inventory = { ...emptyInventory(), ...player.inventory };
@@ -84,6 +89,7 @@ export class Simulation {
     this.villages = new Map(store.loadVillages().map(village => {
       ensureVillage(village);
       for (const player of Object.values(village.players)) { player.online = false; player.anim = player.downed ? 'downed' : 'idle'; player.healing = null; }
+      for (const player of Object.values(village.players)) cancelPlayerTrades(village, player.id);
       return [village.id, village];
     }));
     this.inputs = new Map();
@@ -127,6 +133,7 @@ export class Simulation {
   disconnect(villageId, playerId) {
     const village = this.villages.get(villageId), player = village?.players[playerId];
     if (!player) return;
+    cancelPlayerTrades(village, playerId);
     cancelCarry(village, player); cancelTreatment(village, player);
     dismountPlayer(village, player);
     player.online = false; player.healing = null; player.anim = player.downed ? 'downed' : 'idle';
@@ -149,7 +156,7 @@ export class Simulation {
       clockRunning: village.status === 'active' && Object.values(village.players).some(p => p.online),
       gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
-      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId),
+      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         tiers: p.tiers, backpackTier: p.backpackTier, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
         ...(p.id === viewerId ? { inventory: p.inventory, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0 } : {}) })),
@@ -180,13 +187,13 @@ export class Simulation {
     if (village.status !== 'active') throw new Error('The keep has fallen. This run has ended.');
     const kind = action.kind;
     if (typeof kind !== 'string') throw new Error('Invalid action.');
-    if (player.downed && !['respawn', 'churchLeave', 'guide_visibility'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
-    if (village.clock - player.lastAction < .55) throw new Error('Wait for your next action.');
-    if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
+    if (player.downed && !['respawn', 'churchLeave', 'guide_visibility', 'trade_cancel'].includes(kind)) throw new Error('You are downed. A priest can revive you, or you can choose to respawn after dawn.');
+    if (!IMMEDIATE_ACTIONS.has(kind) && village.clock - player.lastAction < .55) throw new Error('Wait for your next action.');
+    if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility', 'trade_cancel'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
     if (player.carryingId && ['attack', 'gather', 'repair', 'repairPlot', 'heal', 'mountHorse'].includes(kind)) throw new Error('Put your companion down before using tools or weapons.');
-    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
+    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility', 'trade_cancel'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
     if (!['heal', 'guide_visibility'].includes(kind)) player.healing = null;
-    for (const handler of [requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
+    for (const handler of [tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
@@ -235,11 +242,11 @@ export class Simulation {
       message = `Repaired ${id}. Repair earnings: ${player.repairBonus}/10, paid at dawn.`;
     } else if (kind === 'heal') {
       if (player.role !== 'priest') throw new Error('Only priests can heal and revive other dwarfs.');
-      const target = village.players[action.targetId];
-      if (!target?.online || target.id === player.id || distance(player, target) > 3.5) throw new Error('Move near another injured dwarf.');
+      const resolved = resolveHealTarget(village, action.targetId), target = resolved?.target;
+      if (!target || target.id === player.id || distance(player, target) > 3.5) throw new Error('Move near another injured dwarf or living town guard.');
       if (target.hp >= target.maxHp) throw new Error('That dwarf is already healthy.');
       if (player.healing) throw new Error('Your blessing is already in progress. Stay nearby.');
-      player.healing = { targetId: target.id, revive: target.downed, until: village.clock + (target.downed ? 5 : 2) };
+      player.healing = { targetId: target.id, targetKind: resolved.isGuard ? 'guard' : 'player', revive: Boolean(target.downed), until: village.clock + (target.downed ? 5 : 2) };
       player.anim = 'heal'; player.animationUntil = player.healing.until;
       message = target.downed ? 'Hold still for 5 seconds to revive your companion.' : 'Hold still to heal your companion.';
     } else if (kind === 'respawn') {
@@ -251,12 +258,7 @@ export class Simulation {
       ensureRoleStats(player, { fresh: true, clock: village.clock });
       message = 'You returned empty-handed. Your carried inventory, equipment, backpack and 25% of wallet gold were lost. Your bank savings are safe.';
     } else if (kind === 'deposit' || kind === 'withdraw') {
-      if (!canUseBuilding(player, building('bank'))) throw new Error('Visit the Village Treasury to use your savings.');
-      if (!Number.isSafeInteger(action.amount) || action.amount < 1 || action.amount > 1000000) throw new Error('Enter a whole gold amount.');
-      if (kind === 'deposit' && player.wallet < action.amount) throw new Error('You do not have that much gold in your wallet.');
-      const delta = kind === 'deposit' ? action.amount : -action.amount;
-      this.store.transaction(() => { this.store.bank(player.id, delta); player.wallet -= delta; this.store.saveVillage(village); });
-      message = kind === 'deposit' ? 'Gold secured in your personal bank.' : 'Gold withdrawn to your wallet.';
+      message = bankTransfer(this, village, player, action);
     } else if (kind === 'donate') {
       if (action.targetId === 'barracks') {
         if (!canUseBuilding(player, building('barracks'))) throw new Error('Bring wheat to The Watch to feed the guards.');
@@ -421,8 +423,9 @@ export class Simulation {
         } else if (player.bedPlotId) player.anim = 'downed';
         else if (village.clock > player.animationUntil) player.anim = 'idle';
         if (player.healing) {
-          const target = village.players[player.healing.targetId];
-          if (!target?.online || distance(player, target) > 3.5 || target.downed !== player.healing.revive) { player.healing = null; continue; }
+          const resolved = resolveHealTarget(village, player.healing.targetId), target = resolved?.target;
+          const targetKind = resolved?.isGuard ? 'guard' : 'player';
+          if (!target || targetKind !== (player.healing.targetKind ?? 'player') || distance(player, target) > 3.5 || Boolean(target.downed) !== Boolean(player.healing.revive)) { player.healing = null; continue; }
           if (village.clock >= player.healing.until) {
             const wasDowned = target.downed;
             const restored = Math.min(wasDowned ? 45 : 30, target.maxHp - target.hp);
@@ -451,6 +454,7 @@ export class Simulation {
         spawnWaveEnemy(village);
       }
       this.tickNpcs(village, dt);
+      tradingTick(this, village);
       progressionTick(this, village, dt);
       requestsTick(this, village);
       if (village.status === 'fallen') continue;

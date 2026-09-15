@@ -47,7 +47,15 @@ test('torch holders and flame anchors avoid building doors, plots and harvesting
     for(const p of PLOTS)assert.ok(Math.abs(f.x-p.x)>p.w/2+.23||Math.abs(f.z-p.z)>p.d/2+.23,`${f.id} clips a deed`);
     for(const n of RESOURCES)assert.ok(Math.hypot(f.x-n.x,f.z-n.z)>1.1,`${f.id} blocks ${n.id}`);
   }
-  for(const f of cave.torchFixtures){assert.ok(f.y-groundHeight(f.x,f.z)>2.3&&f.y-groundHeight(f.x,f.z)<2.7);for(const n of RESOURCES.filter(n=>n.caveTier))assert.ok(Math.hypot(f.x-n.x,f.z-n.z)>1.1,'wall torches leave mineral approaches free');}
+  for(const f of cave.torchFixtures){
+    const height=f.y-groundHeight(f.x,f.z),portal=f.id.startsWith('cave-portal-torch-');
+    if(portal){
+      assert.ok(height>2.65&&height<3,'facade sconces sit higher on the dressed entrance pillars');
+      assert.ok(Math.abs(f.x)>6.5,'front-facing holders stay outside the twelve-meter ramp');
+      assert.equal(f.nz,1);assert.equal(f.nx,0);
+    }else assert.ok(height>2.3&&height<2.7,'interior holders follow the descending cave floor');
+    for(const n of RESOURCES.filter(n=>n.caveTier))assert.ok(Math.hypot(f.x-n.x,f.z-n.z)>1.1,'wall torches leave mineral approaches free');
+  }
   cave.dispose();
 });
 

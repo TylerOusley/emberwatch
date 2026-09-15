@@ -10,6 +10,20 @@ function pose(actor, options) {
   for(const mesh of meshes(actor))if(mesh.isSkinnedMesh)mesh.skeleton.update();
 }
 
+test('worker clothing colors replace only that actor material and survive a role rebuild', () => {
+  const first = createCharacter('villager', 2), second = createCharacter('villager', 2);
+  const geometry = meshes(first).map(mesh => mesh.geometry), secondMaterials = meshes(second).map(mesh => [mesh.material, mesh.material.color?.getHexString()]);
+  first.setTool('axe'); first.setClothingColor('#9772ae');
+  assert.ok(meshes(first).filter(mesh => mesh.material.color?.getHexString() === '9772ae').length >= 3, 'tunic and sleeves use the chosen color');
+  assert.deepEqual(meshes(second).map(mesh => [mesh.material, mesh.material.color?.getHexString()]), secondMaterials, 'nearby workers keep their own colors');
+  assert.ok(geometry.filter(item => meshes(first).some(mesh => mesh.geometry === item)).length > geometry.length - 10, 'recoloring does not rebuild clothing');
+  first.setClothingColor('#478d80'); assert.ok(meshes(first).some(mesh => mesh.material.color?.getHexString() === '478d80'));
+  assert.equal(meshes(first).filter(mesh => mesh.material.color?.getHexString() === '9772ae').length, 0);
+  first.setRole('priest'); assert.ok(meshes(first).some(mesh => mesh.material.color?.getHexString() === '478d80'));
+  first.setClothingColor(undefined); assert.equal(meshes(first).filter(mesh => mesh.material.color?.getHexString() === '478d80').length, 0);
+  first.dispose(); second.dispose();
+});
+
 test('sculpted actors retain valid geometry and normalized bone influences in every role',()=>{
   for(const role of ['villager','guard','priest','zombie'])for(let seed=1;seed<=4;seed++) {
     const actor=createCharacter(role,seed);

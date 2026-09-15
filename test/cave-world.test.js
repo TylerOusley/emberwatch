@@ -36,6 +36,21 @@ test('terrain is clipped precisely over the cave, side walls face inward and the
   assert.equal(rayHits(cave.root,0,1.45,-114,0,0,-1,25).length,0,'rocks and supports leave a dwarf-height approach through the mouth');cave.dispose();
 });
 
+test('the dressed entrance preserves broad body clearance and has paired front-facing always-lit torches',()=>{
+  const cave=createCaveWorld(new THREE.Scene());
+  for(const x of[-4.8,-2.4,0,2.4,4.8])for(const z of[-116,-118,-120,-123,-128,-136]){
+    const from=new THREE.Vector3(x,groundHeight(x,z)+1.45,z),to=new THREE.Vector3(x,groundHeight(x,z-2)+1.45,z-2),direction=to.clone().sub(from);
+    assert.equal(rayHits(cave.root,...from.toArray(),...direction.toArray(),direction.length()).length,0,`the usable ramp remains clear at ${x}, ${z}`);
+  }
+  const front=cave.torchFixtures.filter(f=>f.id.startsWith('cave-portal-torch'));
+  assert.equal(front.length,2);assert.equal(front[0].x,-front[1].x);
+  assert.ok(front.every(f=>f.nz===1&&f.nx===0&&f.alwaysLit));
+  const camera=new THREE.PerspectiveCamera();camera.position.set(0,8,-124);
+  assert.equal(cave.update({x:0,z:-126},camera).cutaway,true);
+  assert.equal(cave.root.getObjectByName('mouth-rock-crown').visible,false,'portal lintel shares the roof cutaway instead of obscuring the player');
+  cave.dispose();
+});
+
 test('server resource type controls ore artwork and regrowth only rebuilds when actual type changes',()=>{
   const descriptor=minerals.find(n=>n.caveTier==='middle'),id=descriptor.id,initial=world.resources.get(id),actualType=caveResourceType('middle',descriptor.seed,0);
   const row={...descriptor,type:actualType,available:true,remaining:8,roll:0};world.update(0,0,{id:'cave-art-test',clock:0,resources:[row]});const first=world.resources.get(id);

@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Store } from '../server/store.js';
+import { Simulation } from '../server/simulation.js';
+import { BUILDINGS, PLOTS } from '../shared/world.js';
+import { buildingEntrance, plotEntrance } from '../shared/access.js';
+
+test('consecutive exact storage and all banking transfers bypass tool cooldown without duplicating balances', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'emberwatch-transfers-')), store = new Store(directory);
+  t.after(async () => { store.close(); await rm(directory, { recursive: true, force: true }); });
+  const session = await store.authenticate('register', 'TransferAlice', 'protected-test-password');
+  const account = store.account(session.playerId), sim = new Simulation(store), villageId = sim.create('Transfer Hearth', account).id;
+  const player = sim.join(villageId, account), village = sim.villages.get(villageId), plot = village.plots[0];
+  Object.assign(plot, { ownerId: player.id, building: 'house', hp: 500, maxHp: 500, storage: {} });
+  player.wallet = 100; player.inventory.stone = 20; player.lastAction = village.clock;
+  const clock = village.clock, act = action => sim.action(villageId, player.id, action);
+  Object.assign(player, plotEntrance(PLOTS[0], plot));
+  act({ kind: 'plot_deposit', plotId: plot.id, resource: 'stone', amount: 10 });
+  assert.equal(player.inventory.stone, 10); assert.equal(plot.storage.stone, 10);
+  act({ kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', amount: 10 });
+  assert.equal(player.inventory.stone, 20); assert.equal(plot.storage.stone, 0);
+  Object.assign(player, buildingEntrance(BUILDINGS.find(building => building.id === 'bank')));
+  act({ kind: 'deposit', max: true });
+  assert.equal(player.wallet, 0); assert.equal(store.account(player.id).bank, 100);
+  act({ kind: 'withdraw', max: true });
+  assert.equal(player.wallet, 100); assert.equal(store.account(player.id).bank, 0);
+  assert.equal(village.clock, clock);
+});

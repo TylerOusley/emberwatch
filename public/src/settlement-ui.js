@@ -5,11 +5,15 @@ import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../share
 import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote } from '../../shared/economy.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS } from '../../shared/defense.js';
 import { ROLE_STATS } from '../../shared/roles.js';
-import { WORKER_RULES, WORKER_RESOURCES } from '../../shared/workers.js';
+import { WORKER_RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../../shared/workers.js';
 import { NOTICEBOARD_POINT } from './noticeboard.js';
 import { itemArt, shopInterior } from './shop-display.js';
 import { TRANSPORT } from '../../shared/transport.js';
 import { createBuildCarousel, buildingAvailability } from './build-carousel.js';
+import { transferLimit } from '../../shared/transfers.js';
+import { ownedCartCount } from '../../shared/cart-ownership.js';
+import { plotStorageCapacity } from '../../shared/production.js';
+import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds } from '../../shared/production.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -20,9 +24,20 @@ const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow'];
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
-export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null }) {
+export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null }) {
   let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
   const tradeAmounts = new Map(), displayedTrades = new Map();
+  const transferDrafts = new Map();
+  let renderedDraftKey = null;
+  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount'];
+  const draftKey = () => `${current?.kind}:${current?.id || ''}`;
+  const transferDraft = () => { const key = draftKey(); if (!transferDrafts.has(key)) transferDrafts.set(key, {}); return transferDrafts.get(key); };
+  function captureTransferDrafts() {
+    if (!renderedDraftKey) return;
+    const draft = transferDrafts.get(renderedDraftKey) || {};
+    for (const id of transferFields) { const field = document.getElementById(id); if (field) draft[id] = field.value; }
+    transferDrafts.set(renderedDraftKey, draft);
+  }
   const workerDrafts = new Map();
   const inspections = new Set();
   const buildCarousel = createBuildCarousel({ button, onChange: () => render(), onBuild: buildSelected });
@@ -67,13 +82,15 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }, disabled, title);
   }
   function choices(id, values, selected) {
+    if (transferFields.includes(id)) selected = transferDraft()[id] ?? selected;
     return `<select id="${id}">${values.map(([value, text]) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select>`;
   }
   function quantity(id, max = 100, value = 1) {
+    if (transferFields.includes(id)) value = transferDraft()[id] ?? value;
     return `<input id="${id}" type="number" inputmode="numeric" min="1" max="${Math.max(1, max)}" value="${esc(value)}" aria-label="Amount">`;
   }
   const value = id => document.getElementById(id)?.value;
-  const amount = id => Math.floor(Number(value(id)));
+  const amount = id => Number(value(id));
   function wire() {
     for (const b of content().querySelectorAll('[data-settlement-button]')) b.onclick = () => {
       if (b.disabled) return;
@@ -87,6 +104,11 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       if (detail.open) inspections.add(detail.dataset.shopInspect); else inspections.delete(detail.dataset.shopInspect);
     };
     buildCarousel.bind(content());
+    for (const id of transferFields) {
+      const field = document.getElementById(id);
+      if (field) field[id === 'storage-resource' ? 'onchange' : 'oninput'] = () => { transferDraft()[id] = field.value; updateTransfers(); };
+    }
+    updateTransfers();
     for (const resource of Object.keys(RESOURCE_MARKET)) {
       const input = document.getElementById(`trade-amount-${resource}`);
       if (input) input.oninput = () => { tradeAmounts.set(resource, input.value); updateTrade(resource); };
@@ -138,6 +160,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function render() {
     if (!current || !me() || !state()) return;
+    captureTransferDrafts();
     handlers = [];
     const builders = { inventory: pack, bank, market, food, tools, workers, barracks: watch, church, stable, merchant, policies, roles, plot, cart, horse, atlas, confirm: confirmation };
     const access = panelAccess();
@@ -148,6 +171,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const focus = content()?.contains?.(document.activeElement) ? document.activeElement?.dataset?.shopFocus : null;
     const scroll = dialog.scrollTop;
     openPanel(theme ? `<div class="settlement-panel storefront" data-shop-theme="${theme}"><div class="storefront-scene">${shopInterior(theme)}<span class="shop-scene-caption">${theme === 'bank' ? 'The vault · Your gold, kept safe' : 'Step inside · Browse the counter'}</span></div><div class="storefront-content">${body}</div></div>` : `<div class="settlement-panel">${body}</div>`, 'settlement');
+    renderedDraftKey = draftKey();
     dialog.classList.add('settlement-dialog'); wire(); dialog.scrollTop = scroll;
     if (focus) content().querySelector?.(`[data-shop-focus="${focus}"]`)?.focus({ preventScroll: true });
   }
@@ -157,12 +181,13 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
     // Network snapshots must not reset a quantity or selection while it is being edited.
     if (content().contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+      updateTransfers();
       if (current.kind === 'market') { for (const resource of Object.keys(RESOURCE_MARKET)) updateTrade(resource); updateMarketSummary(); }
       return;
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.durability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
@@ -188,10 +213,11 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function bank() {
     const p = me(), s = state(), loan = s.loan || {};
     let html = head('VILLAGE BANK', 'Keep something for tomorrow.', 'Protect your savings between runs or arrange purchase credit with the vault keeper.') + stats([['Wallet', `${num(p.wallet)} gold`], ['Protected savings', `${num(p.bank)} gold`]]);
-    html += '<section class="bank-counter"><div class="bank-counter-art">' + itemArt('gold') + '</div><div><h3>Your savings</h3><p>Deposited gold carries into another run. Withdraw it when you need it; gold in your wallet remains at risk.</p><label for="bank-amount">Gold to transfer</label><div class="transfer-form">' + quantity('bank-amount', Math.max(p.wallet, p.bank), 10) + button('Deposit', () => send({ type: 'action', kind: 'deposit', amount: amount('bank-amount') }), p.wallet < 1) + button('Withdraw', () => send({ type: 'action', kind: 'withdraw', amount: amount('bank-amount') }), p.bank < 1) + '</div></div></section>';
+    html += '<section class="bank-counter"><div class="bank-counter-art">' + itemArt('gold') + '</div><div><h3>Your savings</h3><p>Deposited gold carries into another run. Enter an exact amount or transfer all available gold.</p><label for="bank-amount">Gold to transfer</label><div class="transfer-form">' + quantity('bank-amount', Math.max(p.wallet, p.bank), 10) + transferButton('bank-deposit', 'Deposit', () => sendBank(false, false)) + transferButton('bank-withdraw', 'Withdraw', () => sendBank(true, false)) + transferButton('bank-deposit-max', 'Deposit all', () => sendBank(false, true)) + transferButton('bank-withdraw-max', 'Withdraw all', () => sendBank(true, true)) + '</div><p id="bank-transfer-status" aria-live="polite"></p></div></section>';
     html += '<section class="bank-credit"><h3>Purchase credit</h3><p>Credit pays for eligible purchases. It cannot be withdrawn or deposited as savings. Debt follows your account between runs; ' + num(loan.repaymentPercent ?? 20) + '% of earnings repays it.</p>' + stats([['Debt', `${num(loan.debt)} gold`], ['Unspent credit', `${num(loan.credit)} gold`], ['Credit limit', `${num(loan.maxDebt || 200)} gold`]]) + '<label for="loan-amount">Gold to borrow or repay</label><div class="transfer-form">' + quantity('loan-amount', loan.maxDebt || 200, 100) + button('Borrow purchase credit', () => send({ type: 'action', kind: 'loan', amount: amount('loan-amount') }), (loan.debt || 0) >= (loan.maxDebt || 200) || (loan.availablePool || 0) < 1) + button('Repay from wallet', () => send({ type: 'action', kind: 'repayLoan', amount: amount('loan-amount') }), !loan.debt || !p.wallet) + '</div></section>';
     if (s.landDebt) html += `<p class="settlement-warning">Outstanding land tax: ${num(s.landDebt)} gold.</p>` + command('Pay land tax from wallet', 'pay_land_debt', {}, wallet() < 1);
     html += '<p>Buy, sell and donate resources at the Resource Exchange. Funded village supply requests are delivered there too.</p><div class="panel-actions">' + button('Find resource market', () => markService('market')) + button('Hire & manage workers', () => show('workers')) + button('Village policies & votes', () => show('policies')) + '</div>';
+    if (showRequests) html += button('Open task board', () => showRequests());
     return html;
   }
   function market() {
@@ -238,7 +264,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function workerPlotName(id) {
     const place = PLOTS.find(p => p.id === id), plot = plots().find(p => p.id === id);
-    return `${place?.name || id} · ${BUILDING_TYPES[plot?.building]?.name || 'Unavailable building'}`;
+    return `${place?.name || id} · ${BUILDING_TYPES[plot?.building]?.name || 'Unavailable building'}${plot?.level >= 2 ? ' · Level 2' : ''}`;
   }
   function workerSourcePlots(resource) {
     const building = { timber: 'tree_farm', wheat: 'wheat_farm', stone: 'mine', iron: 'mine', coal: 'mine' }[resource];
@@ -252,7 +278,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const p = me(), crew = ownWorkers(), destinations = owned().filter(plot => plot.building && plot.hp > 0);
     const nearBank = atTreasury(p), full = crew.length >= WORKER_RULES.maxPerPlayer;
     let html = head('HIRED HANDS', 'Put your workers to work.', 'Choose a resource and gathering ground, then send each haul to your building storage or sell it to the village.') + stats([['Your workers', `${crew.length} / ${WORKER_RULES.maxPerPlayer}`], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
-    html += `<p>Workers carry ${WORKER_RULES.carryCapacity} weight and work during daylight while you are online. They shelter at night or when danger approaches. Hiring and wages use your wallet; work stops when you cannot pay. Sales follow village prices and tax, with proceeds paid to you.</p>`;
+    html += `<p>Workers start with ${WORKER_RULES.carryCapacity} cargo capacity and work day and night while you are online. Hiring and wages use your wallet; work stops when you cannot pay. Sales follow village prices and tax, with proceeds paid to you. Every ${WORKER_RULES.xpPerPoint} completed harvests earns one upgrade point. Spend points below to train each worker.</p>`;
     html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury entrance to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
     if (!nearBank) html += '<p>Visit the Village Treasury entrance to hire or dismiss workers.</p>' + button('Mark the treasury', () => markService('bank'));
     if (!crew.length) html += '<p>Your hired workers will appear here. Manage their orders from your pack at any time.</p>';
@@ -260,12 +286,25 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const draft = workerDraft(worker), order = draft.order, sources = workerSourcePlots(order.resource);
       const sourceValid = !order.sourcePlotId || sources.some(plot => plot.id === order.sourcePlotId);
       const destinationValid = order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId);
-      const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3;
+      const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker);
       const room = carryCapacity(p) - inventoryWeight(p), canCollect = WORKER_RESOURCES.some(resource => worker.cargo?.[resource] > 0 && RESOURCE_WEIGHTS[resource] <= room);
       const cargoText = WORKER_RESOURCES.filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
       const currentSource = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : 'Public gathering grounds';
       const currentDestination = worker.mode === 'store' ? workerPlotName(worker.destinationPlotId) : 'Sell to the village';
-      html += `<section class="building-card"><h3>${esc(worker.name || `Worker ${index + 1}`)}</h3>` + row(worker.status || 'Waiting for orders', worker.resource ? `${label(worker.resource)} · ${currentSource} → ${currentDestination}` : 'No resource assigned yet.') + row('Carried supplies', `${cargoText} · ${num(weight)} / ${WORKER_RULES.carryCapacity} weight`);
+      html += `<section class="building-card"><h3>${esc(worker.name || `Worker ${index + 1}`)}</h3>` + row(worker.status || 'Waiting for orders', worker.resource ? `${label(worker.resource)} · ${currentSource} → ${currentDestination}` : 'No resource assigned yet.') + row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`);
+      html += stats([['Level', worker.level || 1], ['Upgrade points', worker.upgradePoints || 0], ['Next point', (worker.workXp || 0) >= WORKER_MAX_XP ? 'Training complete' : `${(worker.workXp || 0) % WORKER_RULES.xpPerPoint} / ${WORKER_RULES.xpPerPoint} harvests`]]);
+      html += '<h4>Worker attributes</h4>';
+      for (const [attribute, rule] of Object.entries(WORKER_ATTRIBUTES)) {
+        const rank = worker.attributes?.[attribute] || 0;
+        const current = attribute === 'gathering' ? `${num(ability.gatherSeconds)} seconds / harvest` : attribute === 'speed' ? `${num(ability.speed)} movement speed` : `${ability.carryCapacity} cargo capacity`;
+        html += row(`${rule.name} · ${rank} / ${WORKER_RULES.maxAttributeRank}`, `${current} · Next rank: ${rule.benefit}`, command(rank >= WORKER_RULES.maxAttributeRank ? 'Fully trained' : '+1 rank · 1 point', 'worker_upgrade', { workerId: worker.id, attribute }, rank >= WORKER_RULES.maxAttributeRank || !(worker.upgradePoints > 0)));
+      }
+      html += '<h4>Clothing color</h4><div class="panel-actions">';
+      for (const color of WORKER_COLORS) {
+        const selected = (worker.color || WORKER_COLORS[0].value) === color.value;
+        html += command(`${selected ? '✓ ' : ''}${color.name}`, 'worker_color', { workerId: worker.id, color: color.value }, selected, `Choose ${color.name.toLowerCase()} worker clothing`).replace('<button ', `<button aria-pressed="${selected}" style="border-left:8px solid ${color.value}" `);
+      }
+      html += '</div><h4>Work orders</h4>';
       html += '<div class="transfer-form">' + workerSelect(`worker-${index}-resource`, 'Resource', WORKER_RESOURCES.map(resource => [resource, label(resource)]), order.resource);
       html += workerSelect(`worker-${index}-sourcePlotId`, 'Gather from', [['', 'Public gathering grounds'], ...sources.map(plot => [plot.id, workerPlotName(plot.id)])], order.sourcePlotId);
       html += workerSelect(`worker-${index}-mode`, 'Deliver the haul', [['sell', 'Sell to the village'], ['store', 'Store in my building']], order.mode);
@@ -485,10 +524,55 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function storage(stored, id, isCart = false, owner = true) {
     const transferable = Object.keys(RESOURCE_WEIGHTS);
-    let html = '<div class="storage-grid">' + transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r)).map(r => `<div><span>${esc(label(r))}</span><strong>${num(stored[r])}</strong><small>${num(me().inventory?.[r])} carried</small></div>`).join('') + '</div><div class="transfer-form">' + choices('storage-resource', transferable.map(id => [id, label(id)])) + quantity('storage-amount', 1500, 1);
-    html += button('Store', () => send({ type: 'action', kind: isCart ? 'cartDeposit' : 'plot_deposit', ...(isCart ? { targetId: id } : { plotId: id }), resource: value('storage-resource'), amount: amount('storage-amount') }));
-    if (owner) html += button('Take', () => send({ type: 'action', kind: isCart ? 'cartWithdraw' : 'plot_withdraw', ...(isCart ? { targetId: id } : { plotId: id }), resource: value('storage-resource'), amount: amount('storage-amount') }));
-    return html + '</div>';
+    const preferred = transferable.find(resource => me().inventory?.[resource] > 0 || stored[resource] > 0) || transferable[0];
+    let html = '<div class="storage-grid">' + transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r)).map(r => `<div><span>${esc(label(r))}</span><strong>${num(stored[r])} stored</strong><small>${num(me().inventory?.[r])} carried</small></div>`).join('') + '</div><label for="storage-resource">Resource or item</label><div class="transfer-form">' + choices('storage-resource', transferable.map(resource => [resource, label(resource)]), preferred) + '<label for="storage-amount">Amount ' + quantity('storage-amount', 1000000, 1) + '</label>';
+    html += transferButton('storage-store', 'Store', () => sendStorage(false, false)) + transferButton('storage-store-max', 'Store max', () => sendStorage(false, true));
+    if (owner) html += transferButton('storage-take', 'Take', () => sendStorage(true, false)) + transferButton('storage-take-max', 'Take max', () => sendStorage(true, true));
+    return html + '</div><p id="storage-transfer-status" aria-live="polite"></p>';
+  }
+  function transferButton(id, text, callback) { return button(text, callback).replace('<button ', `<button id="${id}" `); }
+  function bankLimits() {
+    const p = me(), count = amount('bank-amount'), valid = Number.isSafeInteger(count) && count > 0 && count <= 1000000;
+    return { count, deposit: valid && count <= p.wallet, withdraw: valid && count <= p.bank, depositMax: p.wallet > 0, withdrawMax: p.bank > 0 };
+  }
+  function sendBank(withdrawing, maximum) {
+    const limits = bankLimits(), allowed = limits[(withdrawing ? 'withdraw' : 'deposit') + (maximum ? 'Max' : '')];
+    if (!allowed) { updateTransfers(); return; }
+    send({ type: 'action', kind: withdrawing ? 'withdraw' : 'deposit', ...(maximum ? { max: true } : { amount: limits.count }) });
+  }
+  function storageLimits() {
+    const isCart = current?.kind === 'cart', container = isCart ? state().carts?.find(cart => cart.id === current.id) : plots().find(plot => plot.id === current?.id);
+    if (!container) return null;
+    const resource = value('storage-resource'), stored = container.storage || {}, count = amount('storage-amount');
+    let storeMax = transferLimit(me(), stored, resource, isCart ? TRANSPORT.cartCapacity : plotStorageCapacity(container));
+    if (resource === 'cart' && container.ownerId !== me().id) {
+      const recipient = state().players?.find(player => player.id === container.ownerId);
+      if (recipient) storeMax = Math.min(storeMax, Math.max(0, TRANSPORT.maxCarts - ownedCartCount(state(), recipient)));
+    }
+    const takeMax = container.ownerId === me().id ? transferLimit(stored, me(), resource, carryCapacity(me())) : 0;
+    const valid = Number.isSafeInteger(count) && count > 0 && count <= 1000000;
+    return { resource, container, stored, isCart, count, storeMax, takeMax, store: valid && count <= storeMax, take: valid && count <= takeMax };
+  }
+  function sendStorage(withdrawing, maximum) {
+    const limits = storageLimits();
+    if (!limits || !limits[(withdrawing ? 'take' : 'store') + (maximum ? 'Max' : '')]) { updateTransfers(); return; }
+    send({ type: 'action', kind: limits.isCart ? withdrawing ? 'cartWithdraw' : 'cartDeposit' : withdrawing ? 'plot_withdraw' : 'plot_deposit',
+      ...(limits.isCart ? { targetId: limits.container.id } : { plotId: limits.container.id }), resource: limits.resource, ...(maximum ? { max: true } : { amount: limits.count }) });
+  }
+  function updateTransfers() {
+    const enable = (id, allowed) => { const control = document.getElementById(id); if (control) control.disabled = !allowed; };
+    if (document.getElementById('bank-amount')) {
+      const limits = bankLimits();
+      for (const [id, allowed] of [['bank-deposit', limits.deposit], ['bank-withdraw', limits.withdraw], ['bank-deposit-max', limits.depositMax], ['bank-withdraw-max', limits.withdrawMax]]) enable(id, allowed);
+      const status = document.getElementById('bank-transfer-status');
+      if (status) status.textContent = `${num(me().wallet)} gold available to deposit · ${num(me().bank)} gold available to withdraw. Transfers never use purchase credit.`;
+    }
+    if (document.getElementById('storage-resource')) {
+      const limits = storageLimits(); if (!limits) return;
+      for (const [id, allowed] of [['storage-store', limits.store], ['storage-take', limits.take], ['storage-store-max', limits.storeMax], ['storage-take-max', limits.takeMax]]) enable(id, allowed);
+      const status = document.getElementById('storage-transfer-status');
+      if (status) status.textContent = `${label(limits.resource)}: ${num(me().inventory?.[limits.resource])} carried · ${num(limits.stored[limits.resource])} stored. Store up to ${num(limits.storeMax)}${limits.container.ownerId === me().id ? ` · take up to ${num(limits.takeMax)}` : ''}. Max uses the space available when the transfer completes.`;
+    }
   }
   function buildOptions(id) {
     const site = PLOTS.find(p => p.id === id), plot = plots().find(p => p.id === id);
@@ -522,13 +606,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       for (const [recipe, r] of recipes) {
         const stocked = hasCost(p.storage, r.cost), owned = r.tool && me().durability?.[r.tool] > 0;
         const addedWeight = r.tool ? owned ? 0 : TOOL_WEIGHTS[r.tool] : (RESOURCE_WEIGHTS[r.item] || 1) * r.amount;
-        const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= r.price && p.hp > 0 && !full;
-        const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One deployed cart']];
+        const cartOwned = r.item === 'cart' && ownedCartCount(state(), me()) >= TRANSPORT.maxCarts;
+        const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= r.price && p.hp > 0 && !full && !cartOwned;
+        const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One cart per dwarf']];
         const copy = r.tool ? r.tool === 'sword' ? 'A forward sweep can hit several enemies. Guards deal 20% extra damage. Each swing uses one durability. Replacing a sword discards the equipped weapon.' : r.tool === 'bow' ? 'A ranged shot consumes one carried arrow and one durability. Guards deal 20% extra damage. Aim toward your enemy.' : r.tool === 'hammer' ? 'Restores damaged structures using the village’s repair materials. Each repair uses one durability.' : 'Every tool tier can gather every matching resource. Higher tiers give more resources at the same swing speed. Each harvest uses one durability.' : r.item === 'arrows' ? 'A bundle for your bow. These go into your inventory and weigh 0.1 each. Archer towers do not need arrows.' : 'Place this cart, then attach it to your horse to move stored supplies. Cart storage is separate from your pack.';
         const controls = button(`Buy · ${r.price}g`, () => { if (r.tool && me().durability?.[r.tool] > 0) confirm('Replace your equipped item?', `${r.name} costs ${r.price} gold and uses ${costText(r.cost)} from this shop. Your existing ${r.tool} and its remaining durability will be lost.`, 'craft_buy', { plotId: id, recipe, confirm: true }); else send({ type: 'action', kind: 'craft_buy', plotId: id, recipe }); }, !available, !stocked ? 'The shop needs more materials.' : 'Crafts from shop storage.');
         html += itemCard({ id: recipe, item: r.tool || r.item, tier: r.tier, name: r.name, tag: r.tier ? TOOL_TIERS[r.tier].name + ' quality' : 'Workshop supply', facts, copy,
           extra: materialDisplay(r.cost, p.storage), controls, available,
-          status: p.hp <= 0 ? 'Workshop needs rebuilding.' : !stocked ? 'The shop needs more materials.' : full ? 'Make room in your pack.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : 'Materials ready · crafted when purchased' });
+          status: p.hp <= 0 ? 'Workshop needs rebuilding.' : cartOwned ? 'You already own a cargo cart, packed, stored or deployed.' : !stocked ? 'The shop needs more materials.' : full ? 'Make room in your pack.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : 'Materials ready · crafted when purchased' });
       }
       html += '</div>';
     }
@@ -557,8 +642,19 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shots available', unlimited ? 'Unlimited' : num(shots)], ...ammunition]);
       html += '<p>' + (p.building === 'archer_tower' ? 'Archer towers fire automatically without arrows or other ammunition. Keep the tower repaired and upgrade it when you can.' : 'Each shot consumes one stored stone and one stored coal. Gather both with a pickaxe and place them in this building’s storage.') + '</p>';
     }
+    if (Object.hasOwn(PRODUCTION_UPGRADES, p.building || '')) {
+      const upgrade = PRODUCTION_UPGRADES[p.building], next = { ...p, level: 2 }, levelTwo = p.level >= 2;
+      const produced = p.building === 'mine' ? ['stone', 'iron', 'coal'] : [p.building === 'tree_farm' ? 'timber' : 'wheat'];
+      const benefits = produced.map(resource => `${productionNodeCapacity(resource, next)} ${resource} harvests per node`).join(' · ');
+      html += '<h3>Production · Level ' + (levelTwo ? '2' : '1') + '</h3><p>' + esc(`${levelTwo ? 'Upgraded production' : 'Level 2 unlocks'}: ${benefits}. Regrowth: ${num(productionRegrowSeconds(produced[0], next))} seconds (25% faster). Storage: 2,000 weight. Building health: +50%.`) + '</p>';
+      if (mine) {
+        const stocked = Object.entries(upgrade.resources).every(([resource, count]) => (p.storage?.[resource] || 0) + (me().inventory?.[resource] || 0) >= count);
+        if (!levelTwo) html += '<p>' + esc(costText({ gold: upgrade.gold, ...upgrade.resources })) + '. Uses wallet gold and materials from this plot’s storage, then your pack.</p>';
+        html += command(levelTwo ? 'Fully upgraded' : 'Upgrade production to level 2', 'upgradeProduction', { plotId: id }, levelTwo || wallet() < upgrade.gold || !stocked || p.hp <= 0, p.hp <= 0 ? 'Repair this building first.' : !stocked ? 'Gather or store the required materials.' : '');
+      }
+    }
     if(mine && DEFENSE_UPGRADES[p.building]) {const upgrade=DEFENSE_UPGRADES[p.building];html+='<h3>Building upgrade</h3><p>'+costText({gold:upgrade.gold,...upgrade.resources})+'</p>'+command((p.level||1)>=2?'Fully upgraded':p.building==='church'?'Upgrade to four beds':'Upgrade to level 2','upgradeDefense',{plotId:id},(p.level||1)>=2||wallet()<upgrade.gold||!hasCost(p.storage,upgrade.resources)||p.hp<=0);}
-    if (mine || p.building) html += '<h3>Building storage</h3><p>Capacity: ' + num(inventoryWeight(p.storage||{})) + ' / 1,500 weight. Materials stored on an empty plot can fund its construction.</p>' + storage(p.storage || {}, id, false, mine);
+    if (mine || p.building) html += '<h3>Building storage</h3><p>Capacity: ' + num(inventoryWeight(p.storage||{})) + ' / ' + num(plotStorageCapacity(p)) + ' weight. Materials stored on an empty plot can fund its construction.</p>' + storage(p.storage || {}, id, false, mine);
     if (mine) {
       html += '<h3>' + (p.building ? 'Convert this plot' : 'Choose a building') + '</h3><p>Browse one building plan at a time. Construction uses gold and this plot’s materials before supplies in your pack. Converting removes the existing structure.</p>' + buildCarousel.render(buildOptions(id));
       if(p.building)html+='<h3>Remove this building</h3><p>Demolition retains your land. Empty storage and finish treatments first. There is no refund.</p>'+button('Demolish building',()=>confirm('Remove this building?',`Your ${type.name} and deployed troops will be removed without a refund. The plot remains yours.`,'plot_demolish',{plotId:id,confirm:true}));
@@ -588,5 +684,5 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     return waypoint;
   }
-  return { show, refresh, getWaypoint, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
+  return { show, refresh, getWaypoint, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
 }

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../server/store.js';
 import { BUILDINGS } from '../shared/world.js';
-import { ensureTransport, transportAction, transportTick, transportSnapshot, spendGold, chargePurchase, availableGold, repayIncome } from '../server/transport.js';
+import { ensureTransport, transportAction, transportTick, transportSnapshot, bankTransfer, spendGold, chargePurchase, availableGold, repayIncome } from '../server/transport.js';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'emberwatch-transport-'));
@@ -123,4 +123,36 @@ test('riding is blocked while carrying or occupying a church bed', async t => {
     p[flag] = 'other'; assert.throws(() => act(p, { kind: 'mountHorse', targetId: horse.id }), /carrying or treatment/); p[flag] = null;
   }
   assert.equal(horse.riderId, null);
+});
+
+test('bank exact and all transfers use current balances and conserve wallet plus protected savings', async t => {
+  const { sim, p, village, near } = await fixture(t);
+  near(p, 'bank'); sim.store.bank(p.id, 77); sim.store.issueCredit(p.id, 100, 200);
+  const total = p.wallet + sim.store.account(p.id).bank, treasury = village.treasury;
+  bankTransfer(sim, village, p, { kind: 'deposit', amount: 10 });
+  assert.equal(p.wallet, 190); assert.equal(sim.store.account(p.id).bank, 87);
+  bankTransfer(sim, village, p, { kind: 'deposit', max: true });
+  assert.equal(p.wallet, 0); assert.equal(sim.store.account(p.id).bank, total);
+  assert.throws(() => bankTransfer(sim, village, p, { kind: 'deposit', max: true }), /empty/);
+  bankTransfer(sim, village, p, { kind: 'withdraw', amount: 10 });
+  assert.equal(p.wallet, 10);
+  bankTransfer(sim, village, p, { kind: 'withdraw', max: true });
+  assert.equal(p.wallet, total); assert.equal(sim.store.account(p.id).bank, 0);
+  for (const amount of [-1, 1.5, '10', NaN, total + 1]) assert.throws(() => bankTransfer(sim, village, p, { kind: 'deposit', amount }));
+  assert.equal(p.wallet, total); assert.equal(sim.store.account(p.id).bank, 0);
+  assert.equal(village.treasury, treasury); assert.equal(sim.store.account(p.id).credit, 100); assert.equal(sim.store.account(p.id).debt, 100);
+  assert.equal(sim.store.loadVillages()[0].players[p.id].wallet, total);
+  Object.assign(p, { x: 0, z: 40 }); assert.throws(() => bankTransfer(sim, village, p, { kind: 'deposit', max: true }), /Visit/);
+});
+
+test('cart maximum transfers stop at capacity and apply current source counts without duplication', async t => {
+  const { p, village, act } = await fixture(t);
+  p.inventory = { cart: 1, arrows: 3100 }; act(p, { kind: 'deployCart' });
+  const cart = village.carts[0];
+  act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'arrows', max: true });
+  assert.equal(p.inventory.arrows, 100); assert.equal(cart.storage.arrows, 3000);
+  assert.throws(() => act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'arrows', max: true }), /cart cannot/);
+  act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'arrows', max: true });
+  assert.equal(p.inventory.arrows, 1000); assert.equal(cart.storage.arrows, 2100);
+  assert.equal(p.inventory.arrows + cart.storage.arrows, 3100);
 });

@@ -30,7 +30,8 @@ function savedWork(w) {
     resource: w.resource, sourcePlotId: w.sourcePlotId, mode: w.mode,
     destinationPlotId: w.destinationPlotId, paused: w.paused, cargo: w.cargo,
     paidWorkSeconds: w.paidWorkSeconds, gatherProgress: w.gatherProgress,
-    targetNodeId: w.targetNodeId, delivering: w.delivering
+    targetNodeId: w.targetNodeId, delivering: w.delivering,
+    workXp: w.workXp, level: w.level, attributes: w.attributes, upgradePoints: w.upgradePoints, color: w.color
   });
 }
 
@@ -52,6 +53,12 @@ test('real worker progress survives SQLite restart and resumes without another h
   assert.ok(Math.hypot(worker.x - start.x, worker.z - start.z) > 10, 'cargo was earned after actual navigation');
   assert.ok(player.wallet < 1000 - WORKER_RULES.hireCost, 'working time is paid before the checkpoint');
   assert.ok(worker.paidWorkSeconds > 0 && worker.paidWorkSeconds < WORKER_RULES.wageSeconds);
+  // Seed earlier productive work, then exercise the real action/save path for
+  // its earned point and selected appearance before restarting SQLite.
+  worker.workXp = 26;
+  f.sim.action(id, player.id, { kind: 'worker_upgrade', workerId: worker.id, attribute: 'carry' });
+  f.sim.tick(.7);
+  f.sim.action(id, player.id, { kind: 'worker_color', workerId: worker.id, color: '#9772ae' });
   const expected = savedWork(worker), wallet = player.wallet, clock = village.clock;
   const treasury = village.treasury, resources = structuredClone(village.resources);
   f.sim.saveAll();
