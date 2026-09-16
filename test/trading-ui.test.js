@@ -101,3 +101,15 @@ test('trade carrying preview applies resource discounts and rerenders when deplo
   assert.equal(f.renders, before + 1); assert.match(f.html, /124 \/ 140/);
   f.me.crateEquipment = {}; f.ui.update(); assert.match(f.html, /124 \/ 100/); assert.match(f.html, /make room before confirming/);
 });
+
+test('illustrated two-party previews retain exact offer quantities and independent confirmations', () => {
+  const f = fixture(), trade = f.start();
+  trade.offers.alice.resources.timber = 10; trade.offers.bob.gold = 8; trade.confirmations.bob = true; trade.version++;
+  f.ui.update();
+  assert.match(f.html, /aria-label="Trading progress"/); assert.match(f.html, /data-party="you"/); assert.match(f.html, /data-party="partner"/);
+  assert.match(f.html, /data-item="timber"/); assert.match(f.html, /data-item="gold"/);
+  assert.match(f.html, /<strong>10<\/strong>/); assert.match(f.html, /<strong>8<\/strong>/);
+  assert.match(f.html, /You: <strong>Reviewing<\/strong> · Bob: <strong>Confirmed<\/strong>/);
+  f.type('timber', '12'); f.click('Confirm this exchange'); assert.equal(f.sent.length, 0, 'art and confirmation cards do not submit a draft');
+  f.click('Update offer'); assert.equal(f.sent.at(-1).offer.resources.timber, 12);
+});

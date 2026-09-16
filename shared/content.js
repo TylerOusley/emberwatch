@@ -1,8 +1,8 @@
 // Shared, inspectable balance values. Prices and recipes are validated again by the server.
 import { ROLE_STATS } from './roles.js';
 import { equippedItem, GATHERING_TOOLS } from './crates.js';
-export const MAX_PLOTS = 5;
-export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800]);
+export const MAX_PLOTS = 8;
+export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800, 1100, 1450, 1850]);
 export const CARRY_CAPACITY = 100;
 export const BACKPACKS = Object.freeze([
   Object.freeze({ tier: 0, name: 'Pockets', capacity: CARRY_CAPACITY, price: 0 }),

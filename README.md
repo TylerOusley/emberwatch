@@ -2,11 +2,25 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — admin testing build 16.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — graphics overhaul build 18.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 18 replaces flat scenery surfaces with seven locally hosted, 1K PBR material sets: mossy grass, forest earth, weathered rock, cobblestones, timber, castle masonry and roof tiles. Color, normal and roughness maps add surface detail under moving light. Trees now have tapered branching trunks and individual leaves or needle sprays; wheat has bent stalks, grains and awns. Smooth terrain, eroded mountain ridges, detailed ground cover, overlapping shingles, beveled masonry, framed windows and turned cannon barrels replace many of the earlier primitive silhouettes. All roads, deed bounds, cave floors, gathering anchors and collision rules remain authoritative and unchanged.
+
+Daylight and moonlight use a calibrated sky, warmer horizon scattering and sharper shadows around the viewer. A small solar disc and a NASA lunar surface texture replace the oversized discs; drifting cloud layers and stars follow the shared village clock. A sky reflection probe adds sheen to metal, leather and water. High detail adds restrained contact shading and highlight glow, with one scene render and one final presentation pass. [Textured world preview](docs/previews/world-build18.jpg), [actual sky shader preview](docs/previews/sky-build18.jpg), [actual PBR shader diagnostic](docs/previews/surface-materials-build18.jpg), [plot geometry](docs/previews/plots-build18.jpg), [cave geometry](docs/previews/cave-build18.jpg). These are offline rendering checks, not interactive browser captures.
+
+Open **Graphics settings** in the lobby or **Graphics** in the village menu. **Auto** starts Balanced and adjusts after sustained performance changes; **High**, **Balanced** and **Low** keep your chosen level. Preferences stay in this browser. High allows up to 4 million rendered pixels and 4096-pixel nearby shadows; Balanced caps rendering at 2.5 million pixels with 2048-pixel shadows; Low caps at 2 million pixels and disables shadow maps and the extra presentation pass. Device capabilities can reduce these limits. Image filtering and supported multisample antialiasing keep detail stable; a directional edge filter handles GPUs without compatible multisampled HDR targets. No simulation or multiplayer settings change with picture quality.
+
+The 21 original Poly Haven CC0 maps total 13.36 MB; the NASA Moon map adds 0.46 MB. They are served from the game, with neutral fallbacks while unavailable. Exact sources, licenses and integrity hashes are recorded in [Graphics assets](docs/GRAPHICS-ASSETS.md) and [Sky assets](docs/SKY-ASSETS.md).
+
+Build 17 brings illustrated cards and clearer actions to the village menu, inventory, treasury, workers, storage, care, defense, crate collection and equipment. A corner **On you** display keeps all carried resource and provision counts visible, alongside owned tools, equipped crate items and carrying weight. It reads your personal inventory only. Buildings and troops gain visible reinforcement when upgraded, and cannon arrivals create brief fire, spark, shockwave and smoke effects at the actual target.
+
+Residents can now hire **five workers** and own **eight plots**. Personal mines, tree farms and wheat farms support levels 1–3, with extra yield for players and workers, more harvest reserves, shorter regrowth and larger storage. Upgrade cards show current and next values before payment.
+
+The treasury now offers **Village investments**: contribute wallet gold, collect funded dividends, reinvest earnings or withdraw available principal. **The Wayfarer** is a permanent tavern as well as the merchant's stop, offering coin flip and European roulette day and night. Both features use the existing village treasury and have illustrated rules and receipts. See the rules below for funding, eligibility and returns.
 
 Build 16 adds a dedicated admin testing account with a one-time grant of **10,000,000 personal bank gold**. It also starts each new village with **10,000,000 wallet gold**. Its village menu includes **Refill test gold**, which tops both balances up to ten million without reducing a higher balance. Purchases, crates, equipment and survival use the normal game rules. Other accounts retain their ten-gold start.
 
@@ -20,7 +34,7 @@ Build 14 addresses the interaction and reliability feedback. Click the world onc
 
 Storage and cart panels preserve entered quantities across live updates and provide **Store max / Take max** using current inventory and free space. The bank adds **Deposit all / Withdraw all** and preserves typed amounts. New cart purchases count packed, stored and deployed carts toward one cart per resident. Existing extra carts are preserved, but additional purchases are blocked.
 
-Workers continue through day and night. Productive gathering earns attribute points for gathering speed, travel speed and carrying capacity, and workers have eight selectable clothing colors. Owned timber/wheat farms and stone/iron/coal mines can be upgraded to level 2. Player trading exchanges resources, food, arrows and wallet gold after both players confirm the latest terms. The Deepworks entrance has a more substantial carved stone portal, and gathering/repair sounds use varied profiles. [Updated mine geometry preview](docs/previews/cave-build14.jpg).
+Workers continue through day and night. Productive gathering earns attribute points for gathering speed, travel speed and carrying capacity, and workers have eight selectable clothing colors. Owned timber/wheat farms and stone/iron/coal mines now upgrade through level 3. Player trading exchanges resources, food, arrows and wallet gold after both players confirm the latest terms. The Deepworks entrance has a more substantial carved stone portal, and gathering/repair sounds use varied profiles. [Updated mine geometry preview](docs/previews/cave-build14.jpg).
 
 Connection recovery now uses heartbeats, bounded retry delays, resumable connection identity and fresh state baselines. Temporary connection loss is shown in the HUD; disconnected actions are not replayed. Server restarts still briefly interrupt play on the current single-service host.
 
@@ -61,7 +75,7 @@ Actual mesh previews: [sword sweep](docs/previews/sword-trails.jpg), [zombie var
 | Area | Playable behavior |
 | --- | --- |
 | Full map | Forty internal plots, eight exposed plots, connected neighborhood lanes, woodland, wheat fields, three connected cave levels for public stone and ore, permanent services, and the single gate/graveyard approach. The Watch faces the street and its guards leave from that entrance. |
-| Ownership | Up to five plots per resident, one building per plot, construction and conversion, stored supplies, visitor harvesting permissions, and an accumulated 80/20 harvest split. |
+| Ownership | Up to eight plots per resident, one building per plot, construction and conversion, stored supplies, visitor harvesting permissions, and an accumulated 80/20 harvest split. |
 | Player businesses | Tool shops, sword shops, and tinker shops craft from actual shop storage and pay their owner. Mines, tree farms, wheat farms, and houses provide owned land uses and storage. |
 | Progression | Wood/stone/iron equipment, iron and coal nodes, bows and arrows, tool durability, eight configurable hotbar slots, weighted carrying, and three food tiers. |
 | Village economy | Stock-priced resource buying/selling, finite treasury reserves, transaction and land taxes, participation-based dawn wages, performance pay, merchant exports, and votes reviewed by the steward. |
@@ -98,7 +112,7 @@ These are tunable implementation values, not a claim that the economy is already
 
 | System | Current setting |
 | --- | --- |
-| Land | Five plots maximum per resident, including exterior plots; successive deeds cost 100 / 200 / 350 / 550 / 800 gold. |
+| Land | Eight plots maximum per resident, including exterior plots; successive deeds cost 100 / 200 / 350 / 550 / 800 / 1,100 / 1,450 / 1,850 gold. |
 | Land tax | Default daily total is `2 × owned plots²` gold, prorated for active participation and rounded up. A council policy can change the base. Unpaid tax becomes in-run arrears; offline-only cycles do not accrue it. |
 | Carrying | Guards and priests start at 100 weight; villagers at 150. Oak & Iron backpacks add 100 / 250 / 400 capacity for 40 / 100 / 200 gold. Upgrading replaces the previous bag and charges the full listed price. Weight includes usable equipped tools. Timber weighs 2, stone/iron 3, wheat/food 1, coal 2, arrows 0.1, and a packed cart 12. |
 | Role bonuses | Guard: 40 shield, regenerating 4/second after six seconds without damage; Priest: 125 max HP; Villager: +50 carrying capacity. Role changes preserve health percentage and do not refill shields. |
@@ -150,23 +164,59 @@ New accounts receive a compact optional guide covering their first tool, gatheri
 
 ## Hired workers
 
-Visit the treasury to hire up to two workers per resident for 75 wallet gold each. Open **Workers** from the treasury or your inventory to choose wheat, timber, stone, iron or coal, select public resources or one of your matching production plots, and order delivery to one of your buildings or automatic sale at the Resource Exchange. Other residents’ private plots cannot be assigned.
+Visit the treasury to hire up to five workers per resident for 75 wallet gold each. Open **Workers** from the treasury or your inventory to choose wheat, timber, stone, iron or coal, select public resources or one of your matching production plots, and order delivery to one of your buildings or automatic sale at the Resource Exchange. Other residents’ private plots cannot be assigned.
 
-A new worker gathers one unit every four seconds, travels between the actual resource and destination, and carries up to 40 weight. Tools are included in the contract. Pay is one wallet gold per 30 seconds of work, prepaid in small installments; bank savings and purchase credit are never charged. Workers work day and night while their employer is online, including near enemies. Pausing or going offline returns them to the treasury. Returning and waiting for resources, storage, or affordable sales do not incur wages.
+A new worker gathers one unit per harvest on public or level 1 sites, two on level 2 sites, and three on level 3 sites. Each harvest initially takes four seconds; the worker travels between the actual resource and destination and carries up to 40 weight. Tools are included in the contract. Pay is one wallet gold per 30 seconds of work, prepaid in small installments; bank savings and purchase credit are never charged. Workers work day and night while their employer is online, including near enemies. Pausing or going offline returns them to the treasury. Returning and waiting for resources, storage, or affordable sales do not incur wages.
 
 Sales use current stock prices, tax, the treasury’s emergency reserve and normal loan repayments. Full or unavailable storage and an underfunded treasury leave cargo with the worker. You can collect cargo beside the worker, change orders, pause/resume, or dismiss an empty worker at the treasury without a refund. Workers and their orders persist within the village run. Fallen villages disappear from the selection list; account savings remain available in the next run.
 
 Every 25 successful harvests earns one upgrade point, up to 15 points total. Each of the three attributes accepts five points: gathering reduces the work interval by 0.4 seconds per point (4 to 2 seconds); movement adds 0.3 m/s per point (3 to 4.5 m/s); carrying adds 10 weight per point (40 to 90). The Workers panel shows progress, spent/available points and eight free clothing colors. Existing workers begin with zero earned points and retain their orders, cargo and prepaid wages.
 
-## Level 2 production
+## Production upgrades
 
-Upgrade an owned production building at its entrance, using wallet gold and materials from its storage first, then your pack. Level 2 adds 50% more harvests per node (rounded up), reduces regrowth time by 25%, increases building health by 50%, and raises storage from 1,500 to 2,000 weight. The same upgrade applies to stone, iron and coal mine nodes. Active nodes gain only the additional reserve; depleted nodes stay depleted with a shorter remaining regrowth timer.
+Upgrade an owned mine, tree farm or wheat farm at its entrance, using wallet gold and materials from its storage first, then your pack. Each paid upgrade preserves the original harvest anchors and spent harvests: active nodes gain only their additional reserve, and depleted nodes retain depletion with a proportionally shorter remaining regrowth time. Rejoining or restarting does not refill deposits. Visitor harvests still split the full boosted output 80/20 with the owner.
 
-| Building | Gold | Stored materials |
+| Benefit | Level 1 | Level 2 | Level 3 |
+| --- | ---: | ---: | ---: |
+| Yield added to each player tool swing | 0 | +1 | +2 |
+| Worker yield per completed harvest | 1 | 2 | 3 |
+| Harvests per wheat / timber / mineral node | 1 / 5 / 8 | 2 / 8 / 12 | 3 / 10 / 16 |
+| Private-site regrowth time | 100% | 75% | 50% |
+| Storage capacity | 1,500 | 2,000 | 3,000 |
+| Building health compared with level 1 | 100% | 150% | 200% |
+
+| Upgrade | Gold | Materials |
 | --- | ---: | --- |
-| Wheat farm | 80 | 20 timber, 15 stone, 3 iron |
-| Tree farm | 100 | 25 timber, 20 stone, 5 iron |
-| Mine | 150 | 30 timber, 30 stone, 10 iron |
+| Wheat farm → level 2 | 80 | 20 timber, 15 stone, 3 iron |
+| Wheat farm → level 3 | 180 | 40 timber, 30 stone, 8 iron |
+| Tree farm → level 2 | 100 | 25 timber, 20 stone, 5 iron |
+| Tree farm → level 3 | 220 | 50 timber, 40 stone, 12 iron |
+| Mine → level 2 | 150 | 30 timber, 30 stone, 10 iron |
+| Mine → level 3 | 300 | 60 timber, 60 stone, 25 iron |
+
+Defense and care upgrades retain their existing level 2 rules. Cards show building health +50%, barracks troops 160→220 health and 14→18 damage, church beds 2→4, archer damage 20→30 and cannon damage 48→72. Upgraded structures gain additional stonework, braces or fixtures; recruited troops gain a fitted veteran armor kit. Cannon bursts are cosmetic and do not apply another damage hit.
+
+## Village investments
+
+At the treasury, invest 1–1,000,000 wallet gold per action, up to 1,000,000,000 principal per resident in that village. Contributions enter the village treasury immediately. New contributions and reinvested earnings skip their first dawn: a contribution during day 1 first becomes eligible at the dawn following day 2. Fully eligible principal has a potential **1% daily dividend**, carrying fractional gold forward.
+
+After normal dawn income and payroll, available treasury gold above the existing emergency reserve funds dividends. If the village cannot pay the full amount, the available pool is split proportionally; ties rotate between days. An underfunded day's unpaid whole-gold portion is not a debt owed by the village. Funded dividends leave the spendable treasury and remain held in your separate earnings balance. **Collect earnings** moves them to your wallet; **Reinvest earnings** returns them to the treasury as new principal with fresh eligibility.
+
+Principal can be withdrawn only to the extent the current treasury can preserve its reserve. These investments belong to the village run, not your persistent account bank. A fallen village closes new investments, claims and withdrawals; collect or withdraw beforehand to carry gold away. Ordinary bank savings remain independent. The UI shows eligible/pending principal, first eligible day, previous dividend, withdrawal availability and projected fully eligible income.
+
+## The Wayfarer tavern
+
+Visit The Wayfarer entrance at any time, even while its traveling merchant is away. Bet 1–1,000 **wallet gold** on the illustrated coin or roulette table. The server resolves and saves each result before the reveal animation; Skip or reduced motion reveals the same saved result.
+
+| Game / bet | Winning chance | Total returned on a win | Net profit on a win |
+| --- | --- | --- | --- |
+| Coin flip: heads or tails | 1/2 | 2× stake | 1× stake |
+| European roulette: one number, 0–36 | 1/37 | 36× stake | 35× stake |
+| Roulette: red, black, even or odd | 18/37 | 2× stake | 1× stake |
+
+Zero loses all outside roulette bets. A lost stake goes to the village treasury; a win pays the net profit from that treasury. Before accepting any stake, the treasury must cover the maximum possible win while preserving its emergency reserve. Bank savings, loans and investment earnings are not wagered. The interface distinguishes total return, profit, loss and currently affordable stakes.
+
+Investment and tavern actions have durable, authenticated per-resident receipts. Repeated requests return the original receipt, including old results outside the recent history list. A reconnect, lost response or repeated click cannot repeat the same payment. Failed database writes roll back the wallet, treasury, position and receipt together.
 
 ## Player trading
 
@@ -279,6 +329,6 @@ After installing Node.js 24 or newer and extracting this folder, double-click `S
 
 ### Art and dependencies
 
-The village geometry, characters, animations, interface, and gameplay code were created for Emberwatch. No code from the existing games was copied. Cinzel and DM Sans font files are bundled locally under the included SIL Open Font License notices in `public/fonts/`. Three.js and ws are installed through npm under their package licenses. The game makes no runtime CDN requests for fonts or rendering code.
+The village geometry, characters, animations, interface, and gameplay code were created for Emberwatch. No code from the existing games was copied. Build 18 surface textures are Poly Haven CC0 assets; the lunar map comes from NASA SVS. Their source and license records are linked above. Cinzel and DM Sans font files are bundled locally under the included SIL Open Font License notices in `public/fonts/`. Three.js and ws are installed through npm under their package licenses. The game makes no runtime CDN requests for fonts, rendering code or scenery textures.
 
 See `docs/VALIDATION.md` for the checks performed on this build.

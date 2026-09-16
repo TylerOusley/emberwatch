@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { BUILDINGS, WALLS, ROAD, GUARD_ROAD, RESOURCES, PLOTS, WORLD_BOUNDS, plotFront, seeded, CAVE_AREAS, groundHeight, caveAreaAt } from '/shared/world.js';
 import { createPlotsWorld, mineralOutcropGeometry, mineralBedGeometry } from './plots-world.js';
+import { createSurfaceMaterial, applySurface } from './surface-materials.js';
+import { createOrganicTreeGeometry, createWheatGeometry, createMountainGeometry, createBeveledBlockGeometry } from './environment-geometry.js';
 
-// Original procedural artwork. Everything is drawn from simple, authored geometry;
-// no downloaded models or textures are required to explore the village.
+// Original authored scenery with local CC0 surface textures. Geometry and
+// material relief are visual only; the shared playable map remains authoritative.
 export function createWorld(scene) {
   const root = new THREE.Group(); root.name = 'Emberwatch • world'; scene.add(root);
   const resources = new Map(), wind = [], torchFixtures = [];
@@ -14,20 +16,37 @@ export function createWorld(scene) {
   const M = {
     stone:mat('#7c867a'), stoneLight:mat('#a4aa94'), stoneDark:mat('#535e58'), mortar:mat('#555e55'), moss:mat('#5d7546'),
     plaster:mat('#d8c495'), plasterPale:mat('#e4d2ad'), wood:mat('#65472d'), woodDark:mat('#382d26'), woodLight:mat('#aa8051'),
-    roof:mat('#315b61'), roofDark:mat('#25484f'), roofLight:mat('#44777a'), copper:mat('#9d6745'), iron:mat('#344047',{metalness:.25}),
+    roof:mat('#7b8c90'), roofDark:mat('#728286'), roofLight:mat('#829398'), copper:mat('#9d6745'), iron:mat('#344047',{metalness:.25}),
     glass:mat('#efbb62',{emissive:'#d58532',emissiveIntensity:.4,roughness:.35}), leaf:mat('#5d803d'), leafLight:mat('#83a24b'),
     pine:mat('#385e44'), pineLight:mat('#517748'), bark:mat('#655440'), wheat:mat('#d9b452'), wheatTip:mat('#f0d782'),
     dirt:mat('#705d3f'), fabric:mat('#ac6249'), fabricLight:mat('#dfbd7e'), blue:mat('#416c79'), purple:mat('#766080'),
     water:mat('#648c8c',{roughness:.2,metalness:.25}),
     geology:mat('#ffffff',{vertexColors:true,roughness:.98}),
-    mountain:mat('#7b9386',{flatShading:true}), mountainLight:mat('#95a596',{flatShading:true})
+    mountain:mat('#e0e7d8',{vertexColors:true}), mountainLight:mat('#f0eee0',{vertexColors:true}),
+    foliage:mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}), crop:mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide})
   };
-  const boxG = new THREE.BoxGeometry(1,1,1), cylinderG = new THREE.CylinderGeometry(1,1,1,8), coneG = new THREE.ConeGeometry(1,1,7);
-  const sphereG = new THREE.IcosahedronGeometry(1,0), dummy = new THREE.Object3D();
-  const batches = new Map(),caveOccluders=[];let mountainG;
+  for(const key of ['stone','stoneLight','stoneDark','mortar','moss'])applySurface(M[key],'masonry',{worldScale:2.8,colorStrength:.50});
+  for(const key of ['plaster','plasterPale'])applySurface(M[key],'plaster',{worldScale:2.4});
+  for(const key of ['wood','woodDark','woodLight','bark'])applySurface(M[key],'wood',{worldScale:key==='bark'?1.25:2,colorStrength:.45,normalStrength:key==='bark'?.65:.36});
+  for(const key of ['roof','roofDark','roofLight'])applySurface(M[key],'roof',{worldScale:2.3,colorStrength:.75});
+  for(const key of ['mountain','mountainLight','geology'])applySurface(M[key],'rock',{worldScale:key==='geology'?2.2:9,colorStrength:.44,normalStrength:.70});
+  applySurface(M.dirt,'earth',{worldScale:2.4,colorStrength:.60});
+  M.foliage.userData.noTinyShadows=true;M.crop.userData.noTinyShadows=true;
+  const boxG = createBeveledBlockGeometry(), cylinderG = new THREE.CylinderGeometry(1,1,1,12), coneG = new THREE.ConeGeometry(1,1,12);
+  const sphereG = new THREE.SphereGeometry(1,12,8), dummy = new THREE.Object3D();
+  // Slate courses overlap, so no underside is visible. Ten triangles per tile
+  // give each lip real relief with a much smaller cost than beveled blocks.
+  const tileG=new THREE.BoxGeometry(1,1,1),tileIndices=[];
+  for(const group of tileG.groups)if(group.materialIndex!==3)for(let i=group.start;i<group.start+group.count;i++)tileIndices.push(tileG.index.getX(i));
+  tileG.setIndex(tileIndices);tileG.clearGroups();tileG.name='overlapping-slate-tile';tileG.userData.roofTiles=true;
+  const batches = new Map(),caveOccluders=[];
   function batch(geo,material,x,y,z,sx=1,sy=1,sz=1,rx=0,ry=0,rz=0) {
-    const caveOccluder=geo===mountainG&&Math.abs(x)<55&&z<-140;
-    const key=geo.uuid+material.uuid+(caveOccluder?':cave':'');
+    const caveOccluder=Boolean(geo.userData.distantMountain)&&Math.abs(x)<55&&z<-140;
+    // A single forest-spanning bounding sphere would submit every tree when
+    // any edge of the forest was visible. Small spatial batches retain shared
+    // geometry and let normal Three.js frustum culling reject distant patches.
+    const sector=geo.userData.forest?`:forest:${Math.floor(x/32)}:${Math.floor(z/32)}`:geo.userData.distantMountain?`:ridge:${Math.floor(x/64)}:${Math.floor(z/64)}`:geo.userData.roofTiles?`:roof:${Math.floor(x/32)}:${Math.floor(z/32)}`:'';
+    const key=geo.uuid+material.uuid+(caveOccluder?':cave':'')+sector;
     if(!batches.has(key)) batches.set(key,{geo,material,transforms:[],caveOccluder});
     dummy.position.set(x,y,z);dummy.scale.set(sx,sy,sz);dummy.rotation.set(rx,ry,rz);dummy.updateMatrix();
     batches.get(key).transforms.push(dummy.matrix.clone());
@@ -44,28 +63,20 @@ export function createWorld(scene) {
     const key=boxG.uuid+material.uuid;if(!batches.has(key))batches.set(key,{geo:boxG,material,transforms:[]});batches.get(key).transforms.push(dummy.matrix.clone());
   }
   function canvasTexture(draw,w=512,h=512){const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;draw(canvas.getContext('2d'),w,h);const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;return t;}
-  const cobbles=canvasTexture((ctx,w,h)=>{
-    const r=seeded(801);ctx.fillStyle='#756f5c';ctx.fillRect(0,0,w,h);
-    for(let row=0;row<12;row++)for(let col=-1;col<9;col++){
-      const x=col*64+(row%2)*32,y=row*43,shade=130+Math.floor(r()*30);
-      ctx.fillStyle=`rgb(${shade+10},${shade+8},${shade-5})`;ctx.beginPath();ctx.roundRect(x+2+r()*3,y+3,56+r()*4,34+r()*4,7);ctx.fill();
-      ctx.strokeStyle='rgba(220,218,186,.24)';ctx.lineWidth=2;ctx.stroke();
-    }
-    for(let i=0;i<2500;i++){ctx.fillStyle=r()>.5?'rgba(255,244,185,.035)':'rgba(38,47,23,.04)';ctx.fillRect(r()*w,r()*h,2,2);}
-  });cobbles.wrapS=cobbles.wrapT=THREE.RepeatWrapping;cobbles.anisotropy=4;
-  const roadMat=mat('#f0e3c6',{map:cobbles});
+  const roadMat=createSurfaceMaterial('cobble',{color:'#d9d3bb',worldScale:3,colorStrength:.76,normalStrength:.62});
 
-  // Broad, softly faceted ground under a flat play area.
+  // Smooth ground shading and continuous surface detail preserve the exact
+  // existing terrain vertices and cave opening; relief never moves a collider.
   const groundG=new THREE.PlaneGeometry(540,460,90,78);groundG.rotateX(-Math.PI/2);
   const gp=groundG.attributes.position, gc=[];
   for(let i=0;i<gp.count;i++){
     const x=gp.getX(i),z=gp.getZ(i),outside=Math.max(0,Math.abs(x)-118,-z-151,z-135);
     gp.setY(i,-.14+Math.sin(x*.05)*Math.cos(z*.043)*Math.min(outside*.09,4));
-    const n=rng(),c=color(n>.72?'#82975c':n>.34?'#728b50':'#657d49');c.multiplyScalar(.94+rng()*.12);gc.push(c.r,c.g,c.b);
+    const n=rng(),patch=.5+.27*Math.sin(x*.057+Math.sin(z*.032)*1.7)+.18*Math.cos(z*.071-x*.023),c=color('#909c70').lerp(color('#c0c89b'),Math.max(0,Math.min(1,patch)));c.multiplyScalar(.97+n*.02+rng()*.03);gc.push(c.r,c.g,c.b);
   }
   groundG.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));groundG.computeVertexNormals();
   const carvedGround=carveGroundForCave(groundG);groundG.dispose();
-  const ground=mesh(carvedGround,mat('#ffffff',{vertexColors:true,flatShading:true}));ground.name='village-terrain';ground.castShadow=false;
+  const ground=mesh(carvedGround,createSurfaceMaterial('grass',{color:'#ffffff',vertexColors:true,worldScale:6,colorStrength:.62,normalStrength:.48}));ground.name='village-terrain';ground.castShadow=false;
 
   const lanes=[];
   function road(points,width=7,y=.014){
@@ -121,14 +132,16 @@ export function createWorld(scene) {
     box(edge.index%4?M.stone:M.moss,edge.x,.045+groundHeight(edge.x,edge.z),edge.z,.38,.13,.88,edge.yaw);
   }
 
-  // Mountain shoulders shelter the keep; silhouettes stay outside playable bounds.
-  mountainG=new THREE.ConeGeometry(1,1,6);
+  // Shared eroded ridge meshes replace pointed cones. All backdrop bases stay
+  // outside the playable area, with the same cave-view occluder classification.
+  const mountains=Array.from({length:4},(_,i)=>createMountainGeometry(301+i*23));
   for(let i=0;i<31;i++){
     const x=-175+i*12,z=-178-rng()*30,h=23+rng()*43;
-    batch(mountainG,i%3?M.mountain:M.mountainLight,x,h/2-3,z,18+rng()*12,h,18+rng()*15,0,rng()*Math.PI,0);
-    if(i%4===0)batch(mountainG,M.stoneLight,x,h*.83-3,z,6.4,h*.34,6.4,0,.2,0);
+    batch(mountains[i%4],i%3?M.mountain:M.mountainLight,x,h/2-3,z,22+rng()*14,h,24+rng()*17,0,rng()*Math.PI,0);
   }
-  for(const side of [-1,1])for(let i=0;i<10;i++)batch(mountainG,M.mountain,side*(148+rng()*35),13+rng()*7,-135+i*26,16+rng()*20,29+rng()*24,20+rng()*18,0,rng()*3,0);
+  for(const side of [-1,1])for(let i=0;i<10;i++){
+    const h=29+rng()*24;batch(mountains[i%4],M.mountain,side*(148+rng()*35),h/2-3,-135+i*26,22+rng()*20,h,25+rng()*18,0,rng()*3,0);
+  }
 
   function masonry(x,z,w,h,d){
     box(M.mortar,x,h/2,z,w,h,d);
@@ -187,7 +200,8 @@ export function createWorld(scene) {
   function roof(x,z,w,d,base,h,material=M.roof){
     const geo=new THREE.BufferGeometry();const a=w/2,b=d/2;
     geo.setAttribute('position',new THREE.Float32BufferAttribute([-a,0,b,a,0,b,0,h,b,-a,0,-b,a,0,-b,0,h,-b],3));
-    geo.setIndex([0,1,2,3,5,4,0,2,5,0,5,3,2,1,4,2,4,5,0,3,4,0,4,1]);geo.computeVertexNormals();mesh(geo,material,root,x,base,z);
+    geo.setIndex([0,1,2,3,5,4,0,2,5,0,5,3,2,1,4,2,4,5,0,3,4,0,4,1]);
+    const shell=geo.toNonIndexed();geo.dispose();shell.computeVertexNormals();shell.name='flat-faced-gabled-roof';mesh(shell,material,root,x,base,z);
     for(const end of [-1,1]){
       beam(M.woodDark,[x-a,base,z+end*(b+.025)],[x,base+h,z+end*(b+.025)],.19);
       beam(M.woodDark,[x+a,base,z+end*(b+.025)],[x,base+h,z+end*(b+.025)],.19);
@@ -197,12 +211,20 @@ export function createWorld(scene) {
     for(const side of [-1,1])box(M.woodDark,x+side*a,base-.08,z,.18,.24,d+.18);
     box(M.roofDark,x,base+h+.06,z,.26,.2,d+.2);
     for(let k=0;k<Math.ceil(d/.8);k++)box(k%3?M.roof:M.roofLight,x,base+h+.16,z-d/2+(k+.5)*d/Math.ceil(d/.8),.36,.12,d/Math.ceil(d/.8)-.025);
-    // Shingle courses and occasional brighter tiles, built as instances.
-    const angle=Math.atan2(h,a),slope=Math.hypot(h,a);
-    for(const side of [-1,1])for(let row=0;row<5;row++){
-      const t=(row+.45)/5;box(row%2?M.roofDark:M.roofLight,x+side*a*t,base+h*(1-t)+.055,z,slope/5+.035,.075,d+.05,0,-side*angle);
+    // Thin, individually fitted slate tiles replace the five bright stripes.
+    // Offset joints and close natural tints keep courses readable at street
+    // distance; the local stone texture supplies their smaller surface detail.
+    const angle=Math.atan2(h,a),slope=Math.hypot(h,a),rows=Math.ceil(slope/.78),columns=Math.ceil(d/.96),width=d/columns;
+    for(const side of [-1,1])for(let row=0;row<rows;row++){
+      const t=(row+.52)/rows,start=-d/2-(row%2?width/2:0);
+      for(let col=0;col<=columns;col++){
+        const low=Math.max(-d/2,start+col*width),high=Math.min(d/2,start+(col+1)*width);
+        if(high-low<.04)continue;
+        const tone=(row*7+col*3+(side+1)*2)%11,shade=tone<2?M.roofDark:tone>8?M.roofLight:M.roof;
+        batch(tileG,shade,x+side*a*t,base+h*(1-t)+.047,z+(low+high)/2,slope/rows+.07,.062,high-low-.022,0,0,-side*angle);
+      }
     }
-    return geo;
+    return shell;
   }
   function window(x,y,z,w=.85,h=1.1){
     box(M.woodDark,x,y,z,w+.22,h+.2,.12);box(M.glass,x,y,z+.075,w,h,.035);
@@ -421,46 +443,36 @@ export function createWorld(scene) {
   for(const side of [-1,1]){cylinder(M.woodDark,side*30,1.35,-59,.1,2.7);sign(side<0?'WEST HEARTHS':'EAST HEARTHS',side*30,2.75,-59,4.3);}
   cylinder(M.woodDark,4.5,1.4,-89,.1,2.8);sign('NORTH COMMON',4.5,2.8,-89,4.2);
 
-  // Merge resource artwork by material. Confirmed harvests animate separately
-  // so resource availability stays authoritative and fields remain inexpensive.
-  function mergeParts(parts){
-    const byMaterial=new Map();
-    for(const p of parts){p.updateMatrix();let g=p.geometry.clone();g.applyMatrix4(p.matrix);if(g.index)g=g.toNonIndexed();const key=p.material.uuid;if(!byMaterial.has(key))byMaterial.set(key,{material:p.material,gs:[]});byMaterial.get(key).gs.push(g);}
-    const group=new THREE.Group();
-    for(const {material,gs} of byMaterial.values()){
-      const positions=[],normals=[];for(const g of gs){positions.push(...g.attributes.position.array);normals.push(...g.attributes.normal.array);g.dispose();}
-      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));mesh(g,material,group);
-    }
-    return group;
-  }
-  function part(geo,material,x,y,z,sx,sy,sz,ry=0,rz=0){const p=new THREE.Mesh(geo,material);p.position.set(x,y,z);p.scale.set(sx,sy,sz);p.rotation.set(0,ry,rz);return p;}
+  // Each harvestable tree keeps its own two meshes and ground-level pivot.
+  // The distant forest reuses eight geometry variants through instancing.
+  const forestVariants=new Map();
   function tree(x,z,seed,decor=false){
-    const r=seeded(seed),pine=r()>.47,h=4.8+r()*3.9,parts=[];
-    parts.push(part(cylinderG,M.bark,0,h*.28,0,.22,h*.56,.22));
-    if(pine){
-      for(let k=0;k<3;k++){const radius=h*(.24-k*.045);parts.push(part(coneG,k%2?M.pineLight:M.pine,0,h*(.48+k*.18),0,radius,h*.51,radius,k*.4));}
-    }else{
-      parts.push(part(cylinderG,M.bark,-.3,h*.53,0,.11,h*.4,.11,0,-.5));
-      for(let k=0;k<5;k++){const a=k*2.4,spread=k?1.1:0,size=h*(.22+r()*.065);parts.push(part(sphereG,k%2?M.leaf:M.leafLight,Math.cos(a)*spread,h*.7+r()*.7,Math.sin(a)*spread,size,size*.85,size,k*.4));}
-    }
-    for(let k=0;k<3;k++){const a=k*Math.PI*2/3;parts.push(part(sphereG,M.bark,Math.cos(a)*.22,.12,Math.sin(a)*.22,.28,.16,.23));}
-    const rotation=r()*6.28;
+    const r=seeded(seed),pine=r()>.47,h=4.8+r()*3.9,rotation=r()*6.28;
+    let art;
     if(decor){
-      dummy.position.set(x,0,z);dummy.scale.set(1,1,1);dummy.rotation.set(0,rotation,0);dummy.updateMatrix();const parentMatrix=dummy.matrix.clone();
-      for(const p of parts){p.updateMatrix();const key=p.geometry.uuid+p.material.uuid;if(!batches.has(key))batches.set(key,{geo:p.geometry,material:p.material,transforms:[]});batches.get(key).transforms.push(parentMatrix.clone().multiply(p.matrix));}
+      const variant=Math.abs(seed)%8;
+      if(!forestVariants.has(variant)){
+        const variantArt=createOrganicTreeGeometry(600+variant*19,{pine:variant%2===0,height:6.8,detail:.65});
+        for(const geometry of [variantArt.trunk,variantArt.foliage])geometry.userData.forest=true;
+        forestVariants.set(variant,variantArt);
+      }
+      art=forestVariants.get(variant);
+      for(const [geometry,material]of[[art.trunk,M.bark],[art.foliage,M.foliage]])batch(geometry,material,x,0,z,h/6.8,h/6.8,h/6.8,0,rotation,0);
       return null;
     }
-    const o=mergeParts(parts);o.position.set(x,0,z);o.rotation.y=rotation;root.add(o);o.userData.resourceWind={phase:r()*6.28,amount:.007};o.userData.resourceHeight=h;return o;
+    art=createOrganicTreeGeometry(seed,{pine,height:h});
+    const o=new THREE.Group();o.name=pine?'branching-conifer':'branching-broadleaf';
+    mesh(art.trunk,M.bark,o);
+    // Public/owned trees cast the actual canopy shape in the bounded sun/moon
+    // shadow volume. Distant instanced foliage deliberately skips that pass.
+    mesh(art.foliage,M.foliage,o);
+    o.position.set(x,0,z);o.rotation.y=rotation;root.add(o);
+    o.userData.resourceWind={phase:r()*6.28,amount:.007};o.userData.resourceHeight=Math.max(art.trunk.boundingBox.max.y,art.foliage.boundingBox.max.y);return o;
   }
   function wheat(x,z,seed){
-    const r=seeded(seed),parts=[];
-    for(let i=0;i<4;i++){
-      const dx=(r()-.5)*.42,dz=(r()-.5)*.42,h=.72+r()*.25;
-      parts.push(part(cylinderG,M.wheat,dx,h*.48,dz,.025,h,.025,0,(r()-.5)*.17));
-      parts.push(part(sphereG,M.wheatTip,dx,h,dz,.074,.22,.068,r()*3));
-      parts.push(part(coneG,M.wheat,dx-.06,h*.53,dz,.07,.4,.015,0,-.47));
-    }
-    const o=mergeParts(parts);o.position.set(x,.025,z);root.add(o);o.userData.resourceWind={phase:r()*6.28,amount:.045};return o;
+    const r=seeded(seed),art=createWheatGeometry(seed),o=new THREE.Group();o.name='ripe-wheat-clump';
+    for(const geometry of [art.stems,art.ears]){const plant=mesh(geometry,M.crop,o);plant.castShadow=false;}
+    o.position.set(x,.025,z);root.add(o);o.userData.resourceWind={phase:r()*6.28,amount:.045};return o;
   }
   function createResource(n){
     let object;
@@ -507,13 +519,15 @@ export function createWorld(scene) {
       localBox(gravestone,M.stoneDark,0,.78,.125,.34,.055,.016);localBox(gravestone,M.stoneDark,0,.62,.125,.24,.045,.016);root.add(gravestone);
     }
   }
-  // Simple dead trees frame the source without obstructing the road.
-  for(const [x,z] of [[8,106],[32,102],[28,115]]){
-    beam(M.woodDark,[x,0,z],[x+.35,5,z],.42);beam(M.woodDark,[x+.2,2.5,z],[x-1.7,4.5,z+.4],.22);beam(M.woodDark,[x+.3,3.7,z],[x+1.7,5.1,z-.5],.17);
+  // Bare, tapering branches frame the graveyard without introducing new
+  // harvest nodes or colliders at these existing scenery anchors.
+  for(const [index,[x,z]] of [[8,106],[32,102],[28,115]].entries()){
+    const art=createOrganicTreeGeometry(870+index*29,{pine:false,height:5.3});
+    art.foliage.dispose();batch(art.trunk,M.woodDark,x,0,z,1,1,1,0,index*1.4,0);
   }
   // Flush repeated architectural details into a small number of draw calls.
   for(const {geo,material,transforms,caveOccluder} of batches.values()){
-    const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=true;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);if(caveOccluder)caveOccluders.push(instance);
+    const instance=new THREE.InstancedMesh(geo,material,transforms.length);transforms.forEach((m,i)=>instance.setMatrixAt(i,m));instance.castShadow=!material.userData.noTinyShadows;instance.receiveShadow=true;instance.computeBoundingSphere();root.add(instance);if(caveOccluder)caveOccluders.push(instance);
   }
   const details=createWorldDetails(lanes);root.add(details.root);
   const plotsWorld=createPlotsWorld(root);
@@ -1088,15 +1102,15 @@ export function createWellArtwork(){
 // original elevation/color interpolation and prevents coarse-grid overcuts at
 // the mouth; no opaque triangle spans the descending playable floor.
 export function carveGroundForCave(geometry,areas=CAVE_AREAS){
-  const position=geometry.attributes.position,color=geometry.attributes.color,index=geometry.index;
-  const vertices=[],colors=[],hasColor=Boolean(color);
-  const read=i=>({p:[position.getX(i),position.getY(i),position.getZ(i)],c:hasColor?[color.getX(i),color.getY(i),color.getZ(i)]:[1,1,1]});
+  const position=geometry.attributes.position,color=geometry.attributes.color,normal=geometry.attributes.normal,index=geometry.index;
+  const vertices=[],colors=[],normals=[],hasColor=Boolean(color);
+  const read=i=>({p:[position.getX(i),position.getY(i),position.getZ(i)],c:hasColor?[color.getX(i),color.getY(i),color.getZ(i)]:[1,1,1],n:normal?[normal.getX(i),normal.getY(i),normal.getZ(i)]:null});
   function split(polygon,axis,value,greater){
     const inside=[],outside=[];
     for(let i=0;i<polygon.length;i++){
       const a=polygon[i],b=polygon[(i+1)%polygon.length],ai=greater?a.p[axis]>=value:a.p[axis]<=value,bi=greater?b.p[axis]>=value:b.p[axis]<=value;
       (ai?inside:outside).push(a);
-      if(ai!==bi){const t=(value-a.p[axis])/(b.p[axis]-a.p[axis]),v={p:a.p.map((n,j)=>n+(b.p[j]-n)*t),c:a.c.map((n,j)=>n+(b.c[j]-n)*t)};inside.push(v);outside.push(v);}
+      if(ai!==bi){const t=(value-a.p[axis])/(b.p[axis]-a.p[axis]),v={p:a.p.map((n,j)=>n+(b.p[j]-n)*t),c:a.c.map((n,j)=>n+(b.c[j]-n)*t),n:a.n?.map((n,j)=>n+(b.n[j]-n)*t)??null};inside.push(v);outside.push(v);}
     }
     return {inside,outside};
   }
@@ -1112,7 +1126,15 @@ export function carveGroundForCave(geometry,areas=CAVE_AREAS){
       }
       polygons=next;
     }
-    for(const polygon of polygons)for(let j=1;j<polygon.length-1;j++)for(const v of[polygon[0],polygon[j],polygon[j+1]]){vertices.push(...v.p);colors.push(...v.c);}
+    for(const polygon of polygons)for(let j=1;j<polygon.length-1;j++)for(const v of[polygon[0],polygon[j],polygon[j+1]]){
+      vertices.push(...v.p);colors.push(...v.c);
+      if(v.n){const length=Math.hypot(...v.n)||1;normals.push(...v.n.map(n=>n/length));}
+    }
   }
-  const result=new THREE.BufferGeometry();result.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));result.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));result.computeVertexNormals();result.computeBoundingSphere();return result;
+  const result=new THREE.BufferGeometry();result.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));result.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  // Clipping splits faces at the entrance. Retaining the original smooth
+  // normals prevents those cuts from putting visible triangular facets back
+  // into the terrain, while a position-only caller still gets valid normals.
+  if(normal)result.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));else result.computeVertexNormals();
+  result.computeBoundingSphere();return result;
 }

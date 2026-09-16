@@ -1,0 +1,189 @@
+/* The armory uses the same local reward renders as the in-game equipment. */
+dialog:has(.crates-panel){width:1060px;max-width:calc(100vw - 32px);padding:30px 36px;background:radial-gradient(ellipse at 85% 0,#45634930,transparent 44%),linear-gradient(135deg,#21382f,#142925 60%,#10221e);border:1px solid #a58d5e80;border-radius:12px;box-shadow:0 24px 110px #000a,inset 0 0 0 5px #0b1a1640}
+.crates-panel{--armory-line:#b4a06e3d;--armory-gold:#e4c789;--armory-ink:#12271f}
+.crates-panel button,.crates-panel select{transition:border-color .16s,background .16s,box-shadow .16s}
+.crates-panel button:focus-visible,.crates-panel summary:focus-visible{outline:2px solid #f7d68b;outline-offset:3px}
+.crates-panel button:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.55)}
+.crates-panel button.primary-button{background:linear-gradient(115deg,#efd49a,#c7a762);border:1px solid #f2d59a;color:#192a22;box-shadow:0 3px 0 #8a7137,0 7px 18px #0002;border-radius:5px;font-weight:700;letter-spacing:.25px;text-transform:none;min-height:46px}
+.crates-panel button.primary-button:hover:not(:disabled){background:linear-gradient(115deg,#f9e2b3,#daba7a);box-shadow:0 3px 0 #8a7137,0 8px 22px #e5bd5b24}
+.crates-panel .secondary-button{border-color:#b4aa7966;border-radius:5px;background:#76947614;color:#e3d4b3}
+.crate-menu-header{display:flex;gap:22px;align-items:center;padding:0 30px 20px 0;border-bottom:1px solid var(--armory-line)}
+.crate-menu-crest{width:100px;height:90px;flex:0 0 100px;display:grid;place-items:center;border:1px solid #c6aa6670;border-radius:50%;background:radial-gradient(ellipse,#a68c4440,#14271e 72%);box-shadow:inset 0 0 0 5px #bba05712}
+.crate-menu-crest .crate-chest-art{width:115px;max-width:none;transform:translate(-2px,-4px)}
+.crates-panel .crate-menu-header h2{font:500 33px Cinzel,Georgia,serif;margin:5px 0 8px;color:#f1dfb6;max-width:none}
+.crates-panel .crate-menu-header p:not(.eyebrow){margin:0;font-size:12px;color:#b6c7b5}
+.crates-panel .crate-menu-header .eyebrow{color:#d5bb80;margin:0;font-size:9px;letter-spacing:2.6px}
+.crates-panel .crate-balances{padding:15px 2px;margin:0;border:0;border-radius:0;background:none;gap:20px}
+.crates-panel .crate-balances>div{padding-left:16px;border-left:2px solid #bda66d45;gap:5px}
+.crates-panel .crate-balances>div:first-child{border-color:#dabb76}
+.crates-panel .crate-balances>div:nth-child(2){border-color:#8cb3bd}
+.crates-panel .crate-balances>div:nth-child(3){border-color:#7fa78a}
+.crates-panel .crate-balances strong{font-size:19px;color:#f0ddb4}
+.crates-panel .crate-balances span{font-size:8px;letter-spacing:1.4px;color:#b4c0a8}
+.crates-panel .crate-nav{gap:4px;margin:0 0 22px;padding:5px;border:1px solid var(--armory-line);border-radius:7px;background:#071b1666}
+.crates-panel .crate-nav button{border-color:transparent;background:transparent;color:#b8c8b4;padding:10px 8px;min-height:40px;font-size:11px}
+.crates-panel .crate-nav button.selected{background:linear-gradient(130deg,#61745177,#3b513c99);border-color:#bdab6c77;color:#f0dab0;box-shadow:inset 0 1px #daca8b22}
+.crate-section-heading{display:flex;justify-content:space-between;gap:20px;align-items:center;margin:27px 0 14px}
+.crate-section-heading:first-child{margin-top:0}
+.crates-panel .crate-section-heading h3{font:500 21px Cinzel,Georgia,serif;color:#ebdbb8;margin:4px 0}
+.crates-panel .crate-section-heading h3>span{font:500 12px sans-serif;color:#e8d192;border:1px solid #bb9e5e55;border-radius:20px;padding:3px 8px;vertical-align:middle;margin-left:5px}
+.crate-section-heading .eyebrow{font-size:8px!important;color:#bdae7e;margin:0;letter-spacing:1.9px}
+.crate-section-heading>span{font-size:10px;color:#aabcaa;text-align:right;line-height:1.6}
+.crate-section-heading p:not(.eyebrow){font-size:12px;margin:8px 0 0;max-width:540px}
+.crates-panel .crate-tier-tabs{gap:12px;margin:17px 0 21px}
+.crates-panel .crate-tier-card{position:relative;min-width:0;overflow:hidden;padding:0 12px 15px;border:1px solid #77978055;border-top:2px solid var(--crate-color);border-radius:8px;background:radial-gradient(ellipse at 50% 40%,#80937b25,transparent 70%),#0e211dc7;color:var(--crate-color);text-align:center}
+.crates-panel .crate-tier-card:hover:not(:disabled){background-color:#344c3b99;border-color:var(--crate-color)}
+.crates-panel .crate-tier-card.selected{border-color:var(--crate-color);background:radial-gradient(ellipse at 50% 40%,#b2b77c36,transparent 72%),#31443999;box-shadow:0 0 0 2px #acbc7e15,inset 0 0 23px #c3bc7d0c}
+.crate-tier-card.selected::after{content:'✓';position:absolute;right:10px;top:10px;width:20px;height:20px;display:grid;place-items:center;background:var(--crate-color);color:#193022;border-radius:50%;font-size:12px}
+.crate-tier-art{height:133px;position:relative;display:block;margin:0 -6px 5px}
+.crate-tier-art .crate-chest-art{position:absolute;width:175px;height:132px;left:50%;top:3px;transform:translateX(-55%) rotate(-3deg);opacity:.8}
+.crate-tier-art .crate-tier-treasure{position:absolute;object-fit:contain;width:117px;height:106px;top:6px;right:8px;filter:drop-shadow(0 8px 5px #07120da6);transform:rotate(7deg)}
+.crate-tier-name{display:block;font:500 17px Cinzel,Georgia,serif;color:var(--crate-color)}
+.crate-tier-count{display:block;margin:6px 0 10px;font-size:9px;color:#bdc5b1;letter-spacing:.35px}
+.crate-tier-price{display:inline-block;border-top:1px solid #a8bb9733;padding:10px 9px 0;font-size:11px;color:#ead6aa}
+.crates-panel .crate-purchase{grid-template-columns:135px minmax(0,1fr) minmax(230px,.85fr);gap:14px 22px;align-items:center;padding:23px 24px 18px;border:1px solid #af976459;border-left:3px solid var(--crate-color);border-radius:8px;background:radial-gradient(ellipse at 6% 30%,#bcae7530,transparent 50%),linear-gradient(135deg,#2b4231,#112b22)}
+.crate-purchase-art{position:relative;text-align:center}
+.crate-purchase-art .crate-chest-art{width:152px;max-width:115%;margin-left:-10px;filter:drop-shadow(0 10px 8px #0004)}
+.crate-purchase-seal{display:inline-block;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--crate-color);border:1px solid #b5ab734a;border-radius:20px;padding:5px 10px}
+.crates-panel .crate-purchase-copy .eyebrow{font-size:8px;color:var(--crate-color);margin:0 0 8px}
+.crates-panel .crate-purchase h3{font-size:20px;line-height:1.4;margin:0 0 10px}
+.crates-panel .crate-purchase-copy p:not(.eyebrow){font-size:11px;line-height:1.7;margin:7px 0;color:#bac9b5}
+.crate-purchase-copy strong{color:#e2d7b3;font-weight:500;white-space:nowrap}
+.crate-purchase-controls{border-left:1px solid #b7a9733a;padding-left:22px}
+.crates-panel .crate-purchase-controls label{font-size:10px;color:#dacaab;gap:8px}
+.crates-panel .crate-purchase-controls select{font-size:11px;background:#0c211a;border-color:#b7a16b66;border-radius:5px;padding:10px;min-height:40px}
+.crate-funds-line{display:flex;justify-content:space-between;gap:10px;margin:10px 0 13px;font-size:10px;color:#adbea5}
+.crate-funds-line strong{color:#d5d8b5;font-weight:500}
+.crate-purchase-controls>button{width:100%}
+.crates-panel .crate-purchase .crate-purchase-note{font-size:10px;line-height:1.7;border-top-color:#aaa06940;margin:3px 0 0;padding-top:13px}
+.crates-panel .crate-shortfall{font-size:10px;color:#e3aa88;margin:10px 0 0}
+.crates-panel .crate-item-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:14px 0 0}
+.crate-shop:has(.crate-tier-card[aria-label="Rare"][aria-pressed="true"]) .crate-item-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.crate-shop:has(.crate-tier-card[aria-label="Legendary"][aria-pressed="true"]) .crate-item-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.crates-panel .crate-item{padding:0;background:linear-gradient(160deg,#243f31,#11271f);border-color:#a8b78b38;border-top-color:var(--crate-color);border-radius:7px;overflow:hidden}
+.crates-panel .crate-item.owned{background:linear-gradient(160deg,#304831,#172d21)}
+.crate-item-art{height:170px;position:relative;background:radial-gradient(ellipse at 50% 54%,#b3b68130,transparent 70%),linear-gradient(45deg,#10261c30,transparent);border-bottom:1px solid #acac7833;padding:19px 8px 22px}
+.crates-panel .crate-item img{width:100%;height:135px;object-fit:contain;filter:drop-shadow(0 8px 6px #0005)}
+.crate-item-badge{position:absolute;top:9px;left:9px;border:1px solid #82987b66;border-radius:20px;background:#112d22d4;padding:3px 7px;color:#c2c8b0;font-size:8px}
+.crate-item.owned .crate-item-badge{background:#42623ddd;color:#d3edc2;border-color:#b1c68b55}
+.crate-item-odds{position:absolute;bottom:7px;left:0;right:0;text-align:center;font-size:8px;color:var(--crate-color);letter-spacing:.2px}
+.crate-item-body{padding:13px 13px 11px}
+.crates-panel .crate-item .crate-item-tier{font-size:7px;letter-spacing:1px;margin:0 0 7px}
+.crates-panel .crate-item h3{font:500 13px Cinzel,Georgia,serif;line-height:1.5;margin:0 0 7px;min-height:39px;color:#f0ddaf}
+.crates-panel .crate-item p:not(.crate-item-tier){font-size:10px;line-height:1.65;color:#b9cbb1;min-height:49px;margin:0 0 10px}
+.crates-panel .crate-owned{font-size:9px;line-height:1.5;color:#a3b69d;padding-top:8px}
+.crates-panel .crate-item.owned .crate-owned{color:#c4d3a6}
+.crates-panel .crate-earned{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px;max-height:275px;overflow:auto}
+.crate-earned-card{display:flex;gap:12px;align-items:center;padding:12px 14px 12px 6px;background:linear-gradient(120deg,#35483370,#10271e);border:1px solid #b1ae7740;border-left:2px solid var(--crate-color);border-radius:6px;min-width:0}
+.crate-earned-art{flex:0 0 76px}
+.crate-earned-art svg{display:block;width:86px;height:75px}
+.crate-earned-card>div:nth-child(2){flex:1;min-width:0}
+.crate-earned-card strong{color:var(--crate-color);font:500 14px Cinzel,Georgia,serif}
+.crate-earned-milestone{display:block;font-size:10px;color:#c9c9ac;margin:5px 0}
+.crate-earned-card small{font-size:9px!important}
+.crate-earned-card>button{font-size:10px!important;max-width:115px;padding:8px!important;flex:0 0 105px}
+.crate-empty-earned{display:flex;align-items:center;gap:14px;padding:7px 16px;border:1px dashed #a2b48755;border-radius:6px;background:#1f392380}
+.crate-empty-earned>svg{width:85px;height:68px;flex-shrink:0;opacity:.7}
+.crate-empty-earned>p{font-size:11px;flex:1;max-width:620px}
+.crate-empty-earned>button{font-size:10px;flex-shrink:0}
+.crate-collection-progress{display:flex;align-items:center;gap:22px;padding:18px 21px;border:1px solid var(--armory-line);border-radius:7px;background:#0b241977}
+.crate-collection-progress strong{font:500 24px Cinzel,Georgia,serif;color:#ebd094;white-space:nowrap}
+.crate-collection-progress strong span{font:400 11px sans-serif;color:#a9bda3}
+.crate-collection-progress progress{width:100%;height:7px;border:0;appearance:none;background:#102b1e;border-radius:20px;overflow:hidden}
+.crate-collection-progress progress::-webkit-progress-bar{background:#122a1e}
+.crate-collection-progress progress::-webkit-progress-value{background:linear-gradient(90deg,#759466,#d8be77)}
+.crate-collection-progress progress::-moz-progress-bar{background:#cbb16b}
+.crate-collection-group h4{display:flex;align-items:center;gap:14px;color:var(--crate-color);font:500 15px Cinzel,Georgia,serif;border-bottom:1px solid #a8af7333;padding-bottom:10px;margin:29px 0 12px}
+.crate-collection-group h4 span{font:400 10px sans-serif;color:#a7bea7}
+.crate-collection-group .crate-item-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.crate-collection-empty{text-align:center;padding:25px 20px;border:1px solid #94a67a33;border-radius:7px;background:#142d1f77;margin-top:20px}
+.crate-collection-empty>div{display:flex;justify-content:center;height:140px;gap:8px}
+.crate-collection-empty img{width:130px;height:140px;object-fit:contain;filter:saturate(.6);opacity:.65}
+.crate-ember-reserve{display:flex;align-items:center;gap:25px;padding:18px 23px;margin:26px 0;border:1px solid #a8904d66;border-radius:8px;background:radial-gradient(ellipse at 4% 50%,#bc763731,transparent 48%),#192d21}
+.crate-ember-reserve>div:first-child{flex:0 0 110px}
+.crate-ember-reserve img{width:110px;height:125px;object-fit:contain;filter:drop-shadow(0 0 17px #ed9c3f35)}
+.crates-panel .crate-ember-reserve .eyebrow{color:#dbb56f;font-size:8px;margin:0 0 6px}
+.crates-panel .crate-ember-reserve h3{color:#e9cc8a;font-size:20px;margin:5px 0 9px}
+.crates-panel .crate-ember-reserve p{font-size:11px;margin:5px 0;line-height:1.7}
+.crate-ember-reserve .crate-toggle{margin:8px 0 10px;font-size:12px;line-height:1.65}
+.crates-panel .crate-history>div{padding:10px 13px 10px 8px;background:#10271ed0;gap:15px;border-color:var(--armory-line);border-radius:6px}
+.crate-history>div>span{flex:1}
+.crate-history .crate-history-art{flex:0 0 67px;border:1px solid #a2b18a44;border-bottom-color:var(--crate-color);background:radial-gradient(ellipse,#9ca77b20,transparent 70%);border-radius:5px}
+.crate-history-art img{display:block;width:65px;height:61px;object-fit:contain}
+.crate-draft-badge{border:1px solid #b9a26155;border-radius:20px;padding:5px 10px;color:#dec889!important;white-space:nowrap}
+.crates-panel .crate-important{font-size:11px;line-height:1.7;padding:11px 14px;background:#b59a4520;border-left-color:#c0a55d;border-radius:0 4px 4px 0}
+.crate-loadout-summary{display:grid;grid-template-columns:.65fr 1fr 1fr;gap:10px;margin:19px 0}
+.crate-loadout-summary>div{padding:15px 16px;border:1px solid var(--armory-line);border-radius:6px;background:#0a211b80}
+.crate-loadout-summary span{display:block;font-size:9px;color:#abc0a7;margin-bottom:8px}
+.crate-loadout-summary strong{display:block;font:500 15px Cinzel,Georgia,serif;color:#e8d29d;margin-bottom:7px}
+.crate-loadout-summary>div:first-child strong{font-size:29px;line-height:1}
+.crate-loadout-summary small{font-size:9px;line-height:1.6}
+.crates-panel .crate-loadout{gap:13px;margin:18px 0}
+.crates-panel .crate-loadout>.crate-slot-card{display:flex;align-items:center;gap:14px;padding:12px 14px 12px 6px;background:linear-gradient(110deg,#31483770,#10271e);border:1px solid #99ad8040;border-left:2px solid var(--crate-color,#8b9e8f);border-radius:7px}
+.crate-slot-art{position:relative;flex:0 0 110px;height:117px;display:flex;flex-direction:column;justify-content:center;align-items:center;background:radial-gradient(ellipse,#aab78422,transparent 69%)}
+.crate-slot-art img{height:99px;width:116px;object-fit:contain;filter:drop-shadow(0 6px 5px #0004)}
+.crate-slot-art>span{font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a6b894;margin-top:2px}
+.crate-slot-placeholder{width:72px;height:72px;color:#6b857075;margin-bottom:11px}
+.crate-slot-copy{flex:1;min-width:0}
+.crate-slot-label{display:block;font-size:10px;color:#c5d0b3;margin-bottom:9px}
+.crates-panel .crate-slot-copy select{background:#0c2419;border-color:#a9b37f55;font-size:11px;padding:10px 8px}
+.crate-slot-copy small{min-height:33px;margin-top:8px;font-size:10px;line-height:1.6}
+.crate-loadout-save{display:flex;justify-content:space-between;align-items:center;gap:20px;border-bottom:1px solid var(--armory-line);padding:0 0 25px;margin-bottom:26px}
+.crate-loadout-save>span{font-size:11px;color:#b6c5ac}
+.crate-loadout-save>button{min-width:225px}
+.crates-panel .crate-current{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.crates-panel .crate-current>.crate-current-slot{text-align:center;padding:12px 12px 16px;border:1px solid #9eb58544;border-top:2px solid var(--crate-color);background:radial-gradient(ellipse at 50% 30%,#9dab7120,transparent 70%),#11291e;border-radius:6px}
+.crate-current-art{height:110px;display:grid;place-items:center}
+.crate-current-art img{height:108px;width:125px;object-fit:contain}
+.crate-current-art .crate-slot-placeholder{width:60px;height:60px;margin:0}
+.crates-panel .crate-current span{font-size:8px;letter-spacing:1.4px;margin:8px 0}
+.crate-current-slot strong{color:#ddcaa4;font-size:11px!important;line-height:1.5;display:block}
+.crate-run-status{font-size:11px;border-left:2px solid #8baa714d;padding-left:12px;margin:18px 0}
+.crate-details{margin:18px 0;padding:13px 16px;background:#0d231b;border:1px solid var(--armory-line);border-radius:5px}
+.crate-details summary{color:#c6d1b3;font-size:11px;cursor:pointer;line-height:1.7}
+.crate-details p{font-size:10px;margin-bottom:0}
+.crates-panel .crate-wait{min-height:325px;padding:28px 20px 35px}
+.crate-wait>.crate-chest-art{display:block;width:210px;height:160px;margin:auto;filter:drop-shadow(0 8px 10px #0005)}
+.crates-panel .crate-wait .eyebrow{color:#c4ae74;margin:12px 0 8px}
+.crates-panel .crate-wait h3{font:500 25px Cinzel,Georgia,serif;margin:8px 0 10px;color:#ead7a8}
+.crate-wait-light{display:block;width:80px;height:3px;background:#d6ba78;margin:22px auto 0;border-radius:10px;animation:crateWait 1.4s ease-in-out infinite}
+.crate-opening-stage{padding:23px 0 15px;text-align:center}
+.crate-opening-stage>.eyebrow{color:var(--crate-color)}
+.crates-panel .crate-opening-stage>h3{font:500 29px Cinzel,Georgia,serif;margin:10px 0 27px;color:#ecd7a4}
+.crates-panel .crate-reel{height:245px;border-color:var(--crate-color);border-radius:8px;background:radial-gradient(ellipse at center,#40533475,#10231b);box-shadow:inset 0 0 28px #0006,0 0 0 5px #b2ab7433}
+.crates-panel .crate-reel-card{height:197px;background:linear-gradient(145deg,#30482e,#193225);border-color:#d0c0894a;border-top:2px solid var(--crate-color);border-radius:6px}
+.crates-panel .crate-reel-card img{height:142px;width:116px;filter:drop-shadow(0 7px 5px #0004)}
+.crates-panel .crate-reel::before{background:linear-gradient(90deg,#11291b,transparent)}
+.crates-panel .crate-reel::after{background:linear-gradient(-90deg,#11291b,transparent)}
+.crate-opening-footer{display:flex;justify-content:space-between;align-items:center;gap:20px;text-align:left;margin-top:23px}
+.crate-opening-footer p{font-size:11px;max-width:630px;margin:0}
+.crate-opening-footer button{min-width:130px}
+.crates-panel .crate-result{grid-template-columns:.95fr 1fr;gap:35px;padding:28px 9px 25px}
+.crate-result-stage{position:relative;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 50%,#b7a36730,transparent 66%);isolation:isolate}
+.crate-result-stage::after{content:'';position:absolute;width:82%;height:48px;bottom:35px;background:radial-gradient(ellipse,#050e09aa,transparent 65%);z-index:-1}
+.crate-result-orbit{position:absolute;width:270px;height:270px;top:49px;left:50%;transform:translateX(-50%);border:1px solid #b7a66a45;border-radius:50%;box-shadow:0 0 0 13px #b7a66a07,inset 0 0 0 13px #b7a66a08;z-index:-1}
+.crate-result-orbit::before,.crate-result-orbit::after{content:'✦';position:absolute;color:var(--crate-color);font-size:21px;top:47px;left:10px;text-shadow:0 0 17px var(--crate-color)}
+.crate-result-orbit::after{top:auto;left:auto;bottom:42px;right:8px;font-size:14px}
+.crate-result-rarity{border:1px solid #b9a47070;border-radius:20px;padding:6px 16px;font-size:10px;text-transform:uppercase;letter-spacing:2.5px;color:var(--crate-color);background:#12281ed9}
+.crates-panel .crate-result .crate-result-image{height:272px;max-width:340px;filter:drop-shadow(0 12px 10px #0006);animation:crateReveal .65s ease-out both}
+.crate-result-slot{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#c4c7a9;margin-top:1px}
+.crates-panel .crate-result-copy>.eyebrow{font-size:9px;color:var(--crate-color);letter-spacing:2px}
+.crates-panel .crate-result h3{font-size:32px;color:#f4dfad;margin:9px 0 18px}
+.crates-panel .crate-result-benefit{font-size:13px;color:#c7d0b5;line-height:1.8;margin-bottom:20px}
+.crate-result-receipt{background:#0c251c99;border:1px solid #b8aa6844;border-left:2px solid var(--crate-color);padding:15px 17px;border-radius:5px}
+.crates-panel .crate-result-receipt strong{font-size:12px;color:#d2dfb2;font-weight:500;line-height:1.75}
+.crates-panel .crate-result-receipt p{font-size:10px;color:#b5c2a8;line-height:1.75;margin:10px 0 0}
+.crate-result-copy>p:not(.eyebrow):not(.crate-result-benefit){font-size:11px;line-height:1.75;color:#aabd9e;margin:17px 0}
+.crate-result .panel-actions{gap:10px;margin-top:23px}
+.crate-result .panel-actions button{min-width:130px;font-size:11px}
+.crate-menu-footer{display:flex;align-items:center;justify-content:space-between;gap:25px;border-top:1px solid var(--armory-line);margin-top:27px;padding-top:16px}
+.crates-panel .crate-menu-footer .crate-motion{border:0;padding:0;margin:0;font-size:10px;white-space:nowrap}
+.crates-panel .crate-menu-footer .crate-small{margin:0;text-align:right;font-size:9px;line-height:1.7;max-width:500px;color:#99b298}
+.crates-panel .crate-helmet{background:radial-gradient(ellipse at 10% 50%,#b8993b26,transparent 70%),#173322;border-radius:8px;border-color:#c5a75266}
+.crates-panel .crate-milestone-next{background:linear-gradient(120deg,#675f312d,#162e20);border-radius:7px}
+.crates-panel .crate-milestone-table th{background:#35483088}
+@keyframes crateWait{0%,100%{opacity:.35;transform:scaleX(.55)}50%{opacity:1;transform:scaleX(1)}}
+@keyframes crateReveal{from{opacity:0;transform:translateY(15px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:900px){dialog:has(.crates-panel){padding:24px}.crate-tier-art{height:115px}.crate-tier-art .crate-chest-art{width:150px;height:113px}.crate-tier-art .crate-tier-treasure{width:100px;height:95px;right:0}.crates-panel .crate-purchase{grid-template-columns:100px minmax(0,1fr) minmax(220px,.9fr);gap:14px}.crate-purchase-art .crate-chest-art{width:122px}.crate-purchase-controls{padding-left:15px}.crates-panel .crate-purchase h3{font-size:17px}.crate-shop:has(.crate-tier-card[aria-label="Legendary"][aria-pressed="true"]) .crate-item-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.crate-slot-art{flex-basis:85px}.crate-slot-art img{width:94px}.crate-loadout-summary{grid-template-columns:.7fr 1fr 1fr}.crates-panel .crate-result{gap:19px}.crates-panel .crate-result h3{font-size:27px}.crate-result-orbit{width:240px;height:240px;top:65px}}
+@media(max-width:680px){dialog:has(.crates-panel){padding:20px 16px;max-width:calc(100vw - 18px);border-radius:8px}.crate-menu-header{gap:13px;padding-right:17px}.crate-menu-crest{width:70px;height:66px;flex-basis:70px}.crate-menu-crest .crate-chest-art{width:86px}.crates-panel .crate-menu-header h2{font-size:24px}.crates-panel .crate-menu-header .eyebrow{font-size:7px;letter-spacing:1.4px}.crates-panel .crate-menu-header p:not(.eyebrow){font-size:10px}.crates-panel .crate-balances{gap:8px;padding:14px 0}.crates-panel .crate-balances>div{padding-left:9px}.crates-panel .crate-balances span{font-size:7px;letter-spacing:.7px}.crates-panel .crate-balances strong{font-size:15px}.crates-panel .crate-nav{gap:4px;margin-bottom:19px}.crates-panel .crate-nav button{flex:1 1 40%;font-size:10px;min-height:35px;padding:7px}.crate-section-heading{gap:12px;margin-top:24px}.crates-panel .crate-section-heading h3{font-size:18px}.crate-section-heading>span{font-size:9px}.crate-section-heading .eyebrow{font-size:7px!important}.crates-panel .crate-tier-tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.crate-tier-art{height:115px}.crate-tier-art .crate-chest-art{width:160px;left:45%}.crate-tier-art .crate-tier-treasure{width:113px;height:97px;right:15px}.crates-panel .crate-tier-card{padding-bottom:12px}.crate-tier-count{margin:5px 0 8px}.crate-tier-price{padding-top:8px}.crates-panel .crate-purchase{grid-template-columns:95px minmax(0,1fr);padding:17px 16px 15px;gap:12px}.crate-purchase-art .crate-chest-art{width:115px}.crate-purchase-controls{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:0 14px;border-left:0;border-top:1px solid #b4a57144;padding:14px 0 0}.crate-purchase-controls label{grid-row:1/3}.crate-purchase-controls>button{grid-column:2;grid-row:2;padding:12px 8px!important;font-size:10px!important}.crate-funds-line{grid-column:2;grid-row:1;flex-wrap:wrap;gap:3px;margin:0 0 8px;font-size:9px}.crate-shortfall{grid-column:1/-1}.crates-panel .crate-item-grid,.crate-shop:has(.crate-tier-card[aria-label="Rare"][aria-pressed="true"]) .crate-item-grid,.crate-shop:has(.crate-tier-card[aria-label="Legendary"][aria-pressed="true"]) .crate-item-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.crate-item-art{height:150px;padding-top:13px}.crates-panel .crate-item img{height:119px}.crate-item-body{padding:11px}.crate-item-badge{font-size:7px}.crates-panel .crate-earned{grid-template-columns:1fr;max-height:320px}.crate-earned-card{gap:9px}.crate-earned-card>button{flex-basis:90px}.crate-earned-art{flex-basis:63px}.crate-earned-art svg{width:73px}.crate-empty-earned{gap:10px;flex-wrap:wrap}.crate-empty-earned>svg{width:65px;flex-basis:65px}.crate-empty-earned>p{flex-basis:65%}.crate-empty-earned>button{margin:0 0 10px 75px}.crate-collection-progress{padding:14px;gap:12px}.crate-collection-progress strong{font-size:20px}.crate-collection-progress strong span{display:block;font-size:9px;margin-top:5px}.crate-ember-reserve{padding:14px;gap:15px}.crate-ember-reserve>div:first-child{flex-basis:80px}.crate-ember-reserve img{width:80px;height:104px}.crates-panel .crate-ember-reserve h3{font-size:17px}.crates-panel .crate-history>div{flex-direction:row;flex-wrap:wrap;align-items:center;gap:11px}.crate-history>div>span{flex-basis:calc(100% - 90px)}.crate-history>div>button{margin-left:80px}.crate-loadout-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.crate-loadout-summary>div:first-child{grid-row:1/3}.crate-loadout-summary>div{padding:13px}.crate-loadout-summary>div:first-child strong{font-size:36px;margin-top:14px}.crate-loadout-summary strong{font-size:13px}.crates-panel .crate-loadout{grid-template-columns:1fr;gap:10px}.crate-slot-art{flex-basis:105px;height:109px}.crate-slot-art img{width:110px}.crate-slot-copy small{min-height:0}.crate-loadout-save{gap:13px;align-items:flex-start;flex-direction:column}.crate-loadout-save>button{width:100%}.crates-panel .crate-current{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.crate-current-art{height:95px}.crate-current-art img{height:93px}.crates-panel .crate-result{grid-template-columns:1fr;padding:7px 0 14px;gap:8px}.crate-result-stage{min-height:295px}.crate-result-orbit{top:38px;width:230px;height:230px}.crates-panel .crate-result .crate-result-image{height:217px}.crate-result-copy{text-align:center}.crates-panel .crate-result h3{font-size:28px}.crate-result-receipt{text-align:left}.crate-result .panel-actions{margin-top:17px}.crate-opening-footer{flex-direction:column;text-align:center;gap:14px}.crate-opening-footer>button{width:100%}.crate-menu-footer{align-items:flex-start;flex-direction:column;gap:12px;margin-top:23px}.crates-panel .crate-menu-footer .crate-small{text-align:left}.crates-panel .crate-helmet{flex-direction:column;text-align:center;gap:4px}.crates-panel .crate-helmet img{width:170px;max-width:60%;flex-basis:auto}}
+@media(prefers-reduced-motion:reduce){.crates-panel *{animation:none!important;transition:none!important}.crates-panel .crate-reel-track{transform:translateX(calc(50% - 68px - var(--crate-stop)))}.crate-wait-light{opacity:.8;transform:none}}

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GUARD_ORDERS } from '../../shared/guard-orders.js';
 import { PLOTS, groundHeight } from '../../shared/world.js';
+import { buildingArt } from './build-carousel.js';
+import { itemArt } from './shop-display.js';
 
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const usable = player => player?.online && !player.downed && player.hp > 0 && player.role === 'guard' && !player.mountedHorseId && !player.bedPlotId;
@@ -8,8 +10,13 @@ const usable = player => player?.online && !player.downed && player.hp > 0 && pl
 export function createGuardOrdersUI({ getState, getMe, getActivePanel, openPanel, send }) {
   let signature = '', disposed = false;
   const rows = () => (getState()?.guardOrders ?? []).filter(row => row.ownerId === getMe()?.id);
+  const troopsFor = order => (getState()?.guards ?? []).filter(guard => guard.ownerId === getMe()?.id && guard.plotId === order.plotId);
+  const plotFor = order => getState()?.plots?.find(plot => plot.id === order.plotId);
   const panelOpen = () => getActivePanel ? getActivePanel() === 'guard-orders' : Boolean(document.getElementById('guard-orders-panel') && document.getElementById('panel-dialog')?.open);
-  const currentSignature = () => JSON.stringify([getMe()?.id, usable(getMe()), rows().map(({ plotId, mode, effectiveMode, fallback, livingTroops, recruitedTroops }) => [plotId, mode, effectiveMode, fallback, livingTroops, recruitedTroops])]);
+  const currentSignature = () => JSON.stringify([getMe()?.id, usable(getMe()), rows().map(order => {
+    const { plotId, mode, effectiveMode, fallback, livingTroops, recruitedTroops } = order, plot = plotFor(order);
+    return [plotId, mode, effectiveMode, fallback, livingTroops, recruitedTroops, plot?.hp, plot?.maxHp, plot?.level, plot?.storage?.wheat, troopsFor(order).map(guard => [guard.id, guard.name, guard.hp, guard.maxHp, guard.hungry])];
+  })]);
   function render() {
     if (disposed || !getMe() || !getState()) return;
     signature = currentSignature();
@@ -17,9 +24,16 @@ export function createGuardOrdersUI({ getState, getMe, getActivePanel, openPanel
     const content = orders.map((order, index) => {
       const name = PLOTS.find(site => site.id === order.plotId)?.name ?? order.plotId;
       const title = GUARD_ORDERS[order.mode]?.label ?? GUARD_ORDERS.defend.label;
-      return `<section class="settlement-card"><h3>${esc(name)} barracks</h3><p><strong>${esc(title)}</strong> · ${order.livingTroops}/${order.recruitedTroops} troops standing${order.fallback ? `<br>${esc(order.fallback)} — ${esc(GUARD_ORDERS[order.effectiveMode]?.label)}` : ''}</p><div class="panel-actions">${Object.entries(GUARD_ORDERS).map(([mode, info]) => `<button type="button" class="secondary-button" data-guard-order="${mode}" data-guard-row="${index}" ${!enabled ? 'disabled' : ''} aria-pressed="${order.mode === mode}">${esc(mode === 'hold' ? 'Hold here' : info.label)}</button>`).join('')}</div></section>`;
+      const troops = troopsFor(order), plot = plotFor(order), effective = GUARD_ORDERS[order.effectiveMode] ?? GUARD_ORDERS.defend;
+      const unitCards = troops.map((guard, unitIndex) => {
+        const maxHp = Number.isFinite(guard.maxHp) && guard.maxHp > 0 ? guard.maxHp : 1;
+        const hp = Number.isFinite(guard.hp) ? Math.max(0, Math.min(maxHp, guard.hp)) : 0;
+        const unitName = guard.name || `Guard ${unitIndex + 1}`;
+        return `<article class="guard-unit ${hp > 0 ? '' : 'fallen'}"><span class="command-item-art">${itemArt('sword', { tier: plot?.level >= 2 ? 'iron' : 'stone' })}</span><div><strong>${esc(unitName)}</strong><small>${Math.ceil(hp)} / ${Math.ceil(maxHp)} health · ${hp <= 0 ? 'Fallen' : guard.hungry ? 'Needs wheat' : 'Ready'}</small><meter min="0" max="${maxHp}" value="${hp}" aria-label="${esc(unitName)} health">${Math.ceil(hp)} / ${Math.ceil(maxHp)}</meter></div></article>`;
+      }).join('');
+      return `<section class="guard-command-card"><header><div class="guard-barracks-art">${buildingArt('barracks')}</div><div><small>YOUR BARRACKS${plot?.level ? ` · LEVEL ${plot.level}` : ''}</small><h3>${esc(name)} barracks</h3><span class="command-badge" style="--stance-color:#${effective.color.toString(16).padStart(6, '0')}">${esc(effective.label)}</span></div></header><div class="guard-command-stats"><div><span>Standing troops</span><strong>${order.livingTroops}/${order.recruitedTroops} troops standing</strong></div>${plot?.maxHp > 0 ? `<div><span>Barracks health</span><strong>${Math.ceil(Math.max(0, plot.hp))} / ${plot.maxHp}</strong></div><div><span>Replacement supplies</span><strong>${plot.storage?.wheat || 0} wheat</strong></div>` : ''}</div>${unitCards ? `<div class="guard-unit-grid">${unitCards}</div>` : ''}<p class="guard-current-order"><strong>${esc(title)}</strong>${order.fallback ? `<br>${esc(order.fallback)} — ${esc(effective.label)}` : ''}</p><div class="panel-actions guard-order-actions">${Object.entries(GUARD_ORDERS).map(([mode, info]) => `<button type="button" class="secondary-button" data-guard-order="${mode}" data-guard-row="${index}" ${!enabled ? 'disabled' : ''} aria-pressed="${order.mode === mode}">${esc(mode === 'hold' ? 'Hold here' : info.label)}</button>`).join('')}</div></section>`;
     }).join('');
-    openPanel(`<div id="guard-orders-panel"><p class="eyebrow">COMMAND YOUR WATCH</p><h2>Barracks orders</h2><p>Give orders to troops from your own barracks from anywhere in the village. Hold here places a rally at your current position. Troops stay near that point when fighting.</p>${!enabled ? '<p>You must be a living guard, on foot and out of bed, to give orders.</p>' : ''}${content || '<p>You do not own an intact barracks. Build one on a plot, then visit its door to recruit troops.</p>'}<p>Follow troops retreat home if you fall, disconnect, mount a horse, or leave the accessible village and gate approach. Stock barracks wheat to replace fallen recruits; replacements keep the same orders.</p><p>Recruitment, upgrades, and supply deliveries still require visiting the barracks entrance. The public Watch keeps defending the gate.</p></div>`, 'guard-orders');
+    openPanel(`<div id="guard-orders-panel" class="command-panel"><header class="command-hero"><div class="command-hero-art">${itemArt('sword', { tier: 'iron' })}</div><div><p class="eyebrow">COMMAND YOUR WATCH</p><h2>Barracks orders</h2><p>Give orders to troops from your own barracks from anywhere in the village. Hold here places a rally at your current position. Troops stay near that point when fighting.</p></div></header>${!enabled ? '<p class="command-notice">You must be a living guard, on foot and out of bed, to give orders.</p>' : ''}${content || '<p class="command-empty">You do not own an intact barracks. Build one on a plot, then visit its door to recruit troops.</p>'}<p class="command-footnote">Follow troops retreat home if you fall, disconnect, mount a horse, or leave the accessible village and gate approach. Stock barracks wheat to replace fallen recruits; replacements keep the same orders.</p><p>Recruitment, upgrades, and supply deliveries still require visiting the barracks entrance. The public Watch keeps defending the gate.</p></div>`, 'guard-orders');
     for (const button of document.getElementById('panel-content')?.querySelectorAll('[data-guard-order]') ?? []) button.onclick = () => {
       if (button.disabled || !usable(getMe())) return;
       const order = orders[Number(button.dataset.guardRow)];

@@ -2,9 +2,9 @@ import { plotEntrance } from '../shared/access.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLOTS, RESOURCES } from '../shared/world.js';
-import { BUILDING_TYPES, carryCapacity, inventoryWeight, RECIPES, TOOL_TIERS } from '../shared/content.js';
+import { BUILDING_TYPES, carryCapacity, inventoryWeight, RECIPES, TOOL_TIERS, MAX_PLOTS, PLOT_PRICES } from '../shared/content.js';
 import { ensureOwnership, ownershipAction, ownershipSnapshot, ownershipTick } from '../server/ownership.js';
-import { PRODUCTION_UPGRADES, plotStorageCapacity, productionNodeCapacity, productionRegrowSeconds } from '../shared/production.js';
+import { PRODUCTION_UPGRADES, plotStorageCapacity, productionNodeCapacity, productionRegrowSeconds, productionStats, productionYield, productionUpgrade } from '../shared/production.js';
 
 function fixture() {
   const player = (id, role = 'villager') => ({ id, name: id, role, online: true, wallet: 10000, inventory: {}, durability: { sword: 100, axe: 100, pickaxe: 100, scythe: 100, hammer: 100 }, x: 0, z: 0, tool: 'sword' });
@@ -24,7 +24,7 @@ function fixture() {
 
 test('level-two production upgrades pay displayed costs and preserve prior depletion across every resource', () => {
   for (const building of ['mine', 'tree_farm', 'wheat_farm']) {
-    const { village, owner, act, built, sim } = fixture(), plot = built(building), cost = PRODUCTION_UPGRADES[building];
+    const { village, owner, act, built, sim } = fixture(), plot = built(building), cost = PRODUCTION_UPGRADES[building][2];
     for (const [id, amount] of Object.entries(cost.resources)) { plot.storage[id] = amount - 1; owner.inventory[id] = 1; }
     const nodes = village.plotResources.filter(node => node.plotId === plot.id);
     const active = nodes[0], exhausted = nodes[1];
@@ -37,7 +37,7 @@ test('level-two production upgrades pay displayed costs and preserve prior deple
     assert.equal(active.remaining, remaining + productionNodeCapacity(active.type, plot) - productionNodeCapacity(active.type));
     assert.equal(exhausted.available, false); assert.equal(exhausted.remaining, 0); assert.equal(exhausted.regrowAt, 75);
     assert.equal(plotStorageCapacity(plot), 2000);
-    assert.throws(() => act(owner, { kind: 'upgradeProduction', plotId: plot.id }), /already level 2/);
+    assert.equal(productionUpgrade(plot).level, 3);
     village.clock = 75; ownershipTick(sim, village, .1);
     assert.equal(exhausted.remaining, productionNodeCapacity(exhausted.type, plot));
     assert.equal(exhausted.available, true);
@@ -69,14 +69,71 @@ test('production upgrades reject missing costs, foreign ownership and ruined bui
   assert.equal(owner.wallet, 150);
 });
 
-test('plot purchases enforce proximity, increasing prices and a five-plot limit', () => {
+test('third-level upgrades preserve spent harvests and node identity across saves without replenishing on normalization', () => {
+  for (const building of ['mine', 'tree_farm', 'wheat_farm']) {
+    const { village, owner, act, built, sim } = fixture(), plot = built(building);
+    plot.level = 2; plot.hp = plot.maxHp = Math.round(BUILDING_TYPES[building].maxHp * 1.5);
+    const nodes = village.plotResources.filter(node => node.plotId === plot.id), beforeIds = nodes.map(({ id, x, z }) => ({ id, x, z }));
+    const active = nodes[0], spent = nodes[1], old = { ...plot }, remaining = active.remaining;
+    Object.assign(spent, { available: false, remaining: 0, regrowAt: 90 });
+    const cost = productionUpgrade(plot);
+    for (const [id, amount] of Object.entries(cost.resources)) plot.storage[id] = amount;
+    const wallet = owner.wallet; act(owner, { kind: 'upgradeProduction', plotId: plot.id, level: 99 });
+    assert.equal(plot.level, 3); assert.equal(owner.wallet, wallet - cost.gold);
+    assert.equal(plot.maxHp, BUILDING_TYPES[building].maxHp * 2); assert.equal(plotStorageCapacity(plot), 3000);
+    assert.equal(active.remaining, remaining + productionNodeCapacity(active.type, plot) - productionNodeCapacity(active.type, old));
+    assert.equal(spent.available, false); assert.equal(spent.remaining, 0); assert.equal(spent.regrowAt, 60);
+    assert.deepEqual(nodes.map(({ id, x, z }) => ({ id, x, z })), beforeIds);
+    assert.equal(productionUpgrade(plot), null);
+    assert.throws(() => act(owner, { kind: 'upgradeProduction', plotId: plot.id }), /fully upgraded at level 3/);
+    const saved = JSON.parse(JSON.stringify(village)), savedNodes = structuredClone(saved.plotResources);
+    ensureOwnership(saved); ensureOwnership(saved); ownershipSnapshot(saved, owner.id);
+    assert.equal(saved.plots[0].level, 3); assert.deepEqual(saved.plotResources, savedNodes, 'reloading and snapshots never refill nodes');
+    const snapshot = ownershipSnapshot(saved, owner.id);
+    assert.equal(snapshot.plots[0].production.yieldBonus, 2); assert.equal(snapshot.plotResources[0].productionLevel, 3);
+    saved.clock = 60; ownershipTick(sim, saved, .1);
+    const regrown = saved.plotResources.find(node => node.id === spent.id);
+    assert.equal(regrown.remaining, productionNodeCapacity(spent.type, plot)); assert.equal(regrown.available, true);
+  }
+});
+
+test('upgraded player yield respects tool tiers, visitor splitting and full-batch capacity atomically', () => {
+  for (const building of ['mine', 'tree_farm', 'wheat_farm']) for (const level of [2, 3]) {
+    const { village, owner, visitor, act, built } = fixture(), plot = built(building); plot.level = level;
+    const node = village.plotResources.find(node => node.plotId === plot.id);
+    const tool = node.type === 'wheat' ? 'scythe' : node.type === 'timber' ? 'axe' : 'pickaxe';
+    owner.tool = visitor.tool = tool; Object.assign(owner, { x: node.x, z: node.z }); Object.assign(visitor, { x: node.x, z: node.z });
+    for (const tier of ['wood', 'stone', 'iron']) {
+      owner.tiers[tool] = tier; node.available = true; node.remaining = 10;
+      const before = owner.inventory[node.type], durability = owner.durability[tool];
+      act(owner, { kind: 'gather', targetId: node.id });
+      assert.equal(owner.inventory[node.type] - before, productionYield(TOOL_TIERS[tier].yield, plot));
+      assert.equal(owner.durability[tool], durability - 1); assert.equal(node.remaining, 9);
+    }
+    visitor.tiers[tool] = 'iron'; node.available = true; node.remaining = 5;
+    for (let i = 0; i < 5; i++) act(visitor, { kind: 'gather', targetId: node.id });
+    const output = productionYield(3, plot) * 5;
+    assert.equal(visitor.inventory[node.type], output * .8); assert.equal(plot.storage[node.type], output * .2);
+    assert.equal(node.remaining, 0); assert.equal(node.available, false);
+    node.available = true; node.remaining = 3;
+    owner.inventory = { wheat: 149 }; owner.durability = { [tool]: 1 };
+    ensureOwnership(village);
+    const before = structuredClone({ inventory: owner.inventory, node, storage: plot.storage, durability: owner.durability });
+    assert.throws(() => act(owner, { kind: 'gather', targetId: node.id }), /pack is full/);
+    assert.deepEqual({ inventory: owner.inventory, node, storage: plot.storage, durability: owner.durability }, before);
+  }
+});
+
+test('plot purchases enforce proximity, increasing prices and an eight-plot limit', () => {
   const { village, owner, visitor, at, act } = fixture();
   assert.throws(() => act(owner, { kind: 'plot_buy', plotId: PLOTS[0].id }), /Visit/);
   const wallet = owner.wallet;
-  for (let i = 0; i < 5; i++) { const plot = at(owner, i); act(owner, { kind: 'plot_buy', plotId: plot.id }); }
-  assert.equal(owner.wallet, wallet - 2000);
-  assert.equal(village.treasury, 4500);
-  at(owner, 5); assert.throws(() => act(owner, { kind: 'plot_buy', plotId: PLOTS[5].id }), /at most five/);
+  for (let i = 0; i < MAX_PLOTS; i++) { const plot = at(owner, i); act(owner, { kind: 'plot_buy', plotId: plot.id }); }
+  assert.equal(MAX_PLOTS, 8); assert.deepEqual(PLOT_PRICES, [100, 200, 350, 550, 800, 1100, 1450, 1850]);
+  const total = PLOT_PRICES.reduce((sum, price) => sum + price, 0);
+  assert.equal(owner.wallet, wallet - total);
+  assert.equal(village.treasury, 2500 + total);
+  at(owner, MAX_PLOTS); assert.throws(() => act(owner, { kind: 'plot_buy', plotId: PLOTS[MAX_PLOTS].id }), /at most 8/);
   at(visitor, 0); assert.throws(() => act(visitor, { kind: 'plot_buy', plotId: PLOTS[0].id }), /already belongs/);
 });
 

@@ -46,6 +46,21 @@ test('command updates preserve closed and unrelated panels, then refresh authori
   const count = f.opens; f.ui.dispose(); f.row.mode = 'hold'; f.ui.update(); f.ui.show(); assert.equal(f.opens, count);
 });
 
+test('illustrated command cards expose owned troop health and update injuries without reacting to movement', t => {
+  const f = fixture(t);
+  const troop = { id: 'own-one', ownerId: 'alice', plotId: 'west-1', name: 'First watch', hp: 110, maxHp: 220, hungry: false, x: 0, z: 10 };
+  f.state.guards = [troop, { ...troop, id: 'foreign', ownerId: 'bob', name: 'Hidden foreign troop' }];
+  f.state.plots = [{ id: 'west-1', level: 2, hp: 700, maxHp: 975, storage: { wheat: 8 } }];
+  f.ui.show();
+  assert.match(f.html, /guard-command-card/); assert.match(f.html, /data-item="sword"/);
+  assert.match(f.html, /110 \/ 220 health/); assert.match(f.html, /8 wheat/); assert.match(f.html, /YOUR BARRACKS · LEVEL 2/);
+  assert.doesNotMatch(f.html, /Hidden foreign troop/);
+  const before = f.opens; troop.x += 2; f.ui.update(); assert.equal(f.opens, before);
+  troop.hp = 45; troop.hungry = true; f.ui.update(); assert.equal(f.opens, before + 1);
+  assert.match(f.html, /45 \/ 220 health · Needs wheat/); assert.match(f.html, /aria-label="First watch health"/);
+  f.click('hold'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'guard_order', plotId: 'west-1', mode: 'hold' });
+});
+
 test('rally markers filter ownership, reuse geometry, move with snapshots, and dispose removed resources', () => {
   const scene = new THREE.Scene(), rallies = createGuardRallies(scene);
   const own = { plotId: 'west-1', ownerId: 'alice', mode: 'hold', effectiveMode: 'hold', rally: { x: -2, z: 35 } };

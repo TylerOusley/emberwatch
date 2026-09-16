@@ -1,7 +1,7 @@
 import { plotEntrance } from '../shared/access.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PLOTS, plotFront, canStand, plotSolids, plotSolid, plotBedPoint } from '../shared/world.js';
+import { PLOTS, plotFront, canStand, plotSolids, plotSolid, plotBedPoint, groundHeight } from '../shared/world.js';
 import { CHURCH, RECRUIT } from '../shared/defense.js';
 import { careAction, careTick, careNight, ensureCare, cancelCarry, cancelTreatment, careSnapshot, guardPathFor, tickDefenseAttack } from '../server/care-defense.js';
 
@@ -144,6 +144,11 @@ test('cannons consume both ammunition ingredients; ruined towers stop firing', (
   plot.storage.stone = 0; careTick(sim, village, 1); assert.equal(hits.length, 0); assert.equal(plot.storage.coal, 10);
   plot.storage.stone = 2; careTick(sim, village, 1);
   assert.equal(hits.length, 2); assert.equal(plot.storage.stone, 1); assert.equal(plot.storage.coal, 9);
+  assert.equal(plot.lastShot.targetId, 'a'); assert.equal(plot.lastShot.id, `${plot.id}:1`);
+  assert.deepEqual([plot.lastShot.x, plot.lastShot.y, plot.lastShot.z], [village.zombies[0].x, groundHeight(village.zombies[0].x, village.zombies[0].z) + .9, village.zombies[0].z]);
+  assert.equal(plot.lastShot.firedAt, village.clock);
+  const impact = { ...plot.lastShot }; village.zombies[0].x += 3;
+  assert.equal(plot.lastShot.x, impact.x, 'saved impact stays at the damaged target point after it moves');
   plot.hp = 10;
   const zombie = { id: 'siege', x: site.x + plotSolid(site, plot.building).w / 2 + .8, z: site.z, hp: 100, cooldown: 0, speed: 2 };
   assert.equal(tickDefenseAttack(sim, village, zombie, .05), true); assert.equal(plot.hp, 0);

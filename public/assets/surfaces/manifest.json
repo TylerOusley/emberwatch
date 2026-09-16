@@ -1,0 +1,197 @@
+{
+  "license": "CC0-1.0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "downloaded": "2026-09-16",
+  "resolution": 1024,
+  "files": [
+    {
+      "kind": "grass",
+      "asset": "aerial_grass_rock",
+      "role": "albedo",
+      "file": "grass-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg",
+      "bytes": 666655,
+      "sha256": "57b8041bfe0d0f01430e4dbaad45e7ddddf0a9fc97317f90dbc51f7b0d9e1b5d"
+    },
+    {
+      "kind": "grass",
+      "asset": "aerial_grass_rock",
+      "role": "normal",
+      "file": "grass-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_nor_gl_1k.jpg",
+      "bytes": 904956,
+      "sha256": "1aa3e23bff453f152e089b9f83aa36b4901651e019f7e2ca01d5331a9bbbda78"
+    },
+    {
+      "kind": "grass",
+      "asset": "aerial_grass_rock",
+      "role": "roughness",
+      "file": "grass-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_rough_1k.jpg",
+      "bytes": 362214,
+      "sha256": "b9f3f76aba74007f708333c0dbe73c52eb83ea0c4187a13e2e994f888a25114a"
+    },
+    {
+      "kind": "earth",
+      "asset": "forrest_ground_01",
+      "role": "albedo",
+      "file": "earth-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_diff_1k.jpg",
+      "bytes": 833711,
+      "sha256": "3dd6875cb3908e022a3c45ebbffa5e84c670ff2691fbbb6dc9ea4bff88523800"
+    },
+    {
+      "kind": "earth",
+      "asset": "forrest_ground_01",
+      "role": "normal",
+      "file": "earth-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_nor_gl_1k.jpg",
+      "bytes": 1428763,
+      "sha256": "32528a7cdee962cc0b248ee4023a74d0df175737ea90e1eb425122351e0bdab4"
+    },
+    {
+      "kind": "earth",
+      "asset": "forrest_ground_01",
+      "role": "roughness",
+      "file": "earth-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_rough_1k.jpg",
+      "bytes": 257165,
+      "sha256": "30d8b56a03d7b12da16f58011b675662a40e58e1cdc768119a5f03968140058c"
+    },
+    {
+      "kind": "rock",
+      "asset": "rock_01",
+      "role": "albedo",
+      "file": "rock-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_01/rock_01_diff_1k.jpg",
+      "bytes": 688083,
+      "sha256": "0b5f0418eb1e686190c5d33bb54c400b1f9ed58813b5e34aa5e573a5197302b5"
+    },
+    {
+      "kind": "rock",
+      "asset": "rock_01",
+      "role": "normal",
+      "file": "rock-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_01/rock_01_nor_gl_1k.jpg",
+      "bytes": 798807,
+      "sha256": "7a7146f51159a7667233c2c14c34ff18a9f4374cc8869d53a1162648d0941023"
+    },
+    {
+      "kind": "rock",
+      "asset": "rock_01",
+      "role": "roughness",
+      "file": "rock-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_01/rock_01_rough_1k.jpg",
+      "bytes": 383709,
+      "sha256": "e98b9c8ffb35513bd7b36a8730bf9745d05325376a85fae87ebf56a7c071a123"
+    },
+    {
+      "kind": "cobble",
+      "asset": "cobblestone_floor_08",
+      "role": "albedo",
+      "file": "cobble-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_08/cobblestone_floor_08_diff_1k.jpg",
+      "bytes": 585727,
+      "sha256": "ec131f7a99a1e7f9df25d4725609c55a6dad1df487630685e9a66ecbf41ec33a"
+    },
+    {
+      "kind": "cobble",
+      "asset": "cobblestone_floor_08",
+      "role": "normal",
+      "file": "cobble-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_08/cobblestone_floor_08_nor_gl_1k.jpg",
+      "bytes": 1002410,
+      "sha256": "26bfff70b266a4e86983814c7e56a9b48daf93cd34dcdc16a5db13e4fabcfbb6"
+    },
+    {
+      "kind": "cobble",
+      "asset": "cobblestone_floor_08",
+      "role": "roughness",
+      "file": "cobble-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_08/cobblestone_floor_08_rough_1k.jpg",
+      "bytes": 408718,
+      "sha256": "f92bcaf897cd98bc3cf11e6409b3e42145e7d0f659eaaad8807dfb0c5d16afc6"
+    },
+    {
+      "kind": "wood",
+      "asset": "wood_planks",
+      "role": "albedo",
+      "file": "wood-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks/wood_planks_diff_1k.jpg",
+      "bytes": 609525,
+      "sha256": "3b0669f683e4bf10f5a55a381cfa9669a7b8dfd921901829daa3b35acc2bbdec"
+    },
+    {
+      "kind": "wood",
+      "asset": "wood_planks",
+      "role": "normal",
+      "file": "wood-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks/wood_planks_nor_gl_1k.jpg",
+      "bytes": 652441,
+      "sha256": "d02abf113e17a8abe97e1be3e9d6d88add242e8c2291e2200d37aa8c68909f25"
+    },
+    {
+      "kind": "wood",
+      "asset": "wood_planks",
+      "role": "roughness",
+      "file": "wood-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks/wood_planks_rough_1k.jpg",
+      "bytes": 299757,
+      "sha256": "1b7f115bfa25619b0a2db554eb1ab88a6fc5ef0b74ba4890611eae04d00b9829"
+    },
+    {
+      "kind": "masonry",
+      "asset": "castle_brick_01",
+      "role": "albedo",
+      "file": "masonry-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_01/castle_brick_01_diff_1k.jpg",
+      "bytes": 693571,
+      "sha256": "3823fdc4bcb37cc7b26fd7e3b2a80e82f5a23354d22d84eb0ca277909f923b2c"
+    },
+    {
+      "kind": "masonry",
+      "asset": "castle_brick_01",
+      "role": "normal",
+      "file": "masonry-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_01/castle_brick_01_nor_gl_1k.jpg",
+      "bytes": 1069379,
+      "sha256": "f3c4c0538fd5c3f9e1aabcb0169fbbc3ac2883ed5544f05d9008d2736a2899de"
+    },
+    {
+      "kind": "masonry",
+      "asset": "castle_brick_01",
+      "role": "roughness",
+      "file": "masonry-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_01/castle_brick_01_rough_1k.jpg",
+      "bytes": 263291,
+      "sha256": "0958bde6010e2b7e4098b2737e94cff53c0c41c865e09a69b1a1e39ba7973985"
+    },
+    {
+      "kind": "roof",
+      "asset": "roof_07",
+      "role": "albedo",
+      "file": "roof-albedo.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_07/roof_07_diff_1k.jpg",
+      "bytes": 584122,
+      "sha256": "41b7cd7785c60bfe1348eeb7642b4fbb412ff9dab710b4b8016cce70c37a9239"
+    },
+    {
+      "kind": "roof",
+      "asset": "roof_07",
+      "role": "normal",
+      "file": "roof-normal.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_07/roof_07_nor_gl_1k.jpg",
+      "bytes": 344106,
+      "sha256": "af231288c45d24c8e0c1675b4b239e9bfd3800de699b1bc66cf50dfd733c93a8"
+    },
+    {
+      "kind": "roof",
+      "asset": "roof_07",
+      "role": "roughness",
+      "file": "roof-roughness.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_07/roof_07_rough_1k.jpg",
+      "bytes": 526327,
+      "sha256": "2c805e5f140438dbf7bfdf6b1064b1b606c8a5d348bf7ae4d4bc54b6ffc15b52"
+    }
+  ]
+}

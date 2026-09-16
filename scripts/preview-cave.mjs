@@ -8,7 +8,7 @@ import {RESOURCES,caveResourceType,groundHeight,CAVE_AREAS} from '../shared/worl
 
 const threeURL=new URL('../node_modules/three/build/three.module.js',import.meta.url).href;
 const sharedURL=new URL('../shared/world.js',import.meta.url).href;
-const plots=fs.readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL));
+const plots=fs.readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href));
 const {mineralOutcropGeometry}=await import('data:text/javascript;base64,'+Buffer.from(plots).toString('base64'));
 const output=process.argv[2]||'/tmp/emberwatch-cave.json';
 const cave=createCaveWorld(),ore=new THREE.Group(),oreMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.98}),oreGeometries=[];
@@ -55,7 +55,7 @@ cave.root.traverse(original=>{
       const mat=Array.isArray(original.material)?original.material[group.materialIndex]:original.material;
       if(!mat||mat.visible===false||mat.opacity<=0)continue;
       const indices=[0,1,2].map(k=>ix?ix.getX(j+k):j+k);if(reflected)[indices[1],indices[2]]=[indices[2],indices[1]];
-      const base=mat.color?.toArray()??[1,1,1];
+      const tint=new THREE.Color();if(original.isInstancedMesh&&original.instanceColor)original.getColorAt(instanceIndex,tint);const base=(mat.color?.clone()??new THREE.Color()).multiply(tint).toArray();
       const colors=indices.map(i=>mat.vertexColors&&color?[color.getX(i)*base[0],color.getY(i)*base[1],color.getZ(i)*base[2]]:base);
       triangles.push({part,p:indices.map(i=>ps[i]),n:indices.map(i=>ns[i]),c:colors,e:mat.emissive?.clone().multiplyScalar(mat.emissiveIntensity??1).toArray()??[0,0,0],rough:mat.roughness??1,metal:mat.metalness??0,side:mat.side??THREE.FrontSide});
     }

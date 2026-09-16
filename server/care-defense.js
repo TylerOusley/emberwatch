@@ -353,7 +353,10 @@ export function careTick(sim, village, dt) {
     if (!target) continue;
     spendStock(plot.storage, stats.ammo);
     plot.shotCooldown = stats.cooldown;
-    plot.lastShot = { x: target.x, z: target.z, until: village.clock + .35 };
+    plot.shotSequence = Number.isSafeInteger(plot.shotSequence) && plot.shotSequence < Number.MAX_SAFE_INTEGER ? plot.shotSequence + 1 : 1;
+    // The impact belongs to the authoritative damaged target, never the muzzle.
+    // Clients animate the existing flight and this cosmetic burst once per id.
+    plot.lastShot = { id: `${plot.id}:${plot.shotSequence}`, targetId: target.id, x: target.x, y: world.groundHeight(target.x,target.z)+.9, z: target.z, firedAt: village.clock, until: village.clock + .35 };
     const owner = village.players[plot.ownerId];
     const damage = stats.damage * ((plot.level ?? 1) >= 2 ? 1.5 : 1);
     for (const zombie of village.zombies.filter(z => z.hp > 0 && (z === target || (stats.splash && distance(z, target) <= stats.splash && towerCanHit(sim, village, plot, z))))) sim.hitZombie(village, zombie, damage, owner);

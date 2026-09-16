@@ -1,0 +1,129 @@
+{
+  "renderer": "llvmpipe (LLVM 20.1.2, 256 bits)",
+  "version": "OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2",
+  "shadingLanguage": "OpenGL ES GLSL ES 3.20",
+  "threeRevision": "180",
+  "runtimeHashes": {
+    "presentationVertex": "ec65547b18d8d46fe3c4ef6095e205c0a4ca62f3ea47e0096ab764c712abc7a0",
+    "presentationFragment": "e4a59cf24a2ca85580e5cbbfe9b1f570becff207641b7991f970754a1607c776"
+  },
+  "programs": [
+    {
+      "name": "surface-standard-smooth",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "1d7c32e0e801bc224e73a717a422a04f8bee8495b3716cac3a4297438c6d685b",
+        "fragment": "4155de7583894c71ed4e1a9db056bf160ae6fca15da7ffac61d0dd0a2a7653a9"
+      }
+    },
+    {
+      "name": "surface-standard-flat",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "5db16614cb9de3506a3b6da9c5dff690f500c4e7b9ef6b2546403c104c444126",
+        "fragment": "dea27bba7596d72f1170604197ed6ce1a3620e47b9daec011ea54f650d06b686"
+      }
+    },
+    {
+      "name": "surface-instanced-nonuniform",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "77da93e71ff8b6f8cdbf26b9ddd0b86c03d8f2d4df06953731a5dea00547c77c",
+        "fragment": "ad2272bf9b51e2ed779913af07eb03c08126958381d23796cbacf20a263dbee3"
+      }
+    },
+    {
+      "name": "surface-instanced-flat-color",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "ce448afdc7d7f5d6e0f82ff235699b5495df9cf2247e04e15e84e9292519d4ac",
+        "fragment": "117b2ea07dd6d28f46502ea6ed9d750f339a9de9a30753c398287e4e20265142"
+      }
+    },
+    {
+      "name": "surface-instanced-double-sided",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "66132056a2209850ebefcc41fa0173ce7a2fd79299d4114df2083a62ea821cd8",
+        "fragment": "fa4ac323af0a04e345876476d8b4f797e7e99e7d0fdce06fb0f3c945a604f78e"
+      }
+    },
+    {
+      "name": "surface-flat-double-sided-shadow-fog",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "18df7f3cef554c778d86d7a8d82467517fcb50296d381a37bf8ef1455d30589a",
+        "fragment": "a2c18a5a11debe539d563832b038a862bc9016f6c135153d5e29998d9213ee23"
+      }
+    },
+    {
+      "name": "surface-instanced-shadow-fog",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "1492ce1a6c5f964875c10dfc7223c40c4860619849d4d45b6d9723b6690a93b0",
+        "fragment": "de2b8a8c48374617a6a0e1563bf15d061873d165d458a77152fc28e7a96be15f"
+      }
+    },
+    {
+      "name": "surface-standard-native-normalmap",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "cdab6589f4ded5732b2870357a27417e29370ab11f207a12a645b109297053c8",
+        "fragment": "f70938c8819aa30f9c92a95233eb48a7793301e519c31de5c9f7ad486f5c8239"
+      }
+    },
+    {
+      "name": "surface-skinned-shadow-fog",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "4bbbd81359052f90b1bb2ca322063fec8beeb22ecbd5fa96e5aae0e084e7f594",
+        "fragment": "50b7147b6cd74dfc7334986a1695db79321aab570af00ac74f6937e2b83642d7"
+      }
+    },
+    {
+      "name": "surface-reflection-physical",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "0d9b4e6c9362df38a3bc6cb7b40e1b8d784486b8a9f9b8959a40348a7274b287",
+        "fragment": "3deebf62bd0aff36de2dc99440ee84b8ed9927831571e9b69ecfc9ce7dfec3eb"
+      }
+    },
+    {
+      "name": "surface-direct-aces-srgb",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "13bd5fb55a12c1cc300086d7f644383c05b9b9b27e47d3fa611ca448fc8ab5b8",
+        "fragment": "0f4f90a04e4399d8b521a01f3270368716b0ccd254223e2aca6ae999293026bc"
+      }
+    },
+    {
+      "name": "presentation-aces-srgb",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "faf46050f4d81f5cd31cf76328a994c93cb0bec97b51e9eac2002bd49fdd25eb",
+        "fragment": "501985718f7655ff76698fd7ab04347ae002aede178f93d414c34188c4b44f42"
+      }
+    },
+    {
+      "name": "presentation-linear-srgb",
+      "compiled": true,
+      "linked": true,
+      "hashes": {
+        "vertex": "551427c216096a9afde5d1e9d7127b431212bd67317d0099a364c2c840954165",
+        "fragment": "275b24676488812c75592d72f6d522c966c0190bc873e373aa7d87409caeb135"
+      }
+    }
+  ]
+}

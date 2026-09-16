@@ -1,5 +1,27 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 18: terrain, materials and believable light
+
+Tyler requested a complete graphics overhaul: sharper scenery, objects with convincing surfaces and silhouettes, suitable sourced assets, better lighting and a more realistic sun and moon. This extends the completed local Build 17 gameplay update. Existing characters, game rules, network actions, accounts and village ledgers are retained.
+
+The world uses seven complete Poly Haven CC0 PBR sets, locally hosted at 1024 pixels per map, plus NASA SVS lunar imagery. Materials project in world space to maintain texture scale on differently sized static meshes and instances. Scenery gains organic branching trees, individual foliage, fuller wheat heads, eroded mountain ridges, smooth terrain normals, improved ground cover and crafted building details. Presentation geometry must not move a gathering anchor, road, plot border, cave floor, entrance or collision boundary.
+
+The sky retains the authoritative village cycle and pause behavior. Small sun and moon discs, atmospheric horizon scattering, soft cloud layers, lunar detail and calibrated direct/hemisphere lighting replace the earlier oversized and flatter treatment. One directional shadow caster follows the nearby view, switching between sunlight and moonlight; inactive shadow targets are released. A small reflection probe adds material response. High detail adds bounded depth-based contact shading and restrained highlight glow, without another scene geometry pass.
+
+Players can choose Auto, High, Balanced or Low from the lobby or village menu. Auto waits through sustained load before switching, ignores loading/tab stalls and cannot alter game state. Render-pixel, texture filtering and shadow budgets respect hardware limits. Low uses the direct render path; compatible higher settings use HDR color/depth and one final output pass. A software edge filter is used only when the required multisampled formats are unavailable. Saved preferences, window resizing and repeated quality changes must not leak GPU targets or repeatedly rebuild the menu.
+
+Source records are in [GRAPHICS-ASSETS.md](GRAPHICS-ASSETS.md) and [SKY-ASSETS.md](SKY-ASSETS.md). Offline shader and geometry checks are documented separately from interactive playtest evidence in [VALIDATION.md](VALIDATION.md).
+
+## Build 17: illustrated menus, expansion and village gold
+
+Tyler requested more illustrative menus, a persistent corner inventory view, visible and explained upgrades, five workers and eight plots per resident, stronger private production, cannon impact explosions, village investment dividends and tavern gold games. The implementation keeps the shop/building-plan art language and uses actual crate-item renders in the crate collection and equipment UI.
+
+Current limits are five workers and eight deeds; the final three deeds cost 1,100, 1,450 and 1,850 gold. Mines, tree farms and wheat farms now support levels 1–3. Each production tier adds one resource to player/worker harvest output, increases available node reserves and storage, and reduces regrowth duration; current/next cards disclose exact values. Upgraded defense/care buildings and barracks troops have visible model changes. Cannon impact bursts are presentation only, with bounded particles and no additional combat damage.
+
+Village investments fund the treasury from wallet gold. The initial dividend target is 1% of fully eligible principal per game day, after skipping the contribution's first dawn. Dividends are funded from treasury surplus after normal dawn costs, fairly reduced when underfunded, and held in an earnings balance until collected or reinvested. Principal withdrawals depend on available treasury surplus. Investments are specific to their village, and a fallen village closes investment actions; persistent bank savings are separate. Detailed caps, timing, reserve and fractional rules are recorded in [README.md](../README.md#village-investments).
+
+The Wayfarer now offers permanent coin flip and European roulette alongside its visiting merchant. Stakes use virtual wallet gold only; losses enter the village fund and wins draw from it. The treasury must cover each maximum win above its reserve before accepting the wager. Cryptographic server rolls and saved per-player transaction receipts govern settlement. The exact chances and total/profit multipliers are in [README.md](../README.md#the-wayfarer-tavern). Blackjack is not part of this release.
+
 ## Build 15: crates and lasting equipment
 
 The prepared collection now has server-authoritative opening, permanent account unlocks, shared crate credits, source-specific duplicate refunds, lifetime milestone rewards and one-time run loadouts. Rare has six equal outcomes including both resource packs; Legendary has five including consumable Phoenix Ember. Fitted equipment affects armor, capacity, resource weight or newly purchased gathering-tool durability. Starter supplies are bound and do not refill. The Sunforged Viking Helm is earned at 100 personal credited nights and grants Last Stand. The complete current rules and initial balance settings are in [CRATE-PROPOSAL.md](CRATE-PROPOSAL.md). Historical entries below describe their respective releases.
@@ -136,7 +158,7 @@ Carry capacity is weight based, with carts providing separate storage capacity. 
 
 ## Land, buildings, and changing jobs
 
-Each resident may own up to **five plots combined**, inside and outside. A plot holds one building or land use. Converting a plot removes its existing structure; the player retains the plot. The initial purchase-price targets are 100, 200, 350, 550, and 800 gold for successive owned plots. Daily land tax scales with the number of plots owned, starting with a two-gold base; the current quadratic formula is listed above. No tax accrues simply because a player is offline.
+Each resident may own up to **eight plots combined**, inside and outside. A plot holds one building or land use. Converting a plot removes its existing structure; the player retains the plot. The initial purchase-price targets are 100, 200, 350, 550, 800, 1,100, 1,450, and 1,850 gold for successive owned plots. Daily land tax scales with the number of plots owned, starting with a two-gold base; the current quadratic formula is listed above. No tax accrues simply because a player is offline.
 
 | Who can build | Structures |
 | --- | --- |

@@ -6,8 +6,8 @@ import {CAVE_AREAS,CAVE_ROUTE,RESOURCES,groundHeight,caveAreaAt,caveResourceType
 import {createCaveWorld,createCaveLayout} from '../public/src/cave-world.js';
 const threeURL=new URL('../node_modules/three/build/three.module.js',import.meta.url).href,sharedURL=new URL('../shared/world.js',import.meta.url).href;
 const moduleURL=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64');
-const plots=readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL));
-const source=readFileSync(new URL('../public/src/world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./plots-world.js'",JSON.stringify(moduleURL(plots)));
+const plots=readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href));
+const source=readFileSync(new URL('../public/src/world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href)).replace("'./plots-world.js'",JSON.stringify(moduleURL(plots)));
 const {createWorld}=await import(moduleURL(source));
 const previousDocument=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({},{get:()=>()=>{},set:()=>true})})};
 let world;try{world=createWorld(new THREE.Scene());}finally{globalThis.document=previousDocument;}
@@ -81,6 +81,19 @@ test('cave cutaway, always-lit torch anchors and geometry stay bounded and dispo
   cave.root.traverse(m=>{if(!m.isMesh)return;calls++;triangles+=(m.geometry.index?.count??m.geometry.attributes.position.count)/3*(m.isInstancedMesh?m.count:1);for(const a of Object.values(m.geometry.attributes))assert.ok(a.array.every(Number.isFinite));resources.add(m.geometry);resources.add(m.material);});
   assert.ok(calls<28,`${calls} cave draw calls`);assert.ok(triangles<130000,`${triangles} cave triangles`);let disposed=0;for(const resource of resources)resource.addEventListener('dispose',()=>disposed++);
   cave.dispose();assert.equal(disposed,resources.size);cave.dispose();assert.equal(disposed,resources.size);assert.ok(!scene.children.includes(cave.root));
+});
+
+test('cave geology, continuous floor and dressed entrance use repeatable world-scale surface detail',()=>{
+ const cave=createCaveWorld(new THREE.Scene()),wall=cave.root.getObjectByName('inward-facing-cave-walls'),floor=cave.root.getObjectByName('continuous-cave-floor');
+ assert.equal(wall.material.userData.surface.kind,'rock');assert.equal(floor.material.userData.surface.kind,'earth');
+ assert.equal(wall.material.userData.surface.projection,'world-triplanar');assert.equal(wall.material.vertexColors,true);
+ const portal=cave.mouth.getObjectByName('cave-cut-portal-stone-instances'),timber=cave.mouth.getObjectByName('cave-aged-mine-timber-instances');
+ assert.equal(portal.material.userData.surface.kind,'masonry');assert.equal(timber.material.userData.surface.kind,'wood');
+ assert.ok(portal.instanceColor.array.some(value=>value!==portal.instanceColor.array[0]),'stone courses receive slight material variation in the same draw call');
+ const buffers=[];cave.root.traverse(m=>{if(m.isMesh)buffers.push([m,m.geometry,m.material]);});
+ const camera=new THREE.PerspectiveCamera();camera.position.set(0,8,-124);for(let frame=0;frame<120;frame++)cave.update({x:0,z:-126},camera,frame/60);
+ for(const[mesh,geometry,material]of buffers){assert.equal(mesh.geometry,geometry);assert.equal(mesh.material,material);}
+ cave.dispose();
 });
 
 

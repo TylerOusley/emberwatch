@@ -22,10 +22,12 @@ import { ensureTrading, tradingAction, tradingTick, tradingSnapshot, cancelPlaye
 import { joinCrates, crateAction, crateSnapshot, forfeitCrates, refreshCrateMilestones } from './crates.js';
 import { ensureCrateEffects, crateProtectionActive, breakCrateProtection, crateEnemyDamage, crateAfterEnemyHit, crateRespawnEffects } from './crate-effects.js';
 import { TEST_GOLD } from './admin.js';
+import { ensureVillageFinance, villageFinanceAction, villageFinanceDawn, villageFinanceSnapshot } from './village-finance.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
+const FINANCE_ACTIONS = new Set(['investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 // Form transfers and release actions are immediately validated transactions;
 // they should not inherit the swing delay used for tools and combat.
-const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive']);
+const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, cart: 0 });
@@ -59,6 +61,7 @@ function ensureVillage(village) {
   ensureEconomy(village); ensureOwnership(village); ensureCare(village); ensureTransport(village); ensureWorkers(village); ensureEnemies(village); ensureRequests(village); ensureProgression(village);
   ensureCaves(village);
   ensureTrading(village);
+  ensureVillageFinance(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
     ensureCrateEffects(village, player);
@@ -163,7 +166,7 @@ export class Simulation {
       clockRunning: village.status === 'active' && Object.values(village.players).some(p => p.online),
       gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
-      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId), ...crateSnapshot(this, village, viewerId),
+      ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId), ...crateSnapshot(this, village, viewerId), ...villageFinanceSnapshot(this, village, viewerId),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
         ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
@@ -176,6 +179,12 @@ export class Simulation {
   action(villageId, playerId, action) {
     const village = this.villages.get(villageId);
     if (!village) throw new Error('Join a village first.');
+    // A committed receipt is a read, even if the resident moved, mounted or
+    // fell after the request. Only the current authenticated player can read it.
+    if (FINANCE_ACTIONS.has(action?.kind) && typeof action.requestId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(action.requestId) && village.players[playerId]?.online && this.store.account(playerId)) {
+      const receipt = this.store.financeReceipt?.(villageId, playerId, action.requestId);
+      if (receipt) return receipt.message;
+    }
     const checkpoint = structuredClone(village), noticeCount = this.notices.length;
     try { return this.store.transaction(() => {
       const requestBefore = requestsBeforeAction(village);
@@ -209,7 +218,7 @@ export class Simulation {
     if (player.carryingId && ['attack', 'gather', 'repair', 'repairPlot', 'heal', 'mountHorse'].includes(kind)) throw new Error('Put your companion down before using tools or weapons.');
     if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
     if (!['heal', 'guide_visibility'].includes(kind)) player.healing = null;
-    for (const handler of [crateAction, tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
+    for (const handler of [villageFinanceAction, crateAction, tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
@@ -418,6 +427,7 @@ export class Simulation {
       player.jobBonus = 0; player.repairBonus = 0; player.participated = 0; player.revivedThisNight = [];
       player.wageAccrued = 0; player.cycleServiceIncome = 0;
     }
+    villageFinanceDawn(this, village, survived);
     this.notice(village.id, earlyClear ? `The last zombie has fallen. Night ${survived} cleared! Dawn breaks early.` : `Dawn breaks. Night ${survived} survived.${village.zombies.some(z => z.hp > 0) ? ' Remaining zombies must still be defeated.' : ''}`);
     requestsTick(this, village);
     this.store.saveVillage(village);

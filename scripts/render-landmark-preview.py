@@ -19,8 +19,8 @@ draw = ImageDraw.Draw(canvas)
 regular = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 font = lambda size, strong=False: ImageFont.truetype(bold if strong else regular, size)
-draw.text((68, 42), 'EMBERWATCH  /  GATE & WELL DETAIL', font=font(31, True), fill='#f0e3c9')
-draw.text((68, 89), 'Actual game geometry  ·  Material colors and vertex normals  ·  Offline studio lighting', font=font(21), fill='#aebbc0')
+draw.text((68, 42), data.get('title', 'EMBERWATCH  /  GATE & WELL DETAIL'), font=font(31, True), fill='#f0e3c9')
+draw.text((68, 89), data.get('subtitle', 'Actual game geometry  ·  Material colors and vertex normals  ·  Offline studio lighting'), font=font(21), fill='#aebbc0')
 
 def normalized(v):
     v = np.asarray(v, dtype=np.float64)
@@ -109,6 +109,6 @@ for index, panel in enumerate(data['panels']):
     draw.text((x + 20, y + 713), panel['caption'], font=font(17), fill='#acb8bd')
 
 draw.line((68, 1732, 2332, 1732), fill='#41515a', width=1)
-draw.text((68, 1754), 'Geometry review only. Roof omitted in well views; procedural bump maps and in-game lighting require a live playtest.', font=font(18), fill='#aab8be')
+draw.text((68, 1754), data.get('footer', 'Geometry review only. Roof omitted in well views; procedural bump maps and in-game lighting require a live playtest.'), font=font(18), fill='#aab8be')
 canvas.save(output, quality=91, optimize=True, subsampling=0)
 print(output)
