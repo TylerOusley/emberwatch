@@ -476,6 +476,28 @@ test('council voting remains remote but submitting a proposal needs a council en
   assert.equal(f.buttons.find(b => b.text === 'Submit proposal').disabled, true);
 });
 
+test('council and merchant show percentage exports and submit the saved policy choice', t => {
+  const f = fixture(t);
+  Object.assign(f.player, buildingEntrance(BUILDINGS.find(b => b.id === 'keep')));
+  f.state.proposals = [{ id: 'export-vote', policy: 'exportPriority', value: 'trade', proposerName: 'Bob', yes: 1, no: 0, required: 2, status: 'approved', effectiveDay: 3 }];
+  f.ui.show('policies');
+  assert.equal(f.fields.get('export-priority').value, 'balanced');
+  assert.match(f.html, /Conserve · 25% of surplus/);
+  assert.match(f.html, /Balanced · 50% of surplus/);
+  assert.match(f.html, /Merchant export policy → Trade · 100% of surplus/);
+  assert.match(f.html, /after food and repair reserves/);
+  assert.match(f.html, /no unit cap/);
+  f.fields.get('export-priority').value = 'trade'; f.click('Propose resource priority');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: 'trade' });
+  f.visit('merchant');
+  assert.match(f.html, /current council policy sells 50%/);
+  assert.match(f.html, /round down to whole units/);
+  f.state.policies.exportPriority = 'trade'; f.ui.refresh();
+  assert.match(f.html, /current council policy sells 100%/);
+  f.state.policies.exportPriority = 'conserve'; f.ui.refresh();
+  assert.match(f.html, /current council policy sells 25%/);
+});
+
 test('storage preserves typed 10 and its selected resource after focus moves to a button and a snapshot rerenders', t => {
   const f = fixture(t), site = PLOTS[0];
   f.player.inventory.stone = 25;

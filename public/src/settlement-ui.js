@@ -2,7 +2,7 @@ import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carry
 import { BUILDINGS, PLOTS, CAVE_ENTRANCE } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
-import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote } from '../../shared/economy.js';
+import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote, merchantExportPercent } from '../../shared/economy.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../../shared/defense.js';
 import { ROLE_STATS } from '../../shared/roles.js';
 import { WORKER_RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../../shared/workers.js';
@@ -18,6 +18,7 @@ import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, p
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const label = id => ({ food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows', cart: 'Cargo cart' }[id] || String(id).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()));
+const exportPolicyLabel = priority => `${label(priority)} · ${merchantExportPercent(priority)}% of surplus`;
 const costText = cost => Object.entries(cost || {}).map(([id, count]) => `${num(count)} ${id}`).join(' · ');
 const resources = ['timber', 'stone', 'wheat', 'iron', 'coal'];
 const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow'];
@@ -507,6 +508,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function merchant() {
     const m = state().merchant || {};
     let html = head('TRAVELING MERCHANT', m.present ? 'Fresh wares at the crossroads.' : 'The merchant is on the road.', 'The merchant visits during the day after every second night. Dwarfs gather the village’s basic materials; the steward can export a safe surplus.');
+    html += `<p>The current council policy sells ${merchantExportPercent(state().policies?.exportPriority)}% of surplus wheat, timber and stone on each visit, with no unit cap. Food and repair reserves are set aside first; sales round down to whole units. Change the percentage through the Village Council.</p>`;
     if (m.summary) html += `<p>${esc(m.summary)}</p>`;
     if (m.present) {
       html += '<div class="shop-item-grid">';
@@ -526,13 +528,15 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   const atCouncil = () => BUILDINGS.some(b => ['bank', 'keep'].includes(b.id) && canUseBuilding(me(), b));
   function policies() {
     const s = state(), canPropose = atCouncil();
-    let html = head('VILLAGE COUNCIL', 'A voice for every dwarf.', 'A majority vote goes to the steward for an affordability and fairness review. Approved policies take effect at the next dawn.') + stats([['Guard wage', `${num(s.policies?.guardWage)}g`], ['Priest wage', `${num(s.policies?.priestWage)}g`], ['Trade tax', `${num(s.policies?.tradeTax)}%`], ['Base land tax', `${num(s.policies?.landTax)}g`]]);
-    html += '<p>Wages are paid at dawn and depend on participation. Performance pay is additional. Full-cycle land tax is the base tax multiplied by the square of your plot count, prorated by your time online.</p><h3>Propose a change</h3><div class="policy-form"><label>Policy' + choices('policy-name', [['guardWage', 'Guard daily wage'], ['priestWage', 'Priest daily wage'], ['tradeTax', 'Trade tax %'], ['landTax', 'Land tax base']]) + '</label><label>New value' + quantity('policy-value', 60, 25).replace('min="1"', 'min="10" step="5"') + '</label>' + button('Submit proposal', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: value('policy-name'), value: amount('policy-value') }); }, !canPropose) + '</div><div class="transfer-form">' + choices('export-priority', [['conserve', 'Conserve supplies'], ['balanced', 'Balanced reserves'], ['trade', 'Export more surplus']], s.policies?.exportPriority) + button('Propose resource priority', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: value('export-priority') }); }, !canPropose) + '</div><h3>Votes & decisions</h3>';
+    let html = head('VILLAGE COUNCIL', 'A voice for every dwarf.', 'A majority vote goes to the steward for an affordability and fairness review. Approved policies take effect at the next dawn.') + stats([['Guard wage', `${num(s.policies?.guardWage)}g`], ['Priest wage', `${num(s.policies?.priestWage)}g`], ['Trade tax', `${num(s.policies?.tradeTax)}%`], ['Base land tax', `${num(s.policies?.landTax)}g`], ['Merchant exports', `${merchantExportPercent(s.policies?.exportPriority)}% of surplus`]]);
+    html += '<p>Wages are paid at dawn and depend on participation. Performance pay is additional. Full-cycle land tax is the base tax multiplied by the square of your plot count, prorated by your time online.</p><h3>Propose a change</h3><div class="policy-form"><label>Policy' + choices('policy-name', [['guardWage', 'Guard daily wage'], ['priestWage', 'Priest daily wage'], ['tradeTax', 'Trade tax %'], ['landTax', 'Land tax base']]) + '</label><label>New value' + quantity('policy-value', 60, 25).replace('min="1"', 'min="10" step="5"') + '</label>' + button('Submit proposal', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: value('policy-name'), value: amount('policy-value') }); }, !canPropose) + '</div>';
+    html += '<p>Merchant exports sell a percentage of each basic resource left after food and repair reserves, rounded down to whole units. There is no unit cap. Conserve also keeps twice the usual reserves.</p><div class="transfer-form"><label>Merchant export percentage' + choices('export-priority', POLICIES.exportPriority.choices.map(priority => [priority, exportPolicyLabel(priority)]), s.policies?.exportPriority) + '</label>' + button('Propose resource priority', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: value('export-priority') }); }, !canPropose) + '</div><h3>Votes & decisions</h3>';
     if (!canPropose) html += '<p>Visit the Treasury or Hearthkeep entrance to submit a proposal. You can read the council and vote from anywhere.</p>' + button('Mark the treasury', () => markService('bank'));
     const proposals = s.proposals || [];
     if (!proposals.length) html += '<p>No proposals yet. All residents have a voice.</p>';
     for (const proposal of [...proposals].reverse()) {
-      html += `<section class="proposal-card"><div class="market-heading"><strong>${esc(label(proposal.policy))} → ${esc(proposal.value)}</strong><span class="status-pill">${esc(proposal.status)}</span></div><p>${esc(proposal.proposerName)} · ${proposal.yes} yes / ${proposal.no} no · ${proposal.required} votes needed</p>`;
+      const policyName = POLICIES[proposal.policy]?.label || label(proposal.policy), proposedValue = proposal.policy === 'exportPriority' ? exportPolicyLabel(proposal.value) : proposal.value;
+      html += `<section class="proposal-card"><div class="market-heading"><strong>${esc(policyName)} → ${esc(proposedValue)}</strong><span class="status-pill">${esc(proposal.status)}</span></div><p>${esc(proposal.proposerName)} · ${proposal.yes} yes / ${proposal.no} no · ${proposal.required} votes needed</p>`;
       if (proposal.reason) html += `<p>${esc(proposal.reason)}</p>`;
       if (proposal.effectiveDay && proposal.status === 'approved') html += `<p>Takes effect at dawn on day ${proposal.effectiveDay}.</p>`;
       if (proposal.canVote) html += '<div class="panel-actions">' + command(proposal.myVote === true ? 'You voted yes' : 'Vote yes', 'vote_policy', { proposalId: proposal.id, approve: true }, proposal.myVote === true) + command(proposal.myVote === false ? 'You voted no' : 'Vote no', 'vote_policy', { proposalId: proposal.id, approve: false }, proposal.myVote === false) + '</div>';

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildingEntrance } from '../shared/access.js';
 import { BUILDINGS } from '../shared/world.js';
-import { FOOD, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
+import { FOOD, MERCHANT_EXPORT_PERCENTAGES, merchantExportPercent, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 import { MAX_TRADE_AMOUNT } from '../shared/market.js';
 import { carryCapacity } from '../shared/content.js';
 import { ensureEconomy, economyAction, economyDawn, economySnapshot, exportReserves, stewardReview } from '../server/economy.js';
@@ -166,6 +166,100 @@ test('merchant preserves scarce basic stock and a tight treasury cannot buy hors
   assert.equal(v.stable.stock, 0); assert.equal(v.treasury, 560);
   assert.equal(v.stock.wheat, 2); assert.equal(v.stock.timber, 3); assert.equal(v.stock.stone, 4);
   assert.match(v.merchant.summary, /No surplus/);
+});
+
+test('merchant export percentages preserve saved policy choices and use a safe default', () => {
+  assert.deepEqual(MERCHANT_EXPORT_PERCENTAGES, { conserve: 25, balanced: 50, trade: 100 });
+  assert.equal(Object.isFrozen(MERCHANT_EXPORT_PERCENTAGES), true);
+  for (const [priority, percent] of Object.entries(MERCHANT_EXPORT_PERCENTAGES)) {
+    const { v } = fixture();
+    v.policies.exportPriority = priority;
+    ensureEconomy(v);
+    assert.equal(v.policies.exportPriority, priority);
+    assert.equal(merchantExportPercent(priority), percent);
+  }
+  for (const unknown of [undefined, null, '', 'unknown', '__proto__', 'constructor', {}]) assert.equal(merchantExportPercent(unknown), 50);
+});
+
+for (const [priority, percent] of Object.entries({ conserve: 25, balanced: 50, trade: 100 })) {
+  test(`${priority} exports ${percent}% of each surplus without a 120-unit cap`, () => {
+    const { v, sim } = fixture();
+    v.policies.exportPriority = priority; v.stable.stock = 1;
+    const reserves = exportReserves(v), surplus = { wheat: 1003, timber: 2003, stone: 3003 };
+    for (const id of Object.keys(surplus)) v.stock[id] = reserves[id] + surplus[id];
+    v.stock.iron = 9; v.stock.coal = 8;
+    const treasury = v.treasury;
+    v.day = 3; economyDawn(sim, v);
+    let proceeds = 0;
+    for (const [id, excess] of Object.entries(surplus)) {
+      const sold = Math.floor(excess * percent / 100);
+      assert.ok(sold > 120, `${id} must not be restricted by the old cap`);
+      assert.equal(v.stock[id], reserves[id] + excess - sold);
+      assert.ok(v.stock[id] >= reserves[id]);
+      proceeds += sold * (id === 'wheat' ? 1 : 2);
+    }
+    assert.equal(v.stock.iron, 9); assert.equal(v.stock.coal, 8);
+    assert.equal(v.economy.lastExportGold, proceeds); assert.equal(v.treasury, treasury + proceeds);
+    assert.match(v.merchant.summary, new RegExp(`Exported ${percent}% of surplus:`));
+    const saved = JSON.stringify(v), reloaded = JSON.parse(saved);
+    economyDawn(sim, reloaded);
+    assert.equal(JSON.stringify(reloaded), saved, 'a saved dawn must not repeat an uncapped export');
+  });
+
+  test(`${priority} rounds exports down after protecting food and repair reserves`, () => {
+    const { v, sim } = fixture();
+    v.policies.exportPriority = priority; v.stable.stock = 1;
+    const reserves = exportReserves(v), divisor = 100 / percent;
+    Object.assign(v.stock, { wheat: reserves.wheat + divisor - 1, timber: reserves.timber + divisor * 2 - 1, stone: reserves.stone + divisor * 3 - 1 });
+    const before = { ...v.stock }, treasury = v.treasury;
+    v.day = 3; economyDawn(sim, v);
+    assert.equal(v.stock.wheat, before.wheat, 'less than a whole export unit remains in stock');
+    assert.equal(v.stock.timber, before.timber - 1);
+    assert.equal(v.stock.stone, before.stone - 2);
+    assert.equal(v.economy.lastExportGold, 6); assert.equal(v.treasury, treasury + 6);
+  });
+}
+
+test('an approved export policy applies before that dawn’s percentage sale', () => {
+  const { v, p, sim } = fixture();
+  v.day = 2; v.stable.stock = 1;
+  Object.assign(v.stock, { wheat: 1000, timber: 1000, stone: 1000 });
+  economyAction(sim, v, p, { kind: 'propose_policy', policy: 'exportPriority', value: 'trade' });
+  assert.equal(v.proposals[0].status, 'approved'); assert.equal(v.policies.exportPriority, 'balanced');
+  v.day = 3; economyDawn(sim, v);
+  assert.equal(v.proposals[0].status, 'applied'); assert.equal(v.policies.exportPriority, 'trade');
+  for (const [id, reserve] of Object.entries(exportReserves(v))) assert.equal(v.stock[id], reserve);
+  assert.match(v.merchant.summary, /Exported 100% of surplus:/);
+});
+
+test('uncapped exports retain the entire shipment when its gold cannot fit safely', () => {
+  for (const excessivePayment of [false, true]) {
+    const { v, sim } = fixture();
+    v.policies.exportPriority = 'trade'; v.stable.stock = 1;
+    const reserves = exportReserves(v);
+    Object.assign(v.stock, { wheat: reserves.wheat + 10, timber: excessivePayment ? Number.MAX_SAFE_INTEGER : reserves.timber + 10, stone: reserves.stone + 10 });
+    if (!excessivePayment) v.treasury = Number.MAX_SAFE_INTEGER - 49;
+    const stock = { ...v.stock }, treasury = v.treasury;
+    v.day = 3; economyDawn(sim, v);
+    assert.deepEqual(v.stock, stock, 'no part of an unpayable shipment may leave storage');
+    assert.equal(v.treasury, treasury); assert.equal(v.economy.lastExportGold, 0);
+    assert.match(v.merchant.summary, /treasury cannot accept.*supplies were retained/);
+  }
+});
+
+test('percentage exports stay exact for large representable stock and payments', () => {
+  for (const [priority, percent] of Object.entries(MERCHANT_EXPORT_PERCENTAGES)) {
+    const { v, sim } = fixture();
+    v.policies.exportPriority = priority; v.stable.stock = 1; v.treasury = 0;
+    const reserves = exportReserves(v);
+    Object.assign(v.stock, reserves, { wheat: Number.MAX_SAFE_INTEGER });
+    const expected = Number((BigInt(Number.MAX_SAFE_INTEGER) - BigInt(reserves.wheat)) * BigInt(percent) / 100n);
+    v.day = 3; economyDawn(sim, v);
+    assert.equal(v.stock.wheat, Number.MAX_SAFE_INTEGER - expected);
+    assert.equal(v.stock.timber, reserves.timber); assert.equal(v.stock.stone, reserves.stone);
+    assert.equal(v.economy.lastExportGold, expected); assert.equal(v.treasury, expected);
+    assert.equal(Number.isSafeInteger(v.treasury), true);
+  }
 });
 
 test('specialist merchant purchases are finite, local and never import basic resources', () => {

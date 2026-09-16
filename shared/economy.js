@@ -17,6 +17,12 @@ export const FOOD = Object.freeze({
 
 export const MERCHANT_PRICES = Object.freeze({ iron: 9, coal: 7, arrows: 3 });
 export const MERCHANT_STOCK = Object.freeze({ iron: 30, coal: 30, arrows: 60 });
+export const MERCHANT_EXPORT_PERCENTAGES = Object.freeze({ conserve: 25, balanced: 50, trade: 100 });
+
+export function merchantExportPercent(priority) {
+  return typeof priority === 'string' && Object.hasOwn(MERCHANT_EXPORT_PERCENTAGES, priority)
+    ? MERCHANT_EXPORT_PERCENTAGES[priority] : MERCHANT_EXPORT_PERCENTAGES.balanced;
+}
 
 export function foodQuote(stock, tier = 'food') {
   if (typeof tier !== 'string' || !Object.hasOwn(FOOD, tier)) throw new Error('Choose food, good food or best food.');

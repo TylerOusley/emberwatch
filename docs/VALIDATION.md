@@ -1,5 +1,15 @@
 # Emberwatch build validation
 
+## Build 23: percentage merchant exports
+
+Validated September 16, 2026: **644/644 tests pass** with `npm test`, with no failures, cancellations or skips. All **95 runtime JavaScript modules** pass syntax checks, and `git diff --check` passes.
+
+The steward's fixed 40/80/120-unit limits are replaced with 25% (Conserve), 50% (Balanced) and 100% (Trade) of each basic resource's surplus after existing protected reserves. Exports round down to whole units, pay the existing prices, and retain the complete shipment if its payment cannot be represented safely. Conserve keeps its double reserve. Council options, proposals, the current policy and merchant screens show the percentages.
+
+- Economy regressions cover all three modes selling more than 120 units, exact stock and treasury changes, reserve retention, whole-unit rounding, approved policies taking effect before the dawn sale, repeated-dawn idempotence, and large-value arithmetic without partial loss.
+- A real SQLite restart regression covers all three existing saved policy choices, the next merchant dawn, and a second restart that must not repeat the export. It failed against the old fixed caps and passes with the percentage calculation. No save migration or production data edit is required.
+- The UI harness checks percentage labels, the submitted policy identifier, proposal wording and refreshed merchant policy information. This is a DOM behavior check, not an interactive visual playtest.
+
 ## Build 22: selective worker stalls
 
 Validated September 16, 2026: **629/629 tests pass** with `npm test`, with no failures, cancellations or skips. Runtime JavaScript syntax checks and `git diff --check` pass.

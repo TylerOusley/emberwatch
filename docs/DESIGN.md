@@ -214,7 +214,7 @@ There is no player king. Current votes cover guard/priest wages, trade tax, land
 
 The current steward approves or vetoes with a concrete explanation. Automatically suggesting revised counterproposals remains a future extension. A role majority cannot award itself unsustainable pay. A temporary shortage may justify a temporary incentive rather than a permanent increase. Starting voting rules are a majority of active voters, ties keeping current policy, and accepted changes taking effect next morning. A solo resident can propose a policy directly, subject to the same steward evaluation.
 
-The steward does **not** buy basic raw resources from the traveling merchant. Dwarfs must gather them. It can export verified surplus after reserving enough stock for food, repairs, defense, and expected consumption.
+The steward does **not** buy basic raw resources from the traveling merchant. Dwarfs must gather them. It exports a percentage of each wheat, timber and stone surplus after reserving enough stock for food, repairs, defense, and expected consumption. Conserve sells 25% and keeps twice the usual reserves; Balanced (the default) sells 50%; Trade sells 100%. Each sale rounds down to whole units, with no fixed unit cap. Exports pay one treasury gold per wheat and two per timber or stone. Existing saved policy choices retain their names and gain the corresponding percentage on the next merchant visit; past visits are not rerun.
 
 ## Merchant, food, and transport
 

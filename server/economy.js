@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
 import { carryCapacity, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount } from '../shared/content.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE } from '../shared/market.js';
-import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, foodQuote, maxSaleQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
+import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, merchantExportPercent, foodQuote, maxSaleQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 
 const materials = Object.keys(RESOURCE_MARKET);
 const basics = ['wheat', 'timber', 'stone'];
@@ -252,16 +252,17 @@ export function economyDawn(sim, v) {
   const offered = wares.filter((_, index) => index !== seed % wares.length);
   v.merchant.stock = Object.fromEntries(offered.map(id => [id, MERCHANT_STOCK[id]]));
   v.merchant.prices = Object.fromEntries(offered.map((id, index) => [id, Math.max(1, Math.floor(MERCHANT_PRICES[id] * (index ? .8 : .7)))]));
-  const reserves = exportReserves(v), cap = v.policies.exportPriority === 'conserve' ? 40 : v.policies.exportPriority === 'trade' ? 120 : 80;
-  let exported = 0, gold = 0;
-  const manifest = [];
-  for (const id of basics) {
-    const amount = Math.min(cap, Math.max(0, v.stock[id] - reserves[id]));
-    if (!amount) continue;
-    const payout = amount * (id === 'wheat' ? 1 : 2);
-    v.stock[id] -= amount; v.treasury += payout; gold += payout; exported += amount; manifest.push(`${amount} ${id}`);
+  const reserves = exportReserves(v), percent = merchantExportPercent(v.policies.exportPriority);
+  // These policies divide by 4, 2 or 1, avoiding an overflowing stock × percent.
+  const shipment = basics.map(id => ({ id, amount: Math.floor(Math.max(0, v.stock[id] - reserves[id]) / (100 / percent)) })).filter(item => item.amount > 0);
+  const gold = shipment.reduce((sum, { id, amount }) => sum + amount * (id === 'wheat' ? 1 : 2), 0);
+  // Check the entire shipment before moving supplies; there is no unit cap.
+  const canExport = whole(gold) && whole(v.treasury) && gold <= Number.MAX_SAFE_INTEGER - v.treasury;
+  if (canExport) {
+    for (const { id, amount } of shipment) v.stock[id] -= amount;
+    v.treasury += gold;
   }
-  v.economy.lastExportGold = gold;
+  v.economy.lastExportGold = canExport ? gold : 0;
   let horses = 0;
   // Stable restocks are the sole automatic import. No basic resources are bought.
   const activePayroll = Object.values(v.players).filter(p => p.online).reduce((sum, p) => sum + (p.role === 'guard' ? v.policies.guardWage : p.role === 'priest' ? v.policies.priestWage : 0), 0);
@@ -269,7 +270,10 @@ export function economyDawn(sim, v) {
     horses = Math.min(3, Math.max(0, Math.floor((v.treasury - TREASURY_RESERVE - activePayroll * 2) / 50)));
     v.stable.stock = horses; v.treasury -= horses * 50;
   }
-  v.merchant.summary = `${exported ? `Exported ${manifest.join(', ')} for ${gold} treasury gold after reserving food and repairs.` : 'No surplus was safe to export.'}${horses ? ` Restocked ${horses} horses at 50 gold each.` : ''}`;
+  const summary = !shipment.length ? 'No surplus was safe to export.' : canExport
+    ? `Exported ${percent}% of surplus: ${shipment.map(({ id, amount }) => `${amount} ${id}`).join(', ')} for ${gold} treasury gold after reserving food and repairs.`
+    : 'The treasury cannot accept this surplus payment; supplies were retained.';
+  v.merchant.summary = `${summary}${horses ? ` Restocked ${horses} horses at 50 gold each.` : ''}`;
   sim.notice?.(v.id, 'The traveling merchant has arrived for the day.');
 }
 

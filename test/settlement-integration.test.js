@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.js';
+import { economyDawn, exportReserves } from '../server/economy.js';
 import { BUILDINGS, PLOTS, RESOURCES, canStand, plotSolids } from '../shared/world.js';
 
 async function fixture(t) {
@@ -119,6 +120,47 @@ test('changing jobs accrues only each role active time and cannot duplicate dawn
   assert.equal(owner.wallet, wallet + 18); assert.equal(owner.wageAccrued, 0);
   act(app, v, owner, { kind: 'role_change', role: 'guard' }); app.simulation.dawn(v);
   assert.equal(owner.wallet, wallet + 18, 'another role switch does not pay old participation a second time');
+});
+
+test('saved merchant policies export their percentage after SQLite restart without repeating a visit', async t => {
+  const cases = [
+    ['conserve', { wheat: 1000, timber: 2001, stone: 3002 }],
+    ['balanced', { wheat: 2001, timber: 4003, stone: 6005 }],
+    ['trade', { wheat: 4003, timber: 8007, stone: 12011 }]
+  ];
+  for (const [policy, sold] of cases) await t.test(policy, async t => {
+    const f = await fixture(t), { village: v } = await residents(f.app);
+    v.policies.exportPriority = policy;
+    v.day = 2; v.phase = 'night'; v.economy.lastDawn = 2;
+    v.stable.stock = 3;
+    const reserves = exportReserves(v);
+    const before = { wheat: reserves.wheat + 4003, timber: reserves.timber + 8007, stone: reserves.stone + 12011 };
+    Object.assign(v.stock, before);
+    f.app.simulation.saveAll();
+
+    await f.reload();
+    const recovered = f.app.simulation.villages.get(v.id);
+    assert.equal(recovered.policies.exportPriority, policy, 'existing saved policy needs no migration');
+    f.app.simulation.dawn(recovered);
+    assert.equal(recovered.day, 3);
+    assert.equal(recovered.merchant.visits, 1);
+    assert.equal(recovered.merchant.lastVisitDay, 3);
+    for (const resource of Object.keys(sold)) {
+      assert.equal(recovered.stock[resource], before[resource] - sold[resource], 'percentage applies to surplus, with whole-unit rounding');
+      assert.ok(recovered.stock[resource] >= reserves[resource], 'saved policy retains protected reserves');
+    }
+    assert.equal(recovered.economy.lastExportGold, sold.wheat + 2 * sold.timber + 2 * sold.stone);
+
+    const stock = structuredClone(recovered.stock), treasury = recovered.treasury;
+    const merchant = structuredClone(recovered.merchant), exportGold = recovered.economy.lastExportGold;
+    await f.reload();
+    const afterVisit = f.app.simulation.villages.get(v.id);
+    economyDawn(f.app.simulation, afterVisit);
+    assert.deepEqual(afterVisit.stock, stock, 'restart cannot sell the same visit twice');
+    assert.equal(afterVisit.treasury, treasury);
+    assert.equal(afterVisit.economy.lastExportGold, exportGold);
+    assert.deepEqual(afterVisit.merchant, merchant);
+  });
 });
 
 test('an owned rear barracks dispatches troops through a fully built neighborhood and the single gate', async t => {
