@@ -6,7 +6,7 @@ import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
 import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../shared/workers.js';
 import { plotStorageCapacity, productionRegrowSeconds, productionYield } from '../shared/production.js';
-import { stepNpcNavigation } from './navigation.js';
+import { resetNpcNavigation, stepNpcNavigation } from './navigation.js';
 
 const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss', 'worker_upgrade', 'worker_color']);
 const tools = { wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe' };
@@ -125,12 +125,14 @@ export function workersAction(sim, v, p, action) {
     if (action.mode === 'store' && (typeof action.destinationPlotId !== 'string' || !destinationPlot(v, order))) throw new Error('Choose one of your living buildings for storage.');
     if (action.mode === 'sell' && action.destinationPlotId !== null) throw new Error('Resource Exchange sales do not need a storage building.');
     Object.assign(w, { resource: action.resource, sourcePlotId: action.sourcePlotId, mode: action.mode, destinationPlotId: action.mode === 'store' ? action.destinationPlotId : null,
-      paused: false, status: 'Starting work', targetNodeId: null, gatherProgress: 0, delivering: hasCargo(w), nextSearchAt: 0 });
+      paused: false, status: 'Starting work', targetNodeId: null, gatherProgress: 0, delivering: hasCargo(w), nextSearchAt: 0, stalledFor: 0 });
+    resetNpcNavigation(w);
     return 'Worker assigned. Work continues day and night while you are online.';
   }
   if (action.kind === 'worker_pause') {
     if (typeof action.paused !== 'boolean') throw new Error('Choose whether to pause your worker.');
     w.paused = action.paused; w.gatherProgress = 0; w.targetNodeId = null;
+    w.stalledFor = 0; resetNpcNavigation(w);
     w.status = w.paused ? 'Returning to treasury — paused' : 'Starting work';
     return w.paused ? 'Worker paused and returning to the treasury with their cargo.' : 'Worker will resume the saved assignment, day or night.';
   }
@@ -220,6 +222,16 @@ function move(w, target, dt, neighbors, solids, p = null) {
   const speed = workerStats(w).speed;
   stepNpcNavigation(w, destination, speed, dt, neighbors, solids);
   const moved = distance(before, w);
+  if (moved > .001) w.stalledFor = 0;
+  else if (distance(w, destination) > .7) {
+    w.stalledFor = (Number.isFinite(w.stalledFor) ? w.stalledFor : 0) + dt;
+    if (w.stalledFor >= 2) {
+      // A fresh command or a long crowd/obstacle stall must not inherit a
+      // failed cached route forever. Replan and release the current node so a
+      // later tick can choose another reachable approach.
+      resetNpcNavigation(w); w.targetNodeId = null; w.nextSearchAt = 0; w.stalledFor = 0;
+    }
+  }
   if (p && moved > .001) payForTime(w, p, Math.min(dt, moved / speed));
   return moved > .001;
 }

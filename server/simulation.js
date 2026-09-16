@@ -417,7 +417,7 @@ export class Simulation {
     for (const player of Object.values(village.players)) refreshCrateMilestones(this, player.id);
     village.phase = 'day'; village.phaseRemaining = this.daySeconds; village.day++; village.warningSent = false; village.siegeNight = false;
     village.spawned = 0; village.waveCount = 0; village.nextSpawn = 0;
-    village.treasury += 1000 * survived;
+    village.treasury += Math.min(5000, 1000 * survived);
     economyDawn(this, village);
     for (const player of Object.values(village.players)) {
       if (player.downed) player.respawnAvailable = true;

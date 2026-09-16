@@ -52,7 +52,7 @@ test('loans fund approved purchases and preserve debt, credit and bank across re
   assert.equal(sim.store.loadVillages()[0].loanPool.lent, 100);
   assert.equal(transportSnapshot(village, other.id, sim.store).loan.debt, 0);
   assert.equal(transportSnapshot(village, other.id, sim.store).loan.credit, 0);
-  assert.throws(() => act(p, { kind: 'loan', amount: 101 }), /Outstanding loans/);
+  assert.throws(() => act(p, { kind: 'loan', amount: 901 }), /Outstanding loans/);
   assert.equal(village.treasury, 2400);
 });
 
@@ -61,7 +61,7 @@ test('loan pool and treasury reserve reject unfunded issuance without altering a
   near(p, 'bank'); village.treasury = 1050;
   assert.throws(() => act(p, { kind: 'loan', amount: 100 }), /1,000/);
   assert.equal(sim.store.account(p.id).debt, 0); assert.equal(village.loanPool.lent, 0);
-  village.treasury = 2500; village.loanPool.lent = 480;
+  village.treasury = 2500; village.loanPool.lent = 7980;
   assert.throws(() => act(p, { kind: 'loan', amount: 100 }), /pool/);
   assert.equal(sim.store.account(p.id).credit, 0);
   assert.throws(() => sim.store.transaction(() => { sim.store.transaction(() => sim.store.issueCredit(p.id, 100)); throw new Error('rollback'); }), /rollback/);

@@ -40,7 +40,14 @@ export function createTransportWorld(scene) {
     }
     const cargo = new THREE.Group(); group.add(cargo);
     for (const side of [-1, 1]) part(cargo, soft, m.cargo, [side * .39, 1, 0], [.4, .46, .7]);
-    group.userData = { wheels, cargo }; root.add(group); return group;
+    // A real rear storage chest replaces the old floating-cargo impression.
+    const chest = new THREE.Group(); chest.position.set(0, .86, -1.18); group.add(chest);
+    part(chest, box, m.dark, [0, .25, 0], [1.25, .48, .62]);
+    part(chest, box, m.wood, [0, .27, 0], [1.12, .38, .56]);
+    const lidPivot = new THREE.Group(); lidPivot.position.set(0, .52, -.28); chest.add(lidPivot);
+    part(lidPivot, box, m.wood, [0, .06, .28], [1.16, .12, .62]);
+    part(lidPivot, box, m.iron, [0, .08, .28], [.12, .15, .66]);
+    group.userData = { wheels, cargo, chest, lidPivot, lidOpen: 0 }; root.add(group); return group;
   }
   function sync(map, entities, make, dt, animate, renderedRiders) {
     const ids = new Set();
@@ -74,7 +81,7 @@ export function createTransportWorld(scene) {
   return {
     root,
     get torchFixtures(){return merchantVisit?.group.visible?merchantVisit.getTorchFixtures?.()||[]:[];},
-    update(state, dt = 1 / 60, renderedRiders) {
+    update(state, dt = 1 / 60, renderedRiders, openCartId = null) {
       if (disposed) return;
       if (!state) { if (merchantVisit) merchantVisit.group.visible = false; return; }
       dt = Math.min(.1, Math.max(0, dt)); time += dt;
@@ -94,6 +101,9 @@ export function createTransportWorld(scene) {
       sync(carts, state.carts, cartMesh, dt, (mesh, cart, distance) => {
         mesh.userData.wheels.forEach(wheel => { wheel.rotation.x += distance * .32; });
         mesh.userData.cargo.visible = (cart.weight ?? 0) > 0;
+        const target = cart.id === openCartId ? -1.15 : 0;
+        mesh.userData.lidOpen += (target - mesh.userData.lidOpen) * (1 - Math.exp(-10 * dt));
+        mesh.userData.lidPivot.rotation.x = mesh.userData.lidOpen;
       });
     },
     dispose() {

@@ -247,7 +247,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     let html = head('RESOURCE EXCHANGE', 'Bring your haul to the counter.', 'Trade shared village supplies with the market keeper. Prices follow village stock; every bundle includes its changing unit prices and tax.');
     html += '<div class="settlement-stats market-summary">' + [['Wallet', 'market-wallet', `${num(p.wallet)} gold`], ['Village treasury', 'market-treasury', `${num(s.treasury)} gold`], ['Carried weight', 'market-carry', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Trading tax', 'market-tax', `${num(tax)}%`]].map(([name, id, text]) => `<div><span>${esc(name)}</span><strong id="${id}">${esc(text)}</strong></div>`).join('') + '</div>';
     html += deliveries('bank');
-    html += `<p>Enter a whole quantity to buy or sell. “Sell max” sells the largest bundle of that resource the treasury can currently afford, preserving its ${TREASURY_RESERVE} gold reserve.</p><div class="market-resource-grid">`;
+    const quickSellReady = resources.some(id => transferableCount(p, id) > 0) && s.treasury > TREASURY_RESERVE;
+    html += `<p>Enter a whole quantity to buy or sell. “Sell max” sells one resource; “Quick Sell all carried resources” sells every eligible raw resource the treasury can afford while preserving its ${TREASURY_RESERVE} gold reserve.</p><div class="panel-actions market-quick-sell">${command('Quick Sell all carried resources', 'sell_all', {}, !quickSellReady)}</div><div class="market-resource-grid">`;
     for (const [resource, info] of Object.entries(RESOURCE_MARKET)) {
       if (!tradeAmounts.has(resource)) tradeAmounts.set(resource, '10');
       const trade = quoteTrade(resource); displayedTrades.set(resource, trade);
@@ -731,5 +732,5 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     return waypoint;
   }
-  return { show, refresh, getWaypoint, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
+  return { show, refresh, getWaypoint, getCurrent: () => current ? { ...current } : null, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
 }

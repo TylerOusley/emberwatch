@@ -171,3 +171,7 @@ export function stepNpcNavigation(entity, target, speed, dt, neighbors = [], ext
   if (moved > .001) { entity.yaw = Math.atan2(entity.x - before.x, entity.z - before.z); entity.anim = 'walk'; }
   else entity.anim = 'idle';
 }
+
+export function resetNpcNavigation(entity) {
+  if (entity && typeof entity === 'object') routes.delete(entity);
+}

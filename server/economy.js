@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
 import { carryCapacity, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount } from '../shared/content.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE } from '../shared/market.js';
-import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, foodQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
+import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, foodQuote, maxSaleQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 
 const materials = Object.keys(RESOURCE_MARKET);
 const basics = ['wheat', 'timber', 'stone'];
@@ -29,7 +29,9 @@ export function ensureEconomy(v) {
   v.proposals ||= [];
   v.steward ||= { lastDecision: 'The treasury is keeping reserves for food, repairs and wages.' };
   v.stable ||= { stock: 0 };
-  v.merchant ||= { present: false, lastVisitDay: 0, visits: 0, stock: {}, summary: 'The merchant first visits on day 3, then every other day.' };
+  v.merchant ||= { present: false, lastVisitDay: 0, visits: 0, stock: {}, prices: {}, summary: 'The merchant first visits on day 3, then every other day.' };
+  v.merchant.prices ||= {};
+  for (const id of Object.keys(v.merchant.stock ?? {})) if (own(MERCHANT_PRICES, id) && !whole(v.merchant.prices[id], 1)) v.merchant.prices[id] = Math.max(1, Math.floor(MERCHANT_PRICES[id] * .8));
   v.economy ||= { lastDawn: v.day, lastExportGold: 0, lastTaxes: 0 };
   for (const p of Object.values(v.players)) {
     p.landDebt ??= 0;
@@ -111,7 +113,7 @@ function decide(v, proposal) {
 
 export function economyAction(sim, v, p, action) {
   const { kind } = action;
-  if (!['propose_policy', 'vote_policy', 'sell', 'buyResource', 'buyFood', 'eat', 'merchant_buy', 'pay_land_debt'].includes(kind) && !(kind === 'donate' && !action.targetId)) return null;
+  if (!['propose_policy', 'vote_policy', 'sell', 'sell_all', 'buyResource', 'buyFood', 'eat', 'merchant_buy', 'pay_land_debt'].includes(kind) && !(kind === 'donate' && !action.targetId)) return null;
   ensureEconomy(v);
   if (kind === 'propose_policy') {
     if (!near(p, 'bank') && !near(p, 'keep')) throw new Error('Visit the treasury or Hearthkeep to propose village policy.');
@@ -145,6 +147,21 @@ export function economyAction(sim, v, p, action) {
     p.inventory[resource] -= amount; v.stock[resource] += amount; v.treasury -= quote.total;
     addIncome(sim, v, p, quote.total);
     return `Sold ${amount} ${resource} for ${quote.total} gold${quote.tax ? ` after ${quote.tax} gold tax` : ''}. Gold added to your wallet.`;
+  }
+  if (kind === 'sell_all') {
+    requireMarket(p);
+    let units = 0, proceeds = 0;
+    const sold = [];
+    for (const resource of materials) {
+      const carried = transferableCount(p, resource);
+      if (!carried) continue;
+      const { amount, quote } = maxSaleQuote({ resource, stock: v.stock[resource], carried, treasury: v.treasury, percent: v.policies.tradeTax });
+      if (!amount) continue;
+      p.inventory[resource] -= amount; v.stock[resource] += amount; v.treasury -= quote.total;
+      addIncome(sim, v, p, quote.total); units += amount; proceeds += quote.total; sold.push(`${amount} ${resource}`);
+    }
+    if (!units) throw new Error(`The village cannot currently buy any carried resources while keeping its ${TREASURY_RESERVE}-gold reserve.`);
+    return `Quick sold ${sold.join(', ')} for ${proceeds} gold. Equipped gear and stored goods were not included.`;
   }
   if (kind === 'buyResource') {
     requireMarket(p);
@@ -181,10 +198,10 @@ export function economyAction(sim, v, p, action) {
     if (!v.merchant.present || v.phase !== 'day' || v.merchant.lastVisitDay !== v.day) throw new Error('The traveling merchant returns on the morning after every second night.');
     if (!near(p, 'merchant')) throw new Error('Visit the traveling merchant to buy specialist supplies.');
     const { resource, amount } = action;
-    if (!own(MERCHANT_PRICES, resource)) throw new Error('The merchant sells iron, coal and arrows. Basic resources must be gathered by dwarfs.');
+    if (!own(v.merchant.prices, resource)) throw new Error('Choose one of the goods offered on this visit.');
     if (!whole(amount, 1, 60)) throw new Error('Buy a whole amount from 1 to 60.');
     if ((v.merchant.stock[resource] ?? 0) < amount) throw new Error('The merchant does not have enough stock.');
-    const price = MERCHANT_PRICES[resource] * amount;
+    const price = v.merchant.prices[resource] * amount;
     if (p.wallet < price) throw new Error(`You need ${price} gold.`);
     capacity(p, resource, amount);
     p.wallet -= price; p.inventory[resource] += amount; v.merchant.stock[resource] -= amount;
@@ -230,7 +247,11 @@ export function economyDawn(sim, v) {
   v.economy.lastTaxes = taxes;
   v.merchant.present = v.day > 1 && v.day % 2 === 1;
   if (!v.merchant.present) return;
-  v.merchant.lastVisitDay = v.day; v.merchant.visits++; v.merchant.stock = { ...MERCHANT_STOCK };
+  v.merchant.lastVisitDay = v.day; v.merchant.visits++;
+  const wares = Object.keys(MERCHANT_STOCK), seed = [...`${v.id}:${v.day}:${v.merchant.visits}`].reduce((n, c) => (Math.imul(n, 33) + c.charCodeAt(0)) >>> 0, 5381);
+  const offered = wares.filter((_, index) => index !== seed % wares.length);
+  v.merchant.stock = Object.fromEntries(offered.map(id => [id, MERCHANT_STOCK[id]]));
+  v.merchant.prices = Object.fromEntries(offered.map((id, index) => [id, Math.max(1, Math.floor(MERCHANT_PRICES[id] * (index ? .8 : .7)))]));
   const reserves = exportReserves(v), cap = v.policies.exportPriority === 'conserve' ? 40 : v.policies.exportPriority === 'trade' ? 120 : 80;
   let exported = 0, gold = 0;
   const manifest = [];
@@ -258,7 +279,7 @@ export function economySnapshot(v, viewerId) {
     policies: { ...v.policies },
     proposals: v.proposals.map(p => ({ id: p.id, policy: p.policy, value: p.value, proposerId: p.proposerId, proposerName: p.proposerName, day: p.day, status: p.status, yes: Object.values(p.votes).filter(Boolean).length, no: Object.values(p.votes).filter(vote => !vote).length, required: p.required, myVote: p.votes[viewerId] ?? null, canVote: p.status === 'voting' && p.eligible.includes(viewerId) && !own(p.votes, viewerId), reason: p.reason, effectiveDay: p.effectiveDay })),
     steward: { ...v.steward, exportReserves: exportReserves(v) },
-    merchant: { ...v.merchant, present: v.merchant.present && v.phase === 'day' && v.merchant.lastVisitDay === v.day, stock: { ...v.merchant.stock }, prices: MERCHANT_PRICES },
+    merchant: { ...v.merchant, present: v.merchant.present && v.phase === 'day' && v.merchant.lastVisitDay === v.day, stock: { ...v.merchant.stock }, prices: { ...v.merchant.prices } },
     stable: { ...v.stable },
     foodQuotes: Object.fromEntries(Object.keys(FOOD).map(tier => [tier, foodQuote(v.stock.wheat, tier)])),
     landDebt: v.players[viewerId]?.landDebt ?? 0

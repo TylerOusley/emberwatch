@@ -148,7 +148,11 @@ test('merchant visits every other dawn, exports only surplus, and restocks only 
   assert.equal(v.merchant.present, true); assert.equal(v.stable.stock, 3); assert.equal(v.merchant.visits, 1);
   for (const id of ['wheat', 'timber', 'stone']) { assert.ok(v.stock[id] >= reserve[id]); assert.ok(v.stock[id] < original[id]); }
   assert.equal(v.stock.iron, 5); assert.equal(v.stock.coal, 5);
-  assert.deepEqual(v.merchant.stock, { iron: 30, coal: 30, arrows: 60 });
+  assert.equal(Object.keys(v.merchant.stock).length, 2, 'each visit offers a random subset');
+  for (const [id, stock] of Object.entries(v.merchant.stock)) {
+    assert.equal(stock, { iron: 30, coal: 30, arrows: 60 }[id]);
+    assert.ok(v.merchant.prices[id] < { iron: 9, coal: 7, arrows: 3 }[id], `${id} is discounted`);
+  }
   const saved = JSON.stringify(v); economyDawn(sim, v); assert.equal(JSON.stringify(v), saved);
   v.stable.stock = 1; v.day = 4; economyDawn(sim, v); assert.equal(v.merchant.present, false);
   v.day = 5; economyDawn(sim, v); assert.equal(v.stable.stock, 1, 'a partially stocked stable is not topped up automatically');
@@ -167,9 +171,21 @@ test('merchant preserves scarce basic stock and a tight treasury cannot buy hors
 test('specialist merchant purchases are finite, local and never import basic resources', () => {
   const { v, p, sim } = fixture();
   v.day = 3; economyDawn(sim, v); visit(p, 'merchant');
+  const price = v.merchant.prices.iron;
   economyAction(sim, v, p, { kind: 'merchant_buy', resource: 'iron', amount: 2 });
-  assert.equal(p.inventory.iron, 2); assert.equal(v.merchant.stock.iron, 28); assert.equal(p.wallet, 482);
-  for (const resource of ['wheat', 'timber', 'stone', 'iron_pickaxe', '__proto__']) rejected(v, () => economyAction(sim, v, p, { kind: 'merchant_buy', resource, amount: 1 }), /Basic resources/);
-  rejected(v, () => economyAction(sim, v, p, { kind: 'merchant_buy', resource: 'arrows', amount: -5 }), /whole amount/);
-  v.phase = 'night'; rejected(v, () => economyAction(sim, v, p, { kind: 'merchant_buy', resource: 'arrows', amount: 1 }), /returns/);
+  assert.equal(p.inventory.iron, 2); assert.equal(v.merchant.stock.iron, 28); assert.equal(p.wallet, 500 - price * 2);
+  for (const resource of ['wheat', 'timber', 'stone', 'iron_pickaxe', '__proto__']) rejected(v, () => economyAction(sim, v, p, { kind: 'merchant_buy', resource, amount: 1 }), /offered/);
+  rejected(v, () => economyAction(sim, v, p, { kind: 'merchant_buy', resource: 'iron', amount: -5 }), /whole amount/);
+  v.phase = 'night'; rejected(v, () => economyAction(sim, v, p, { kind: 'merchant_buy', resource: 'iron', amount: 1 }), /returns/);
+});
+
+test('Quick Sell sells every affordable carried raw resource without touching food or equipment', () => {
+  const { v, p, sim } = fixture(); visit(p, 'market');
+  Object.assign(p.inventory, { wheat: 8, timber: 5, stone: 3, iron: 2, coal: 1, food: 4, arrows: 9 });
+  const before = v.treasury + p.wallet;
+  const message = economyAction(sim, v, p, { kind: 'sell_all' });
+  assert.match(message, /Quick sold/);
+  for (const id of ['wheat', 'timber', 'stone', 'iron', 'coal']) assert.equal(p.inventory[id], 0, id);
+  assert.equal(p.inventory.food, 4); assert.equal(p.inventory.arrows, 9);
+  assert.equal(v.treasury + p.wallet, before, 'sale conserves gold');
 });
