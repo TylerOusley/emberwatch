@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — percentage merchant exports build 23.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — tavern controls build 24.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 24 fixes tavern button presses being interrupted when wallet or treasury updates rebuild the menu. Controls retain the active press while still checking current funds before accepting a bet. Clear guidance beside Place bet explains invalid stakes and unavailable funds. The same interaction protection covers village investment controls. Betting odds, payouts, wallet funding, the treasury reserve and entrance requirements keep their existing rules.
 
 Build 23 removes the steward's fixed 40/80/120-unit merchant export limits. Council policies now sell 25% (Conserve), 50% (Balanced, the default), or 100% (Trade) of surplus wheat, timber and stone at each visit. Food and repair reserves are protected before calculating the percentage, and sales round down to whole units. Conserve retains its larger reserve. Existing villages keep their selected policy; the council and merchant screens show its percentage.
 

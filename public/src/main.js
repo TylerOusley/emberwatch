@@ -204,7 +204,8 @@ function showMenu(){
 }
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
- openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 23</p><h2>Put your surplus to work.</h2><p>The steward now sells a percentage of surplus goods at each merchant visit, with no fixed unit cap.</p></div><span>${itemArt('gold')}</span></header><div class="build-feature-grid">
+ openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 24</p><h2>Tavern bets stay responsive.</h2><p>Changing village balances no longer interrupt a button press at the tavern. Clear stake guidance explains when a bet is unavailable.</p></div><span>${itemArt('gold')}</span></header><div class="build-feature-grid">
+ ${feature(buildingArt('house'),'Reliable tavern controls','Wallet and treasury updates keep your button press intact. The tavern explains stake limits beside Place bet, and checks current funds before accepting a wager.')}
  ${feature(itemArt('gold'),'Merchant exports by percentage','Choose Conserve (25%), Balanced (50%) or Trade (100%) through the Village Council. The steward sets aside food and repair reserves first, then sells that share of the remaining wheat, timber and stone.')}
  ${feature(buildingArt('mine'),'Stable mine lighting','Nearby torches reuse one fixed light pool as you enter and leave the mine, avoiding repeated lighting shader changes at the entrance. Cave lighting, mining and camera collision stay intact.')}
  ${feature(itemArt('gold'),'Quick Sell your haul','Sell every eligible carried raw resource in one protected transaction while the treasury keeps its emergency reserve. Personal loans now allow up to 1,000 gold of outstanding purchase credit.')}

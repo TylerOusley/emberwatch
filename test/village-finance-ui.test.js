@@ -19,7 +19,7 @@ function fixture(options={}) {
     for(const [,attr] of html.matchAll(/<(?:div|strong|p)\b([^>]*\bid="[^"]+"[^>]*)>/g)){const id=attr.match(/id="([^"]+)"/)[1];fields.set(id,{id,innerHTML:'',textContent:''});}
     nodes=[...buttons,...inputs,...fields.values()];
   }});
-  return {ui,state,me,sent,marked,timers,storage,doc,fields,get html(){return html;},get renders(){return renders;},get inputs(){return inputs;},get buttons(){return buttons;},button(label){const b=buttons.find(b=>b.label===label);assert.ok(b,'Missing '+label);return b;},click(label){const b=this.button(label);assert.equal(b.disabled,false,'Disabled '+label);return b.onclick();},type(name,value){const input=inputs.find(i=>i.dataset.vfInput===name);assert.ok(input,'Missing input '+name);input.focus();input.value=value;input.selectionStart=input.selectionEnd=value.length;input.oninput();return input;},visit(id){Object.assign(me,buildingEntrance(BUILDINGS.find(b=>b.id===id)));},setConnected(value){connected=value;ui.update();},close(){panel=null;},receipt(extra={}){const action=sent.at(-1);const receipt={...action,id:action.requestId,requestId:action.requestId,message:'Saved by the server',day:state.day,clock:123,...extra};state.finance.receipts.unshift(receipt);ui.update();return receipt;}};
+  return {ui,state,me,sent,marked,timers,storage,doc,fields,get html(){return html;},get renders(){return renders;},get inputs(){return inputs;},get buttons(){return buttons;},button(label){const b=buttons.find(b=>b.label===label);assert.ok(b,'Missing '+label);return b;},click(label){const b=this.button(label);assert.equal(b.disabled,false,'Disabled '+label);return b.onclick();},press(label,{key=null}={}){const b=this.button(label);assert.equal(b.disabled,false,'Disabled '+label);doc.activeElement=b;b.activationKey=key;if(key)b.onkeydown?.({key});else b.onpointerdown?.({button:0});return b;},release(b,{cancel=false,beforeClick=()=>{}}={}){if(cancel){b.onpointercancel?.();return;}if(b.activationKey)b.onkeyup?.({key:b.activationKey});else b.onpointerup?.();beforeClick();if(buttons.includes(b)&&!b.disabled)b.onclick();for(const [id,timer] of [...timers])if(timer.delay===0){timers.delete(id);timer.fn();}},type(name,value){const input=inputs.find(i=>i.dataset.vfInput===name);assert.ok(input,'Missing input '+name);input.focus();input.value=value;input.selectionStart=input.selectionEnd=value.length;input.oninput();return input;},visit(id){Object.assign(me,buildingEntrance(BUILDINGS.find(b=>b.id===id)));},setConnected(value){connected=value;ui.update();},close(){panel=null;},receipt(extra={}){const action=sent.at(-1);const receipt={...action,id:action.requestId,requestId:action.requestId,message:'Saved by the server',day:state.day,clock:123,...extra};state.finance.receipts.unshift(receipt);ui.update();return receipt;}};
 }
 
 test('quotes expose exact win chance, total return versus profit, and wallet/liquidity limits',()=>{
@@ -59,6 +59,56 @@ test('coin bets commit before animation, ignore double clicks, and Skip shows th
   const receipt=f.receipt({game:'coinflip',outcome:'tails',stake:10,payout:20,net:10,win:true,walletAfter:510,treasuryAfter:7990,message:'Tails wins 10 gold!'});
   assert.match(f.html,/vf-coin spinning/);assert.doesNotMatch(f.html,/Tails wins 10 gold!/);assert.equal(f.timers.size,1);assert.equal(f.ui.receive({type:'notice',requestId:receipt.requestId,message:receipt.message}),true,'generic notice cannot spoil reveal');
   f.click('Skip reveal');assert.match(f.html,/Tails · You won 10 gold profit/);assert.match(f.html,/total returned 20g/);assert.match(f.html,/--coin-rest:180deg/);assert.equal(f.timers.size,0);assert.equal(f.sent.length,1);assert.equal(f.me.wallet,500,'balance changes wait for state snapshots');
+});
+
+test('a bet click survives changing balances while the button is pressed',()=>{
+  const f=fixture();f.visit('merchant');f.ui.showTavern();
+  const button=f.press('Place bet'),renders=f.renders;
+  f.state.treasury-=1;f.me.wallet+=1;f.ui.update();
+  assert.equal(f.button('Place bet'),button,'a snapshot cannot detach the native click target');
+  assert.equal(f.renders,renders);assert.equal(button.disabled,false);
+  f.release(button,{beforeClick(){f.state.treasury-=1;f.ui.update();assert.equal(f.button('Place bet'),button,'pointerup still waits for the native click');}});
+  assert.equal(f.sent.length,1);assert.equal(f.sent[0].kind,'tavern_bet');assert.equal(f.sent[0].stake,10);
+  assert.match(f.html,/Waiting for your bet to be saved/);assert.match(f.html,/501g/);
+});
+
+test('cancelling a press allows the next snapshot to refresh the panel',()=>{
+  const f=fixture();f.visit('merchant');f.ui.showTavern();
+  const button=f.press('Place bet'),renders=f.renders;
+  f.state.treasury-=1;f.ui.update();assert.equal(f.button('Place bet'),button);
+  f.release(button,{cancel:true});f.ui.update();
+  assert.equal(f.renders,renders+1);assert.match(f.html,/7,999g/);assert.equal(f.sent.length,0);
+});
+
+test('keyboard activation preserves the bet target until its native click',()=>{
+  for(const key of [' ','Enter']){
+    const f=fixture();f.visit('merchant');f.ui.showTavern();const button=f.press('Place bet',{key});
+    f.state.treasury-=1;f.ui.update();assert.equal(f.button('Place bet'),button,key);
+    f.release(button,{beforeClick(){f.state.treasury-=1;f.ui.update();assert.equal(f.button('Place bet'),button,key);}});
+    assert.equal(f.sent.length,1,key);assert.equal(f.timers.size,0,'release fallback cannot linger after a click');
+  }
+});
+
+test('funds and connection changes still block a bet during button activation',()=>{
+  for(const changed of ['wallet','liquidity','connection']){
+    const f=fixture();f.visit('merchant');f.ui.showTavern();const button=f.press('Place bet');
+    if(changed==='wallet')f.me.wallet=5;
+    else if(changed==='liquidity')f.state.tavern.coinflipMaximumStake=5;
+    else f.setConnected(false);
+    f.ui.update();assert.equal(f.button('Place bet').disabled,true,changed);
+    f.release(button);assert.equal(f.sent.length,0,changed);
+    f.ui.update();assert.equal(f.button('Place bet').disabled,true,changed);
+  }
+});
+
+test('bet validation explains the current restriction beside Place bet',()=>{
+  const f=fixture();f.visit('merchant');f.ui.showTavern();assert.match(f.html,/Ready to bet 10g/);
+  f.type('stake','1.5');assert.match(f.fields.get('vf-bet-validation').textContent,/whole-gold stake from 1 to 500g/);
+  f.type('stake','10');f.me.wallet=0;f.ui.update();assert.match(f.fields.get('vf-bet-validation').textContent,/at least 1 gold in your wallet/);
+  f.me.wallet=500;f.state.tavern.coinflipMaximumStake=0;f.ui.update();assert.match(f.fields.get('vf-bet-validation').textContent,/treasury cannot cover a win/);
+  f.state.tavern.coinflipMaximumStake=500;f.me.x=0;f.me.z=0;f.ui.update();assert.match(f.fields.get('vf-bet-validation').textContent,/Visit The Wayfarer entrance/);
+  f.visit('merchant');f.me.mountedHorseId='horse';f.ui.update();assert.match(f.fields.get('vf-bet-validation').textContent,/Stand on foot/);
+  f.me.mountedHorseId=null;f.setConnected(false);assert.match(f.fields.get('vf-bet-validation').textContent,/Reconnect to the village/);
 });
 
 test('roulette offers all 37 numbers, precise straight-number stake limits and zero loss on outside bets',()=>{

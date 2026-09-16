@@ -37,7 +37,7 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
   document: doc = globalThis.document, storage = safeStorage(), makeRequestId = () => globalThis.crypto.randomUUID(), reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
   schedule = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
   let view = 'investments', game = 'coinflip', coinChoice = 'heads', rouletteChoice = 'red', number = 1, stake = '10', deposit = '10', withdrawal = '10';
-  let context = null, pending = null, result = null, resultVisible = true, error = '', message = '', handlers = [], controls = new Map(), signature = '', timer = null, lastReceiptId = null;
+  let context = null, pending = null, result = null, resultVisible = true, error = '', message = '', handlers = [], controls = new Map(), signature = '', timer = null, lastReceiptId = null, pressedButton = null, pressTimer = null;
   const active = () => ['investments', 'tavern'].includes(getActivePanel());
   const state = () => getState() || {};
   const me = () => getMe() || {};
@@ -76,6 +76,26 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     const index = handlers.push(callback) - 1;
     if (control) controls.set(control, index);
     return `<button type="button" class="${className}" data-vf-action="${index}"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ''}${disabled ? ' disabled' : ''}>${label}</button>`;
+  }
+  function clearPress() { cancel(pressTimer); pressTimer = null; pressedButton = null; }
+  function beginPress(node) { clearPress(); if (!node.disabled) pressedButton = node; }
+  function endPress(node, defer = false) {
+    if (pressedButton !== node) return;
+    cancel(pressTimer); pressTimer = null;
+    // Native click follows pointerup/keyup. Let it run before any replacement;
+    // the fallback also releases a disabled or abandoned button that cannot click.
+    if (defer) { pressTimer = schedule(() => endPress(node), 0); return; }
+    clearPress(); if (active()) update();
+  }
+  function betHint() {
+    if (pending) return 'Wait for the saved result, or recover the pending action above.';
+    if (!isConnected()) return 'Reconnect to the village before placing a bet.';
+    if (!resultVisible) return 'Wait for the result or skip the reveal to bet again.';
+    if (!local('tavern')) return standing() ? 'Visit The Wayfarer entrance to place your bet.' : 'Stand on foot in an active village to place your bet.';
+    if (wallet() < 1) return 'You need at least 1 gold in your wallet to bet. Bank savings and loans cannot be wagered.';
+    const q = quote();
+    if (q.maximum < 1) return 'The village treasury cannot cover a win for this choice yet.';
+    return q.valid ? `Ready to bet ${gold(q.stake)}g.` : `Enter a whole-gold stake from 1 to ${gold(q.maximum)}g for this choice.`;
   }
   function transaction(kind, extra = {}, gate = null) {
     if (!ensureContext() || pending || gate && !enabled(gate)) return;
@@ -124,7 +144,7 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
   }
   function wagerControls() {
     const q = quote();
-    return `<section class="vf-wager"><div><label for="vf-stake">Your stake · virtual wallet gold</label><input id="vf-stake" data-vf-input="stake" type="text" inputmode="numeric" autocomplete="off" value="${esc(stake)}"${pending || !resultVisible ? ' disabled' : ''}><div class="vf-chip-row">${[1,10,100].map(n => button(`+${n}`, () => { if(pending || !resultVisible)return; stake=String(Math.min(quote().maximum, Math.max(0, Number(stake)||0)+n));render(); }, { disabled: pending || !resultVisible || q.maximum < 1, className: 'vf-chip' })).join('')}${button('Max', () => { if(pending || !resultVisible)return;stake=String(quote().maximum);render(); }, { disabled: pending || !resultVisible || q.maximum < 1, className: 'vf-chip' })}</div><p class="vf-hint">Allowed: 1–1,000g. Maximum for this choice now: <strong id="vf-stake-limit">${gold(q.maximum)}g</strong>, limited by your wallet and village liquidity.</p></div><div class="vf-bet-quote" id="vf-bet-quote"><span>CHANCE OF WINNING</span><strong>${q.odds}</strong><dl><div><dt>Total return on a win</dt><dd>${gold(q.total)}g</dd></div><div><dt>Profit on a win</dt><dd>+${gold(q.profit)}g</dd></div><div><dt>Loss if you lose</dt><dd>${gold(q.stake)}g</dd></div></dl><small>Total return includes your stake. ${game === 'roulette' ? 'Zero loses red, black, even, and odd bets.' : 'Heads and tails are equally likely.'}</small></div>${button('Place bet', () => { if (!enabled('bet'))return; transaction('tavern_bet', { game, stake: Number(stake), choice: game === 'coinflip' ? coinChoice : rouletteChoice, ...(game === 'roulette' && rouletteChoice === 'number' ? { number } : {}) }, 'bet'); }, { control: 'bet', disabled: !enabled('bet'), className: 'vf-button primary vf-place-bet' })}</section>`;
+    return `<section class="vf-wager"><div><label for="vf-stake">Your stake · virtual wallet gold</label><input id="vf-stake" data-vf-input="stake" type="text" inputmode="numeric" autocomplete="off" value="${esc(stake)}"${pending || !resultVisible ? ' disabled' : ''}><div class="vf-chip-row">${[1,10,100].map(n => button(`+${n}`, () => { if(pending || !resultVisible)return; stake=String(Math.min(quote().maximum, Math.max(0, Number(stake)||0)+n));render(); }, { disabled: pending || !resultVisible || q.maximum < 1, className: 'vf-chip' })).join('')}${button('Max', () => { if(pending || !resultVisible)return;stake=String(quote().maximum);render(); }, { disabled: pending || !resultVisible || q.maximum < 1, className: 'vf-chip' })}</div><p class="vf-hint">Allowed: 1–1,000g. Maximum for this choice now: <strong id="vf-stake-limit">${gold(q.maximum)}g</strong>, limited by your wallet and village liquidity.</p></div><div class="vf-bet-quote" id="vf-bet-quote"><span>CHANCE OF WINNING</span><strong>${q.odds}</strong><dl><div><dt>Total return on a win</dt><dd>${gold(q.total)}g</dd></div><div><dt>Profit on a win</dt><dd>+${gold(q.profit)}g</dd></div><div><dt>Loss if you lose</dt><dd>${gold(q.stake)}g</dd></div></dl><small>Total return includes your stake. ${game === 'roulette' ? 'Zero loses red, black, even, and odd bets.' : 'Heads and tails are equally likely.'}</small></div>${button('Place bet', () => { if (!enabled('bet'))return; transaction('tavern_bet', { game, stake: Number(stake), choice: game === 'coinflip' ? coinChoice : rouletteChoice, ...(game === 'roulette' && rouletteChoice === 'number' ? { number } : {}) }, 'bet'); }, { control: 'bet', disabled: !enabled('bet'), className: 'vf-button primary vf-place-bet' })}<p class="vf-hint" id="vf-bet-validation" style="grid-column:1/-1" aria-live="polite">${esc(betHint())}</p></section>`;
   }
   function resultView() {
     if (pending?.kind === 'tavern_bet') return '<div class="vf-await" role="status">Waiting for your bet to be saved. The coin or wheel starts after the outcome is confirmed.</div>';
@@ -146,6 +166,7 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     const nodes = content()?.querySelectorAll('[data-vf-action]') || [];
     for (const [kind, index] of controls) if(nodes[index])nodes[index].disabled=!enabled(kind);
     const q=quote(),limit=doc.getElementById('vf-stake-limit');if(limit)limit.textContent=gold(q.maximum)+'g';
+    const validation=doc.getElementById('vf-bet-validation');if(validation)validation.textContent=betHint();
     const depositLimit=doc.getElementById('vf-deposit-max');if(depositLimit)depositLimit.textContent=gold(depositMax())+'g';
     const withdrawLimit=doc.getElementById('vf-withdrawable');if(withdrawLimit)withdrawLimit.textContent=gold(withdrawMax())+'g';
     const quoteNode=doc.getElementById('vf-bet-quote');if(quoteNode)quoteNode.innerHTML=`<span>CHANCE OF WINNING</span><strong>${q.odds}</strong><dl><div><dt>Total return on a win</dt><dd>${gold(q.total)}g</dd></div><div><dt>Profit on a win</dt><dd>+${gold(q.profit)}g</dd></div><div><dt>Loss if you lose</dt><dd>${gold(q.stake)}g</dd></div></dl><small>Total includes your stake. ${game === 'roulette' ? 'Zero loses all outside bets.' : 'Heads and tails are equally likely.'}</small>`;
@@ -153,12 +174,23 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
   }
   function render() {
     if(!ensureContext())return;
+    clearPress();
     const focused=doc.activeElement,focusId=content()?.contains?.(focused)?focused.id:null,start=focused?.selectionStart,end=focused?.selectionEnd;
     handlers=[];controls=new Map();
     const scroll=doc.getElementById('panel-dialog')?.scrollTop||0;
     openPanel(`<div class="village-finance vf-${view}">${view === 'tavern' ? tavernView() : investmentView()}</div>`,view);
     const dialog=doc.getElementById('panel-dialog');if(dialog)dialog.scrollTop=scroll;
-    for(const node of content()?.querySelectorAll('[data-vf-action]')||[]){const handler=handlers[Number(node.dataset.vfAction)];node.onclick=()=>{if(!node.disabled)return handler?.();};}
+    for(const node of content()?.querySelectorAll('[data-vf-action]')||[]){
+      const handler=handlers[Number(node.dataset.vfAction)];
+      node.onpointerdown=event=>{if(event.button===0)beginPress(node);};
+      node.onpointerup=()=>endPress(node,true);
+      node.onpointercancel=()=>endPress(node);
+      node.onpointerleave=()=>endPress(node,true);
+      node.onblur=()=>endPress(node);
+      node.onkeydown=event=>{if(event.key===' '||event.key==='Enter')beginPress(node);};
+      node.onkeyup=event=>{if(event.key===' '||event.key==='Enter')endPress(node,true);};
+      node.onclick=()=>{try{if(!node.disabled)return handler?.();}finally{endPress(node);}};
+    }
     for(const input of content()?.querySelectorAll('[data-vf-input]')||[])input.oninput=()=>{if(input.dataset.vfInput==='stake')stake=input.value;else if(input.dataset.vfInput==='deposit')deposit=input.value;else withdrawal=input.value;refreshControls();};
     if(focusId){const target=doc.getElementById(focusId);target?.focus?.({preventScroll:true});if(Number.isInteger(start))try{target?.setSelectionRange?.(start,end);}catch{}}
     signature=JSON.stringify([finance(),tavern(),wallet(),state().treasury,state().status,local(view),isConnected()]);
@@ -170,9 +202,10 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     refreshControls();
     const next=JSON.stringify([finance(),tavern(),wallet(),state().treasury,state().status,local(view),isConnected()]);
     const editing=content()?.contains?.(doc.activeElement)&&['INPUT','SELECT','TEXTAREA'].includes(doc.activeElement?.tagName);
-    if(resultVisible&&!editing&&next!==signature)render();
+    // Preserve the native click target while still validating live funds/access.
+    if(resultVisible&&!editing&&!pressedButton&&next!==signature)render();
   }
   function show(type) { if(!ensureContext())return; view=type;if(!resultVisible)finish();error='';message='';render();update(); }
-  function clear() { cancel(timer);timer=null;context=null;pending=null;result=null;resultVisible=true;error='';message='';signature='';lastReceiptId=null;handlers=[];controls=new Map(); }
+  function clear() { clearPress();cancel(timer);timer=null;context=null;pending=null;result=null;resultVisible=true;error='';message='';signature='';lastReceiptId=null;handlers=[];controls=new Map(); }
   return {showInvestments:()=>show('investments'),showTavern:()=>show('tavern'),update,receive,clear};
 }

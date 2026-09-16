@@ -60,6 +60,59 @@ test('WebSocket recovery returns the exact durable finance receipt after it leav
   assert.deepEqual({ wallet: player.wallet, treasury: village.treasury, position: app.store.financePosition(village.id, player.id) }, before);
 });
 
+test('WebSocket tavern bets settle once during day and night while the traveling merchant is away', async t => {
+  const { app, village, player, receipt } = await fixture(t);
+  Object.assign(player, buildingEntrance(BUILDINGS.find(building => building.id === 'merchant')));
+  village.merchant.present = false;
+  let accepted = 0;
+  for (const phase of ['day', 'night']) {
+    village.phase = phase;
+    // An unspawned enemy keeps a test night active without replacing the real
+    // Simulation action handler, crypto roll, save transaction or socket route.
+    village.waveCount = phase === 'night' ? 1 : 0;
+    village.spawned = 0;
+    for (const selection of [
+      { game: 'coinflip', choice: 'heads' },
+      { game: 'roulette', choice: 'red' },
+      { game: 'roulette', choice: 'number', number: 0 }
+    ]) {
+      const snapshot = app.simulation.snapshot(village, player.id);
+      assert.equal(snapshot.merchant.present, false);
+      assert.ok(snapshot.tavern.coinflipMaximumStake >= 10);
+      assert.ok(snapshot.tavern.rouletteNumberMaximumStake >= 10);
+      const before = { wallet: player.wallet, treasury: village.treasury };
+      const action = { kind: 'tavern_bet', requestId: randomUUID(), stake: 10, ...selection };
+      const response = await receipt(action);
+      assert.equal(response.type, 'financeReceipt', `${phase} ${selection.game} ${selection.choice}`);
+      assert.equal(response.requestId, action.requestId);
+      const saved = response.receipt;
+      assert.equal(saved.kind, 'tavern_bet');
+      assert.equal(saved.game, action.game);
+      assert.equal(saved.choice, action.choice);
+      assert.equal(saved.stake, action.stake);
+      assert.ok([0, selection.choice === 'number' ? 360 : 20].includes(saved.payout));
+      assert.equal(saved.net, saved.payout - action.stake);
+      assert.equal(player.wallet, before.wallet + saved.net);
+      assert.equal(village.treasury, before.treasury - saved.net);
+      assert.equal(saved.walletAfter, player.wallet);
+      assert.equal(saved.treasuryAfter, village.treasury);
+      assert.equal(village.phase, phase);
+      assert.deepEqual(app.store.financeReceipt(village.id, player.id, action.requestId), saved);
+      assert.deepEqual(app.simulation.snapshot(village, player.id).tavern.history[0], saved);
+      const persisted = app.store.loadVillages().find(row => row.id === village.id);
+      assert.equal(persisted.players[player.id].wallet, player.wallet);
+      assert.equal(persisted.treasury, village.treasury);
+
+      const committed = structuredClone(village);
+      const replay = await receipt({ ...action, stake: 1, choice: selection.game === 'coinflip' ? 'tails' : 'black' });
+      assert.equal(replay.type, 'financeReceipt');
+      assert.deepEqual(replay.receipt, saved, 'retrying the same request returns the original saved outcome');
+      assert.deepEqual(village, committed, 'a repeated request cannot debit, pay or reroll the bet');
+      assert.equal(app.store.financeReceipts(village.id, player.id, true).length, ++accepted);
+    }
+  }
+});
+
 test('committed finance receipts recover after physical state changes or a fallen village without another mutation', async t => {
   const { app, village, player, receipt } = await fixture(t);
   const original = { kind: 'investment_deposit', amount: 7, requestId: randomUUID() };

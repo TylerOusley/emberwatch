@@ -1,5 +1,16 @@
 # Emberwatch build validation
 
+## Build 24: tavern betting controls
+
+Validated September 16, 2026: **650/650 tests pass** with `npm test`, with no failures, cancellations or skips. All **95 runtime JavaScript modules** pass syntax checks, and `git diff --check` passes.
+
+Reproduced a finance-menu click race: a wallet or treasury snapshot triggers a full panel render while Place bet is pressed, replacing its DOM node before the click completes. The original code sends zero bets in the regression; the fix preserves the target and sends exactly one. This is consistent with the reported inability to bet, especially while workers change village balances; the exact affected player's browser state was not inspected.
+
+- Finance buttons now retain an active pointer or keyboard press through the click. Release, cancellation, pointer exit, blur, panel replacement and the release fallback clear the held state. Disabled states and quotes continue to follow current funds, connection and entrance access.
+- Five UI regressions cover balance updates during a press and between release/click, cancellation recovery, Space/Enter activation, funds/connection changes that must still block a bet, and visible restriction messages beside Place bet. The guidance includes invalid stakes, wallet/treasury funding, location, standing state and connection.
+- A real WebSocket regression places six coinflip/red-roulette/single-number bets during day and night with the traveling merchant absent. It verifies durable receipts, exact wallet/treasury changes, saved state, snapshot history and replaying the same request without another debit or roll. The server route already worked; no odds, payout, reserve or eligibility changes were needed.
+- Independent review found no blocking issue in press cleanup, receipt handling or live eligibility validation. The UI uses the existing DOM harness; its event sequencing is simulated. The available browser could not open the isolated local test page (`ERR_BLOCKED_BY_CLIENT`), so no interactive browser playtest is claimed.
+
 ## Build 23: percentage merchant exports
 
 Validated September 16, 2026: **644/644 tests pass** with `npm test`, with no failures, cancellations or skips. All **95 runtime JavaScript modules** pass syntax checks, and `git diff --check` passes.
