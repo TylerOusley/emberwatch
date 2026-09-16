@@ -113,16 +113,16 @@ test('held gathering respects cooldown and never catches up in bursts after a sl
   assert.equal(uses.length, 2, 'unlock/UI/blur interruption requires a fresh click');
 });
 
-test('depletion, changing tools, moving to a different resource, and mouse release end a held gather', () => {
+test('depletion pauses a held gather, a new matching node continues it, and tool changes or mouse release stop it', () => {
   let now = 0, target = { id: 'stone', tool: 'pickaxe' };
   const uses = [];
   const hold = createHeldGather({ now: () => now, canContinue: () => true, getTarget: () => target, use: value => uses.push(value.id) });
-  for (const next of [null, { id: 'stone', tool: 'axe' }, { id: 'coal', tool: 'pickaxe' }]) {
-    target = { id: 'stone', tool: 'pickaxe' }; hold.start(target); target = next; now += 620; hold.tick();
-    assert.equal(hold.isActive(), false);
-  }
+  hold.start(target); target = { id: 'coal', tool: 'pickaxe' }; now += 620; hold.tick();
+  assert.deepEqual(uses, ['coal']); assert.equal(hold.isActive(), true, 'the same hold follows a new matching node');
+  target = { id: 'coal', tool: 'axe' }; now += 620; hold.tick(); assert.equal(hold.isActive(), false);
+  target = { id: 'stone', tool: 'pickaxe' }; hold.start(target); target = null; now += 620; hold.tick(); assert.equal(hold.isActive(), false);
   target = { id: 'stone', tool: 'pickaxe' }; hold.start(target); hold.stop(); now += 620; hold.tick();
-  assert.deepEqual(uses, []);
+  assert.deepEqual(uses, ['coal']);
 });
 
 

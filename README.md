@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — graphics overhaul build 18.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — controls and first-watch build 19.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 19 keeps a held gathering click active as the nearest valid matching node changes, so a dwarf can sweep across wheat or continue through adjacent ore without releasing the mouse. Closing an in-game panel now immediately asks the browser to recapture the mouse, while **F** toggles fullscreen from gameplay or a menu. The first-watch guide is now an illustrated progress card with step artwork, a completion meter, an expandable visual route and a one-click map marker.
 
 Build 18 replaces flat scenery surfaces with seven locally hosted, 1K PBR material sets: mossy grass, forest earth, weathered rock, cobblestones, timber, castle masonry and roof tiles. Color, normal and roughness maps add surface detail under moving light. Trees now have tapered branching trunks and individual leaves or needle sprays; wheat has bent stalks, grains and awns. Smooth terrain, eroded mountain ridges, detailed ground cover, overlapping shingles, beveled masonry, framed windows and turned cannon barrels replace many of the earlier primitive silhouettes. All roads, deed bounds, cave floors, gathering anchors and collision rules remain authoritative and unchanged.
 

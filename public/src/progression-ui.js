@@ -2,7 +2,9 @@ import { MILESTONES, GUIDE_STEPS, COSMETIC_PALETTES, COSMETIC_CRESTS, normalizeP
 import { BUILDINGS, PLOTS, RESOURCES, CAVE_ENTRANCE, caveAreaAt, resolveResource } from '../../shared/world.js';
 import { BUILDING_TYPES } from '../../shared/content.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot } from '../../shared/access.js';
+import { icon } from './icons.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const GUIDE_ICONS={tool:'pickaxe',gather:'axe',sell:'gold',food:'food',gate:'shield'};
 export function guideView(progress) {
   const p=normalizeProgression(progress),next=GUIDE_STEPS.find(s=>!p.guide.done.includes(s.id));
   return {hidden:p.guide.dismissed,completed:p.guide.done.length,total:GUIDE_STEPS.length,next,steps:GUIDE_STEPS.map(s=>({...s,done:p.guide.done.includes(s.id)}))};
@@ -30,7 +32,10 @@ export function createProgressionUI({getState,getMe,getActivePanel,openPanel,sen
     element.hidden=!s||view.hidden;
     if(element.hidden){guideSignature='';return;}
     const nextSignature=JSON.stringify([view,expanded]);if(!force&&nextSignature===guideSignature)return;guideSignature=nextSignature;
-    element.innerHTML=`<div class="guide-heading"><button class="guide-toggle" aria-expanded="${expanded}">First watch · ${view.completed}/${view.total}</button><button class="guide-dismiss" aria-label="Dismiss first-watch guide" title="Reopen from the village menu">×</button></div>${view.next?`<p class="guide-next">${esc(view.next.name)}</p><p class="guide-detail">${esc(view.next.detail)}</p><button class="guide-mark secondary-button">Mark destination</button>`:'<p>First watch complete. Check the noticeboard for your next village task.</p>'}${expanded?`<ol class="guide-checklist">${view.steps.map(step=>`<li class="${step.done?'complete':''}"><span aria-label="${step.done?'Completed':'Not yet completed'}">${step.done?'✓':'○'}</span> ${esc(step.name)}</li>`).join('')}</ol>`:''}`;
+    const progress=Math.round(view.completed/view.total*100),stepNumber=Math.min(view.completed+1,view.total);
+    const current=view.next?`<div class="guide-card"><div class="guide-art">${icon(GUIDE_ICONS[view.next.id]||'shield')}<span>${stepNumber}</span></div><div class="guide-copy"><small>NEXT STEP</small><p class="guide-next">${esc(view.next.name)}</p><p class="guide-detail">${esc(view.next.detail)}</p></div></div><button class="guide-mark secondary-button"><span>◇</span> Mark destination on map</button>`:`<div class="guide-card complete"><div class="guide-art">${icon('shield')}<span>✓</span></div><div class="guide-copy"><small>GUIDE COMPLETE</small><p class="guide-next">Ready for the night watch</p><p class="guide-detail">Check the request board or help your neighbors prepare the village.</p></div></div>`;
+    const checklist=expanded?`<ol class="guide-checklist">${view.steps.map((step,index)=>`<li class="${step.done?'complete':''}"><span class="guide-step-icon">${icon(GUIDE_ICONS[step.id]||'shield')}</span><span><small>STEP ${index+1}</small>${esc(step.name)}</span><b aria-label="${step.done?'Completed':'Not yet completed'}">${step.done?'✓':'○'}</b></li>`).join('')}</ol>`:'';
+    element.innerHTML=`<div class="guide-heading"><button class="guide-toggle" aria-expanded="${expanded}"><span>FIRST WATCH</span><strong>${view.completed}/${view.total}</strong></button><button class="guide-dismiss" aria-label="Dismiss first-watch guide" title="Reopen from the village menu">×</button></div><div class="guide-progress" aria-label="Tutorial ${progress}% complete"><i style="width:${progress}%"></i></div>${current}${checklist}`;
     element.querySelector('.guide-toggle').onclick=()=>{expanded=!expanded;renderGuide(true);};
     element.querySelector('.guide-dismiss').onclick=()=>command('guide_visibility',{dismissed:true});
     const mark=element.querySelector('.guide-mark');if(mark)mark.onclick=()=>{const target=destination(view.next.destination);if(target)markWaypoint(target);};

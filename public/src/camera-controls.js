@@ -74,8 +74,9 @@ export function bindCameraLook({ surfaces, host, document: doc = host.document, 
   } };
 }
 
-// One held click belongs to one selected resource and tool. Releasing, moving
-// out of reach, depletion, or opening a UI ends it; a later target needs a new click.
+// A held click follows the selected gathering tool rather than one resource ID.
+// When a node is depleted the nearest valid node can become the next target
+// without asking the player to release and press again.
 export function createHeldGather({ now = () => performance.now(), canContinue, getTarget, use, cooldown = 620 }) {
   let held = null, nextAt = 0;
   const stop = () => { held = null; };
@@ -89,9 +90,10 @@ export function createHeldGather({ now = () => performance.now(), canContinue, g
       if (!canContinue()) return stop();
       if (now() < nextAt) return;
       const target = getTarget();
-      if (!target || target.id !== held.id || target.tool !== held.tool) return stop();
+      if (!target || target.tool !== held.tool) return stop();
       nextAt = now() + cooldown;
-      if (use(held) === false) stop();
+      if (use(target) === false) stop();
+      else held = { ...target };
     },
     stop,
     isActive: () => Boolean(held)
