@@ -3,17 +3,17 @@ import { BUILDINGS, PLOTS, CAVE_ENTRANCE } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
 import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote } from '../../shared/economy.js';
-import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS } from '../../shared/defense.js';
+import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../../shared/defense.js';
 import { ROLE_STATS } from '../../shared/roles.js';
 import { WORKER_RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../../shared/workers.js';
 import { NOTICEBOARD_POINT } from './noticeboard.js';
 import { itemArt, shopInterior } from './shop-display.js';
 import { TRANSPORT } from '../../shared/transport.js';
-import { createBuildCarousel, buildingAvailability } from './build-carousel.js';
+import { createBuildCarousel, buildingAvailability, buildingArt } from './build-carousel.js';
 import { transferLimit } from '../../shared/transfers.js';
 import { ownedCartCount } from '../../shared/cart-ownership.js';
 import { plotStorageCapacity } from '../../shared/production.js';
-import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds } from '../../shared/production.js';
+import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionStats, productionUpgrade, productionYield } from '../../shared/production.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -24,7 +24,7 @@ const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow'];
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
-export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null }) {
+export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null }) {
   let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const transferDrafts = new Map();
@@ -53,6 +53,24 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   const row = (name, detail, control = '') => `<div class="settlement-row"><div><strong>${esc(name)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</div>${control}</div>`;
   const stat = (name, value) => `<div><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`;
   const stats = values => `<div class="settlement-stats">${values.map(([name, value]) => stat(name, value)).join('')}</div>`;
+  const tierBadge = (level, total) => `<span class="menu-tier">Tier ${num(level)}${total ? ` / ${num(total)}` : ''}</span>`;
+  const meter = (value, maximum, name) => `<div class="menu-meter" role="meter" aria-label="${esc(name)}" aria-valuemin="0" aria-valuemax="${Math.max(1, maximum)}" aria-valuenow="${Math.max(0, Math.min(maximum, value))}"><span style="width:${Math.max(0, Math.min(100, value / Math.max(1, maximum) * 100))}%"></span></div>`;
+  function menuHero(art, kicker, title, copy, badge = '') {
+    return `<header class="menu-hero"><div class="menu-hero-art">${art}${badge}</div><div class="menu-hero-copy">${head(kicker, title, copy)}</div></header>`;
+  }
+  function menuSection(title, copy, body, art = '') {
+    return `<section class="menu-section">${art ? `<div class="menu-section-art">${art}</div>` : ''}<div class="menu-section-content"><header><h3>${esc(title)}</h3>${copy ? `<p>${esc(copy)}</p>` : ''}</header>${body}</div></section>`;
+  }
+  function costCards(cost, available) {
+    return `<div class="menu-costs" aria-label="Upgrade cost">${Object.entries(cost).map(([id, count]) => `<div class="menu-cost${(available?.[id] || 0) < count ? ' short' : ''}">${itemArt(id)}<span><strong>${num(count)} ${esc(id)}</strong><small>${num(available?.[id])} available</small></span></div>`).join('')}</div>`;
+  }
+  function comparison(rows, next = true) {
+    return `<div class="upgrade-comparison"><div class="upgrade-comparison-head"><span>Attribute</span><span>Current</span><span>${next ? 'Next tier' : 'Maximum tier'}</span></div>${rows.map(([name, before, after]) => `<div class="upgrade-comparison-row"><span>${esc(name)}</span><strong>${esc(before)}</strong><strong>${esc(after ?? before)}</strong></div>`).join('')}</div>`;
+  }
+  function workerPortrait(color = WORKER_COLORS[0].value) {
+    const chosen = WORKER_COLORS.some(option => option.value === color) ? color : WORKER_COLORS[0].value;
+    return `<svg viewBox="0 0 240 220" aria-hidden="true" focusable="false" data-worker-portrait="${chosen}"><circle cx="120" cy="103" r="84" fill="#ceb779" opacity=".12"/><ellipse cx="120" cy="204" rx="65" ry="9" fill="#122b23"/><path d="M79 188v19h35v-26m12 0v26h36v-19" fill="#44352c"/><path d="M65 112q-15 18-12 49l20 7 10-34m87-22q15 18 12 49l-20 7-10-34" fill="${chosen}"/><circle cx="64" cy="167" r="13" fill="#d3a878"/><circle cx="176" cy="167" r="13" fill="#d3a878"/><path d="M82 96q-11 36-12 91q50 18 100 0q-1-55-12-91Z" fill="${chosen}"/><path d="M82 118v64q38 12 76 0v-64" fill="#705638"/><path d="M83 143h75v14H83Z" fill="#382e27"/><rect x="109" y="141" width="24" height="19" rx="3" fill="#ccb16c"/><rect x="115" y="146" width="12" height="9" fill="#594730"/><ellipse cx="120" cy="76" rx="40" ry="39" fill="#d3a878"/><path d="M82 80q-3 45 38 63q41-18 38-63l-21 20h-34Z" fill="#9a6b43"/><path d="M97 102l23 23 23-23M111 111l9 25 9-25" fill="none" stroke="#c29359" stroke-width="5"/><path d="M79 64q1-37 40-41q40 3 43 41Z" fill="#4c5b47"/><path d="M77 63q42-12 86 0v10H77Z" fill="${chosen}"/><circle cx="104" cy="80" r="4" fill="#24352c"/><circle cx="137" cy="80" r="4" fill="#24352c"/><ellipse cx="120" cy="91" rx="10" ry="7" fill="#e0b280"/><path d="M58 194L190 77" stroke="#725036" stroke-width="9" stroke-linecap="round"/><path d="M164 71q24-7 45 10l-9 11q-19-15-36-5Z" fill="#97a4a0" stroke="#4b615a" stroke-width="3"/></svg>`;
+  }
   function itemCard({ id, item, tier = 'wood', name, tag = '', facts = [], copy = '', extra = '', controls = '', status = '', available = true }) {
     const key = String(id), details = `shop-inspect-${key}`, insight = facts.map(([name, value]) => `${name}: ${value}`).join(' · ');
     let actionIndex = 0;
@@ -192,33 +210,36 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
-    const p = me(), s = state();
-    const backpack = BACKPACKS[p.backpackTier] || BACKPACKS[0];
-    let html = head('YOUR PACK', 'Make room for the next watch.', 'Tools and items count toward your carrying limit. Store supplies at your own plots or in a cart.') + stats([['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Carrying gear', backpack.name], ['Wallet', `${num(p.wallet)} gold`], ['Plots', `${owned().length} / ${MAX_PLOTS}`]]);
-    html += '<p>Buy larger backpacks at Oak &amp; Iron, the village starter tool shop.</p>' + button('Mark the backpack shop', () => markService('tools'));
-    html += '<h3>Carried supplies</h3>' + Object.keys(RESOURCE_WEIGHTS).map(id => row(label(id), `${num(resourceWeight(p, id))} weight each${resourceWeight(p, id) < RESOURCE_WEIGHTS[id] ? ' with your equipped pack' : ''}${boundInventoryCount(p, id) ? ` · ${carriedText(id)}` : ''}`, `<strong>${num(p.inventory?.[id])}</strong>`)).join('');
+    const p = me(), s = state(), backpack = BACKPACKS[p.backpackTier] || BACKPACKS[0];
+    let html = menuHero(itemArt('backpack', { tier: backpack.tier }), 'YOUR PACK', 'Ready for the next watch.', 'Your supplies, working tools and village earnings in one place.', tierBadge(backpack.tier, 3));
+    html += stats([['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Carrying gear', backpack.name], ['Wallet', `${num(p.wallet)} gold`], ['Plots', `${owned().length} / ${MAX_PLOTS}`]]) + meter(inventoryWeight(p), carryCapacity(p), 'Carrying capacity used');
+    html += '<div class="panel-actions">' + button('Mark the backpack shop', () => markService('tools')) + button('Manage workers', () => show('workers')) + button('Village atlas', () => show('atlas')) + button('Change role', () => show('roles')) + '</div><p class="menu-footnote">Buy larger backpacks at Oak &amp; Iron, the village starter tool shop.</p>';
+    html += '<h3>Carried supplies</h3><div class="pack-supplies">' + Object.keys(RESOURCE_WEIGHTS).map(id => `<article class="pack-supply" data-supply="${id}"><div>${itemArt(id)}</div><strong>${num(p.inventory?.[id])}</strong><span>${esc(label(id))}</span><small>${num(resourceWeight(p, id))} weight each${resourceWeight(p, id) < RESOURCE_WEIGHTS[id] ? ' with your equipped pack' : ''}</small>${boundInventoryCount(p, id) ? `<small class="bound-supply">${esc(carriedText(id))}</small>` : ''}</article>`).join('') + '</div>';
     if (p.inventory?.cart) html += command('Place your cargo cart', 'deployCart');
     if (p.carryingId) html += command('Put down the carried dwarf', 'dropPlayer');
     if (p.mountedHorseId) html += command('Dismount your horse', 'dismountHorse');
-    html += '<h3>Equipment</h3>' + equipment.map(id => {
-      const tier = TOOL_TIERS[p.tiers?.[id] || 'wood'];
-      const durability = p.durability?.[id] || 0;
-      return row(durability > 0 ? `${tier.name} ${label(id).toLowerCase()}` : label(id), durability > 0 ? `${num(durability)} / ${num(p.maxDurability?.[id] || tier.durability)} uses remaining${['axe', 'pickaxe', 'scythe'].includes(id) ? ` · ${tier.yield} resources per swing` : ''}` : 'Not equipped');
-    }).join('');
+    html += '<h3>Equipment</h3><div class="pack-equipment">' + equipment.map(id => {
+      const tier = TOOL_TIERS[p.tiers?.[id] || 'wood'], durability = p.durability?.[id] || 0, maximum = p.maxDurability?.[id] || tier.durability;
+      return `<article class="pack-tool" data-equipped="${durability > 0}"><div class="pack-tool-art">${itemArt(id, { tier: p.tiers?.[id] || 'wood' })}</div><div><span class="menu-tier">${durability > 0 ? esc(tier.name) : 'Empty slot'}</span><h4>${esc(label(id))}</h4><p>${durability > 0 ? `${num(durability)} / ${num(maximum)} uses remaining${['axe', 'pickaxe', 'scythe'].includes(id) ? ` · ${tier.yield} resources per swing` : ''}` : 'Not equipped'}</p>${meter(durability, maximum, `${label(id)} durability`)}</div></article>`;
+    }).join('') + '</div>';
     const options = [...equipment, 'food', 'good_food', 'best_food', ...(p.role === 'priest' ? ['heal'] : [])];
-    html += '<h3>Your eight hotbar slots</h3><p>Choose which equipment and food each number selects. A tool’s current tier is equipped automatically.</p><div class="hotbar-editor">' + getHotbar().map((selected, index) => `<label>Slot ${index + 1}<select data-hotbar-slot="${index}">${options.map(id => `<option value="${id}" ${id === selected ? 'selected' : ''}>${id === 'heal' ? 'Priest blessing' : label(id)}</option>`).join('')}</select></label>`).join('') + '</div>';
-    html += '<h3>The village</h3>' + stats(resources.map(id => [label(id), num(s.stock?.[id])])) + row('Accrued role wage', 'Prorated by participation and paid at dawn.', `<strong>${num(p.wageAccrued)} gold</strong>`) + row('Performance bonus', 'Paid with wages at dawn; maximum 25 gold.', `<strong>${num(p.jobBonus)} / 25</strong>`) + row('Pending repair pay', 'Paid at dawn; maximum 10 gold each cycle.', `<strong>${num(p.repairBonus)} / 10</strong>`);
-    html += '<div class="panel-actions">' + button('Manage workers', () => show('workers')) + button('Village atlas', () => show('atlas')) + button('Change role', () => show('roles')) + '</div>';
+    html += menuSection('Your eight hotbar slots', 'Choose which equipment and food each number selects. A tool’s current tier is equipped automatically.', '<div class="hotbar-editor">' + getHotbar().map((selected, index) => `<label>Slot ${index + 1}<select data-hotbar-slot="${index}">${options.map(id => `<option value="${id}" ${id === selected ? 'selected' : ''}>${id === 'heal' ? 'Priest blessing' : label(id)}</option>`).join('')}</select></label>`).join('') + '</div>');
+    html += menuSection('Your dawn earnings', 'Accrued pay arrives at dawn. Performance and repair bonuses are separate from your role wage.', stats([['Accrued role wage', `${num(p.wageAccrued)} gold`], ['Performance bonus', `${num(p.jobBonus)} / 25 gold`], ['Pending repair pay', `${num(p.repairBonus)} / 10 gold`]]), itemArt('gold'));
+    html += '<h3>The village</h3>' + stats(resources.map(id => [label(id), num(s.stock?.[id])]));
     return html;
   }
   function bank() {
     const p = me(), s = state(), loan = s.loan || {};
     let html = head('VILLAGE BANK', 'Keep something for tomorrow.', 'Protect your savings between runs or arrange purchase credit with the vault keeper.') + stats([['Wallet', `${num(p.wallet)} gold`], ['Protected savings', `${num(p.bank)} gold`]]);
     html += '<section class="bank-counter"><div class="bank-counter-art">' + itemArt('gold') + '</div><div><h3>Your savings</h3><p>Deposited gold carries into another run. Enter an exact amount or transfer all available gold.</p><label for="bank-amount">Gold to transfer</label><div class="transfer-form">' + quantity('bank-amount', Math.max(p.wallet, p.bank), 10) + transferButton('bank-deposit', 'Deposit', () => sendBank(false, false)) + transferButton('bank-withdraw', 'Withdraw', () => sendBank(true, false)) + transferButton('bank-deposit-max', 'Deposit all', () => sendBank(false, true)) + transferButton('bank-withdraw-max', 'Withdraw all', () => sendBank(true, true)) + '</div><p id="bank-transfer-status" aria-live="polite"></p></div></section>';
-    html += '<section class="bank-credit"><h3>Purchase credit</h3><p>Credit pays for eligible purchases. It cannot be withdrawn or deposited as savings. Debt follows your account between runs; ' + num(loan.repaymentPercent ?? 20) + '% of earnings repays it.</p>' + stats([['Debt', `${num(loan.debt)} gold`], ['Unspent credit', `${num(loan.credit)} gold`], ['Credit limit', `${num(loan.maxDebt || 200)} gold`]]) + '<label for="loan-amount">Gold to borrow or repay</label><div class="transfer-form">' + quantity('loan-amount', loan.maxDebt || 200, 100) + button('Borrow purchase credit', () => send({ type: 'action', kind: 'loan', amount: amount('loan-amount') }), (loan.debt || 0) >= (loan.maxDebt || 200) || (loan.availablePool || 0) < 1) + button('Repay from wallet', () => send({ type: 'action', kind: 'repayLoan', amount: amount('loan-amount') }), !loan.debt || !p.wallet) + '</div></section>';
+    html += '<section class="bank-credit menu-section"><div class="menu-section-art">' + buildingArt('tool_shop') + '</div><div class="menu-section-content"><h3>Purchase credit</h3><p>Credit pays for eligible purchases. It cannot be withdrawn or deposited as savings. Debt follows your account between runs; ' + num(loan.repaymentPercent ?? 20) + '% of earnings repays it.</p>' + stats([['Debt', `${num(loan.debt)} gold`], ['Unspent credit', `${num(loan.credit)} gold`], ['Credit limit', `${num(loan.maxDebt || 200)} gold`]]) + '<label for="loan-amount">Gold to borrow or repay</label><div class="transfer-form">' + quantity('loan-amount', loan.maxDebt || 200, 100) + button('Borrow purchase credit', () => send({ type: 'action', kind: 'loan', amount: amount('loan-amount') }), (loan.debt || 0) >= (loan.maxDebt || 200) || (loan.availablePool || 0) < 1) + button('Repay from wallet', () => send({ type: 'action', kind: 'repayLoan', amount: amount('loan-amount') }), !loan.debt || !p.wallet) + '</div></div></section>';
     if (s.landDebt) html += `<p class="settlement-warning">Outstanding land tax: ${num(s.landDebt)} gold.</p>` + command('Pay land tax from wallet', 'pay_land_debt', {}, wallet() < 1);
     html += '<p>Buy, sell and donate resources at the Resource Exchange. Funded village supply requests are delivered there too.</p><div class="panel-actions">' + button('Find resource market', () => markService('market')) + button('Hire & manage workers', () => show('workers')) + button('Village policies & votes', () => show('policies')) + '</div>';
-    if (showRequests) html += button('Open task board', () => showRequests());
+    html += '<div class="menu-service-links">';
+    if (showInvestments) html += menuSection('Invest in your future', 'Review investment choices and manage your holdings.', button('Open investments', () => showInvestments()), itemArt('gold'));
+    if (showTavern) html += menuSection('The village tavern', 'Visit the tavern counter for its games and services.', button('Visit tavern', () => showTavern()), itemArt('food'));
+    if (showRequests) html += menuSection('The task board', 'Help fund the next watch by completing village supply requests.', button('Open task board', () => showRequests()), itemArt('wheat'));
+    html += '</div>';
     return html;
   }
   function market() {
@@ -265,7 +286,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function workerPlotName(id) {
     const place = PLOTS.find(p => p.id === id), plot = plots().find(p => p.id === id);
-    return `${place?.name || id} · ${BUILDING_TYPES[plot?.building]?.name || 'Unavailable building'}${plot?.level >= 2 ? ' · Level 2' : ''}`;
+    return `${place?.name || id} · ${BUILDING_TYPES[plot?.building]?.name || 'Unavailable building'}${plot?.level >= 2 ? ` · Level ${plot.level}` : ''}`;
   }
   function workerSourcePlots(resource) {
     const building = { timber: 'tree_farm', wheat: 'wheat_farm', stone: 'mine', iron: 'mine', coal: 'mine' }[resource];
@@ -278,7 +299,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function workers() {
     const p = me(), crew = ownWorkers(), destinations = owned().filter(plot => plot.building && plot.hp > 0);
     const nearBank = atTreasury(p), full = crew.length >= WORKER_RULES.maxPerPlayer;
-    let html = head('HIRED HANDS', 'Put your workers to work.', 'Choose a resource and gathering ground, then send each haul to your building storage or sell it to the village.') + stats([['Your workers', `${crew.length} / ${WORKER_RULES.maxPerPlayer}`], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
+    let html = menuHero(workerPortrait(), 'HIRED HANDS', 'Build your village crew.', 'Choose a gathering ground, train each worker and decide where every haul goes.', `<span class="menu-tier">${crew.length} / ${WORKER_RULES.maxPerPlayer} workers</span>`) + stats([['Your workers', `${crew.length} / ${WORKER_RULES.maxPerPlayer}`], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
     html += `<p>Workers start with ${WORKER_RULES.carryCapacity} cargo capacity and work day and night while you are online. Hiring and wages use your wallet; work stops when you cannot pay. Sales follow village prices and tax, with proceeds paid to you. Every ${WORKER_RULES.xpPerPoint} completed harvests earns one upgrade point. Spend points below to train each worker.</p>`;
     html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury entrance to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
     if (!nearBank) html += '<p>Visit the Village Treasury entrance to hire or dismiss workers.</p>' + button('Mark the treasury', () => markService('bank'));
@@ -292,21 +313,23 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const cargoText = WORKER_RESOURCES.filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
       const currentSource = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : 'Public gathering grounds';
       const currentDestination = worker.mode === 'store' ? workerPlotName(worker.destinationPlotId) : 'Sell to the village';
-      html += `<section class="building-card"><h3>${esc(worker.name || `Worker ${index + 1}`)}</h3>` + row(worker.status || 'Waiting for orders', worker.resource ? `${label(worker.resource)} · ${currentSource} → ${currentDestination}` : 'No resource assigned yet.') + row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`);
+      html += `<section class="worker-card" data-worker-card="${esc(worker.id)}"><header class="worker-card-heading"><div class="worker-card-portrait">${workerPortrait(worker.color)}</div><div><span class="menu-tier">Level ${worker.level || 1} · ${worker.paused ? 'Paused' : 'On duty'}</span><h3>${esc(worker.name || `Worker ${index + 1}`)}</h3><p>${esc(worker.status || 'Waiting for orders')}</p><small>${esc(worker.resource ? `${label(worker.resource)} · ${currentSource} → ${currentDestination}` : 'No resource assigned yet.')}</small></div><div class="worker-assignment-art">${itemArt(worker.resource || 'timber')}</div></header>`;
+      html += '<div class="worker-card-body">' + row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`) + meter(weight, ability.carryCapacity, 'Worker cargo capacity');
       html += stats([['Level', worker.level || 1], ['Upgrade points', worker.upgradePoints || 0], ['Next point', (worker.workXp || 0) >= WORKER_MAX_XP ? 'Training complete' : `${(worker.workXp || 0) % WORKER_RULES.xpPerPoint} / ${WORKER_RULES.xpPerPoint} harvests`]]);
-      html += '<h4>Worker attributes</h4>';
+      html += '<h4>Worker attributes</h4><div class="worker-training">';
       for (const [attribute, rule] of Object.entries(WORKER_ATTRIBUTES)) {
         const rank = worker.attributes?.[attribute] || 0;
-        const current = attribute === 'gathering' ? `${num(ability.gatherSeconds)} seconds / harvest` : attribute === 'speed' ? `${num(ability.speed)} movement speed` : `${ability.carryCapacity} cargo capacity`;
-        html += row(`${rule.name} · ${rank} / ${WORKER_RULES.maxAttributeRank}`, `${current} · Next rank: ${rule.benefit}`, command(rank >= WORKER_RULES.maxAttributeRank ? 'Fully trained' : '+1 rank · 1 point', 'worker_upgrade', { workerId: worker.id, attribute }, rank >= WORKER_RULES.maxAttributeRank || !(worker.upgradePoints > 0)));
+        const next = workerStats({ ...worker, attributes: { ...worker.attributes, [attribute]: Math.min(WORKER_RULES.maxAttributeRank, rank + 1) } });
+        const metric = stats => attribute === 'gathering' ? `${num(stats.gatherSeconds)} seconds / harvest` : attribute === 'speed' ? `${num(stats.speed)} movement speed` : `${stats.carryCapacity} cargo capacity`;
+        html += `<article class="worker-training-card"><span class="menu-tier">Rank ${rank} / ${WORKER_RULES.maxAttributeRank}</span><h5>${esc(rule.name)}</h5><p><small>Current</small><strong>${esc(metric(ability))}</strong></p><p><small>${rank >= WORKER_RULES.maxAttributeRank ? 'Maximum rank' : 'Next rank'}</small><strong>${esc(metric(next))}</strong></p>` + command(rank >= WORKER_RULES.maxAttributeRank ? 'Fully trained' : '+1 rank · 1 point', 'worker_upgrade', { workerId: worker.id, attribute }, rank >= WORKER_RULES.maxAttributeRank || !(worker.upgradePoints > 0)) + '</article>';
       }
-      html += '<h4>Clothing color</h4><div class="panel-actions">';
+      html += '</div><h4>Clothing color</h4><div class="worker-color-options">';
       for (const color of WORKER_COLORS) {
         const selected = (worker.color || WORKER_COLORS[0].value) === color.value;
         html += command(`${selected ? '✓ ' : ''}${color.name}`, 'worker_color', { workerId: worker.id, color: color.value }, selected, `Choose ${color.name.toLowerCase()} worker clothing`).replace('<button ', `<button aria-pressed="${selected}" style="border-left:8px solid ${color.value}" `);
       }
       html += '</div><h4>Work orders</h4>';
-      html += '<div class="transfer-form">' + workerSelect(`worker-${index}-resource`, 'Resource', WORKER_RESOURCES.map(resource => [resource, label(resource)]), order.resource);
+      html += '<div class="worker-order-grid">' + workerSelect(`worker-${index}-resource`, 'Resource', WORKER_RESOURCES.map(resource => [resource, label(resource)]), order.resource);
       html += workerSelect(`worker-${index}-sourcePlotId`, 'Gather from', [['', 'Public gathering grounds'], ...sources.map(plot => [plot.id, workerPlotName(plot.id)])], order.sourcePlotId);
       html += workerSelect(`worker-${index}-mode`, 'Deliver the haul', [['sell', 'Sell to the village'], ['store', 'Store in my building']], order.mode);
       if (order.mode === 'store') html += workerSelect(`worker-${index}-destinationPlotId`, 'Store at', [['', 'Choose a building'], ...destinations.map(plot => [plot.id, workerPlotName(plot.id)])], order.destinationPlotId);
@@ -321,7 +344,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += button('Find worker', () => { waypoint = { kind: 'worker', id: worker.id, name: worker.name || 'Your worker', x: worker.x, z: worker.z }; toast('Your worker is marked on the minimap.'); });
       html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Take as much as your pack can hold. The worker keeps any remainder.');
       html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
-      html += '</div></section>';
+      html += '</div></div></section>';
     });
     return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div>';
   }
@@ -423,7 +446,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function watch() {
     const replacements = (state().guardReplacements || []).filter(g => !g.plotId && !g.ownerId);
-    return head('THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + `<p>Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.</p>` + replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !transferableCount(me(), 'wheat')) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
+    return menuHero(buildingArt('barracks'), 'THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + menuSection('Keep the watch supplied', `Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.`, replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !transferableCount(me(), 'wheat')), itemArt('wheat')) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
   }
   function deliveries(id) {
     if (typeof showDeliveries !== 'function') return '';
@@ -439,14 +462,19 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     waypoint = { ...service, ...buildingEntrance(service), kind: 'service' };
     toast(service.name + ' marked on your minimap.');
   }
-  function church(id = 'church') {
-    if (id === 'church') return head('THE SANCTUARY', 'Find care in the village.', 'Priests can heal and revive nearby allies with their blessing. Automatic paid beds are available at churches built by priest players.') + '<div class="panel-actions">' + button('Find a player church', () => show('atlas')) + '</div>';
-    const p = me(), beds = (state().beds || []).find(b => b.plotId === id), patients = beds?.patients || [], busy = patients.length >= (beds?.capacity || 2);
-    let html = head('SANCTUARY BEDS', 'A place to recover.', 'A priest can heal and revive in the field. Church beds offer paid care even while the priest is away.') + stats([['Beds occupied', `${patients.length} / ${beds?.capacity || 2}`], ['Healing', `${CHURCH.healFee}g · ${CHURCH.healSeconds}s`], ['Revival', `${CHURCH.reviveFee}g · ${CHURCH.reviveSeconds}s`]]);
-    for (const patient of patients) html += row(state().players.find(v => v.id === patient.playerId)?.name || 'Recovering dwarf', `${patient.revive ? 'Reviving' : 'Healing'} · ${Math.ceil(patient.remaining)} seconds remaining`);
-    if (p.bedPlotId) html += command('Leave your bed', 'churchLeave');
-    else html += command(`Pay ${CHURCH.healFee}g and rest`, 'churchTreat', { plotId: id }, busy || p.hp >= p.maxHp || wallet() < CHURCH.healFee);
-    if (p.carryingId) html += command(`Place carried dwarf in bed · ${CHURCH.reviveFee}g`, 'churchTreat', { plotId: id, targetId: p.carryingId }, busy || wallet() < CHURCH.reviveFee);
+  function church(id = 'church', embedded = false) {
+    if (id === 'church') return menuHero(buildingArt('church'), 'THE SANCTUARY', 'Find care in the village.', 'Priests can heal and revive nearby allies with their blessing. Automatic paid beds are available at churches built by priest players.') + menuSection('Care when you need it', 'A priest can bless wounded dwarfs and town guards in the field. For automatic treatment, visit a player church.', button('Find a player church', () => show('atlas')), workerPortrait('#9772ae'));
+    const p = me(), plot = plots().find(plot => plot.id === id), beds = (state().beds || []).find(b => b.plotId === id), patients = beds?.patients || [], capacity = beds?.capacity || bedCapacity(plot || {}), busy = patients.length >= capacity;
+    let html = embedded ? '' : menuHero(buildingArt('church'), 'SANCTUARY BEDS', 'A place to recover.', 'Church beds offer paid care even while the priest is away.', tierBadge(plot?.level || 1, 2));
+    html += stats([['Beds occupied', `${patients.length} / ${capacity}`], ['Healing', `${CHURCH.healFee}g · ${CHURCH.healSeconds}s`], ['Revival', `${CHURCH.reviveFee}g · ${CHURCH.reviveSeconds}s`]]) + '<div class="care-beds">';
+    for (let index = 0; index < capacity; index++) {
+      const patient = patients[index];
+      html += `<article class="care-bed" data-occupied="${Boolean(patient)}"><span class="menu-tier">Bed ${index + 1}</span><strong>${esc(patient ? state().players.find(v => v.id === patient.playerId)?.name || 'Recovering dwarf' : 'Ready for a guest')}</strong><small>${patient ? `${patient.revive ? 'Reviving' : 'Healing'} · ${Math.ceil(patient.remaining)} seconds remaining` : 'Available for healing or revival'}</small></article>`;
+    }
+    html += '</div>';
+    if (p.bedPlotId) return html + menuSection('Your treatment', 'Stay until treatment completes, or leave the bed when you are ready.', command('Leave your bed', 'churchLeave'), itemArt('food'));
+    html += '<div class="care-options">' + menuSection('Rest and recover', `Restore your health in ${CHURCH.healSeconds} seconds.`, stats([['Current health', `${num(p.hp)} / ${num(p.maxHp)}`], ['Treatment fee', `${CHURCH.healFee} gold`]]) + command(`Pay ${CHURCH.healFee}g and rest`, 'churchTreat', { plotId: id }, busy || p.hp >= p.maxHp || wallet() < CHURCH.healFee));
+    html += menuSection('Revive a companion', `A carried dwarf returns with up to ${CHURCH.reviveHp} health after ${CHURCH.reviveSeconds} seconds.`, stats([['Treatment fee', `${CHURCH.reviveFee} gold`], ['Companion', p.carryingId ? 'Ready for a bed' : 'Carry a fallen dwarf']]) + (p.carryingId ? command(`Place carried dwarf in bed · ${CHURCH.reviveFee}g`, 'churchTreat', { plotId: id, targetId: p.carryingId }, busy || wallet() < CHURCH.reviveFee) : '<p class="menu-footnote">Pick up a fallen companion and bring them to the church.</p>')) + '</div>';
     return html;
   }
   function stable() {
@@ -459,7 +487,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const h = state().horses?.find(v => v.id === id);
     if (!h) return head('STABLE', 'Your horse is no longer here.');
     const cart = state().carts?.find(c => c.ownerId === me().id && gap(c, h) <= 4);
-    let html = head('YOUR HORSE', 'Travel farther. Bring more home.');
+    let html = menuHero(itemArt('horse'), 'YOUR HORSE', 'Travel farther. Bring more home.', 'Ride your horse or attach a nearby cargo cart for a longer supply run.');
     html += h.riderId === me().id ? command('Dismount', 'dismountHorse') : command('Ride your horse', 'mountHorse', { targetId: h.id }, Boolean(h.riderId));
     if (h.cartId) html += command('Detach cargo cart', 'attachCart', { targetId: h.cartId, horseId: null });
     else if (cart) html += command('Attach nearby cargo cart', 'attachCart', { targetId: cart.id, horseId: h.id });
@@ -468,7 +496,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function cart(id) {
     const c = state().carts?.find(v => v.id === id);
     if (!c) return head('CARGO CART', 'This cart is no longer here.');
-    let html = head('CARGO CART', 'Bring supplies back together.', 'Cart storage is separate from your carrying capacity. Attach the cart to your horse to transport its contents.') + stats([['Stored weight', `${num(inventoryWeight(c.storage || {}))} / 300`]]);
+    let html = menuHero(itemArt('cart'), 'CARGO CART', 'Bring supplies back together.', 'Cart storage is separate from your carrying capacity. Attach the cart to your horse to transport its contents.') + stats([['Stored weight', `${num(inventoryWeight(c.storage || {}))} / ${TRANSPORT.cartCapacity}`]]) + meter(inventoryWeight(c.storage || {}), TRANSPORT.cartCapacity, 'Cart capacity used');
     html += storage(c.storage || {}, id, true);
     const h = state().horses?.find(h => h.ownerId === me().id && gap(h, c) <= 4);
     if (c.horseId) html += command('Detach from horse', 'attachCart', { targetId: c.id, horseId: null });
@@ -527,10 +555,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function storage(stored, id, isCart = false, owner = true) {
     const transferable = Object.keys(RESOURCE_WEIGHTS);
     const preferred = transferable.find(resource => transferableCount(me(), resource) > 0 || stored[resource] > 0) || transferable[0];
-    let html = '<div class="storage-grid">' + transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r)).map(r => `<div><span>${esc(label(r))}</span><strong>${num(stored[r])} stored</strong><small>${esc(carriedText(r))}</small></div>`).join('') + '</div><label for="storage-resource">Resource or item</label><div class="transfer-form">' + choices('storage-resource', transferable.map(resource => [resource, label(resource)]), preferred) + '<label for="storage-amount">Amount ' + quantity('storage-amount', 1000000, 1) + '</label>';
+    let html = '<section class="storage-counter"><header><h4>Supply shelves</h4><p>Choose an item, then move an exact quantity or everything that fits.</p></header><div class="storage-grid">' + transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r)).map(r => `<div><div class="storage-item-art">${itemArt(r)}</div><span>${esc(label(r))}</span><strong>${num(stored[r])} stored</strong><small>${esc(carriedText(r))}</small></div>`).join('') + '</div><div class="storage-transfer-controls"><label for="storage-resource">Resource or item</label><div class="transfer-form">' + choices('storage-resource', transferable.map(resource => [resource, label(resource)]), preferred) + '<label for="storage-amount">Amount ' + quantity('storage-amount', 1000000, 1) + '</label>';
     html += transferButton('storage-store', 'Store', () => sendStorage(false, false)) + transferButton('storage-store-max', 'Store max', () => sendStorage(false, true));
     if (owner) html += transferButton('storage-take', 'Take', () => sendStorage(true, false)) + transferButton('storage-take-max', 'Take max', () => sendStorage(true, true));
-    return html + '</div><p id="storage-transfer-status" aria-live="polite"></p>';
+    return html + '</div><p id="storage-transfer-status" aria-live="polite"></p></div></section>';
   }
   function transferButton(id, text, callback) { return button(text, callback).replace('<button ', `<button id="${id}" `); }
   function bankLimits() {
@@ -587,11 +615,22 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (p.building) confirm('Replace this building?', `This removes your ${BUILDING_TYPES[p.building].name} and any deployed troops. Empty storage and finish church treatments first. Building the ${info.name} costs ${costText(info.cost)}.`, 'plot_build', { plotId: p.id, building, confirm: true });
     else send({ type: 'action', kind: 'plot_build', plotId: p.id, building });
   }
+  function structureUpgrade(plot, title, rows, upgrade, maximumLevel, owner, action) {
+    const production = action === 'upgradeProduction', level = plot.level || 1;
+    const available = { gold: wallet(), ...Object.fromEntries(Object.keys(RESOURCE_WEIGHTS).map(resource => [resource, (plot.storage?.[resource] || 0) + (production ? me().inventory?.[resource] || 0 : 0)])) };
+    const cost = upgrade ? { gold: upgrade.gold, ...upgrade.resources } : {};
+    const stocked = Object.entries(cost).every(([resource, count]) => available[resource] >= count);
+    const label = !upgrade ? 'Fully upgraded' : production ? `Upgrade production to level ${upgrade.level}` : plot.building === 'church' ? 'Upgrade to four beds' : 'Upgrade to level 2';
+    let html = `<section class="structure-upgrade" data-upgrade-building="${esc(plot.building)}"><header><div>${buildingArt(plot.building)}</div><div>${tierBadge(level, maximumLevel)}<h3>${esc(production ? `Production · Level ${level}` : title)}</h3><p>${upgrade ? `Current tier ${level} → Next tier ${upgrade.level}` : 'Maximum tier reached'}</p></div></header>` + comparison(rows, Boolean(upgrade));
+    if (upgrade) html += '<h4>Upgrade cost</h4>' + costCards(cost, available) + `<p class="menu-footnote">${production ? 'Uses wallet gold and materials from this plot’s storage, then your pack. Harvest yield reflects your current tool tier.' : 'Uses wallet gold and materials stored in this building.'}</p>`;
+    if (owner) html += '<footer>' + `<p class="upgrade-readiness">${!upgrade ? 'All improvements are already active.' : plot.hp <= 0 ? 'Repair this building first.' : !stocked ? 'Gather the missing gold or materials to upgrade.' : 'Ready to improve this building.'}</p>` + command(label, action, { plotId: plot.id }, !upgrade || !stocked || plot.hp <= 0) + '</footer>';
+    return html + '</section>';
+  }
   function plot(id) {
     const place = PLOTS.find(p => p.id === id), p = plots().find(p => p.id === id) || { id }, mine = p.ownerId === me().id;
     if (!place) return head('LAND REGISTRY', 'That plot is unavailable.');
     const type = BUILDING_TYPES[p.building], title = type?.name || 'Open plot';
-    let html = head(place.outside ? 'BEYOND THE WALL · EXPOSED LAND' : 'VILLAGE LAND', `${place.name || id} · ${title}`, place.outside ? 'Outside plots offer forward defenses and access to rich gathering grounds. Buildings here are exposed to the horde.' : 'One building or land use per plot. Use its entrance to buy, build, trade, or manage it.');
+    let html = menuHero(type ? buildingArt(p.building) : itemArt('timber'), place.outside ? 'BEYOND THE WALL · EXPOSED LAND' : 'VILLAGE LAND', `${place.name || id} · ${title}`, place.outside ? 'Outside plots offer forward defenses and access to rich gathering grounds. Buildings here are exposed to the horde.' : 'One building or land use per plot. Use its entrance to buy, build, trade, or manage it.', type ? tierBadge(p.level || 1, Object.hasOwn(PRODUCTION_UPGRADES, p.building) ? 3 : DEFENSE_UPGRADES[p.building] ? 2 : null) : '<span class="menu-tier">Land available</span>');
     if (!p.ownerId) {
       const count = owned().length, price = PLOT_PRICES[count];
       html += stats([['Your land', `${count} / ${MAX_PLOTS}`], ['Purchase', price === undefined ? 'Plot limit reached' : `${price} gold`], ['Total daily tax after purchase', `${num((state().policies?.landTax ?? 2) * (count + 1) ** 2)} gold`]]);
@@ -619,11 +658,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       }
       html += '</div>';
     }
-    if (p.building === 'church') html += church(id).replace(/^.*?<h2>.*?<\/h2>/s, '');
+    if (p.building === 'church') html += church(id, true);
     if (p.building === 'barracks') {
       const troops = state().guards.filter(g => g.plotId === id && g.hp > 0);
       const replacements = (state().guardReplacements || []).filter(g => g.plotId === id);
-      html += '<h3>Barracks troops</h3>' + stats([['Recruited slots', `${troops.length + replacements.length} / ${RECRUIT.capacity}`], ['Living troops', num(troops.length)], ['Awaiting replacement', num(replacements.length)], ['Hungry troops', num(troops.filter(g => g.hungry).length)], ['Stored wheat', num(p.storage?.wheat)]]) + `<p>Each deployed troop consumes one stored wheat per night. Unfed troops deal 25% less damage. Fallen troops keep their recruited slot and return after ${RECRUIT.respawnSeconds} seconds when this barracks has ${RECRUIT.respawnWheat} wheat per replacement. Replacements cost no gold.</p>` + replacementRows(replacements, p.hp <= 0) + '<p>Recruiting an additional slot costs ' + costText({gold:RECRUIT.gold,...RECRUIT.resources}) + '.</p>';
+      html += '<h3>Barracks troops</h3>' + stats([['Recruited slots', `${troops.length + replacements.length} / ${RECRUIT.capacity}`], ['Living troops', num(troops.length)], ['Awaiting replacement', num(replacements.length)], ['Hungry troops', num(troops.filter(g => g.hungry).length)], ['Stored wheat', num(p.storage?.wheat)]]) + '<div class="barracks-roster">' + Array.from({ length: RECRUIT.capacity }, (_, index) => {
+        const troop = troops[index], replacing = index >= troops.length && index < troops.length + replacements.length;
+        return `<article class="barracks-slot"><div>${troop || replacing ? workerPortrait('#71808f') : itemArt('sword')}</div><span class="menu-tier">Troop ${index + 1}</span><strong>${troop ? `${num(troop.hp)} / ${num(troop.maxHp || (p.level >= 2 ? 220 : 160))} health` : replacing ? 'Awaiting replacement' : 'Open recruit slot'}</strong><small>${troop ? troop.hungry ? 'Hungry · supply wheat' : 'Fed and ready' : replacing ? 'Stock wheat to reinforce' : `${RECRUIT.gold} gold to recruit`}</small></article>`;
+      }).join('') + '</div>' + `<p>Each deployed troop consumes one stored wheat per night. Unfed troops deal 25% less damage. Fallen troops keep their recruited slot and return after ${RECRUIT.respawnSeconds} seconds when this barracks has ${RECRUIT.respawnWheat} wheat per replacement. Replacements cost no gold.</p>` + replacementRows(replacements, p.hp <= 0) + '<p>Recruiting an additional slot costs ' + costText({gold:RECRUIT.gold,...RECRUIT.resources}) + '.</p>';
       if (mine) html += command('Recruit a guard', 'recruitGuard', { plotId: id }, troops.length + replacements.length >= RECRUIT.capacity || wallet() < RECRUIT.gold || !hasCost(p.storage, RECRUIT.resources) || p.hp <= 0);
     }
     if (TOWER_STATS[p.building]) {
@@ -641,21 +683,24 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         destroyed: ['Destroyed', 'The owner must empty its storage, remove the ruined building, and rebuild.']
       };
       const [name, detail] = descriptions[condition] || descriptions.ready;
-      html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shots available', unlimited ? 'Unlimited' : num(shots)], ...ammunition]);
+      html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Damage per shot', num(tower.damage * ((p.level || 1) >= 2 ? 1.5 : 1))], ['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shot interval', `${num(tower.cooldown)} seconds`], ['Shots available', unlimited ? 'Unlimited' : num(shots)], ...ammunition]);
       html += '<p>' + (p.building === 'archer_tower' ? 'Archer towers fire automatically without arrows or other ammunition. Keep the tower repaired and upgrade it when you can.' : 'Each shot consumes one stored stone and one stored coal. Gather both with a pickaxe and place them in this building’s storage.') + '</p>';
     }
     if (Object.hasOwn(PRODUCTION_UPGRADES, p.building || '')) {
-      const upgrade = PRODUCTION_UPGRADES[p.building], next = { ...p, level: 2 }, levelTwo = p.level >= 2;
+      const upgrade = productionUpgrade(p), currentStats = productionStats(p), next = upgrade ? { ...p, level: upgrade.level } : p, nextStats = productionStats(next);
       const produced = p.building === 'mine' ? ['stone', 'iron', 'coal'] : [p.building === 'tree_farm' ? 'timber' : 'wheat'];
-      const benefits = produced.map(resource => `${productionNodeCapacity(resource, next)} ${resource} harvests per node`).join(' · ');
-      html += '<h3>Production · Level ' + (levelTwo ? '2' : '1') + '</h3><p>' + esc(`${levelTwo ? 'Upgraded production' : 'Level 2 unlocks'}: ${benefits}. Regrowth: ${num(productionRegrowSeconds(produced[0], next))} seconds (25% faster). Storage: 2,000 weight. Building health: +50%.`) + '</p>';
-      if (mine) {
-        const stocked = Object.entries(upgrade.resources).every(([resource, count]) => (p.storage?.[resource] || 0) + (me().inventory?.[resource] || 0) >= count);
-        if (!levelTwo) html += '<p>' + esc(costText({ gold: upgrade.gold, ...upgrade.resources })) + '. Uses wallet gold and materials from this plot’s storage, then your pack.</p>';
-        html += command(levelTwo ? 'Fully upgraded' : 'Upgrade production to level 2', 'upgradeProduction', { plotId: id }, levelTwo || wallet() < upgrade.gold || !stocked || p.hp <= 0, p.hp <= 0 ? 'Repair this building first.' : !stocked ? 'Gather or store the required materials.' : '');
-      }
+      const rows = produced.map(resource => { const tool = resource === 'timber' ? 'axe' : resource === 'wheat' ? 'scythe' : 'pickaxe', base = TOOL_TIERS[me().tiers?.[tool] || 'wood'].yield; return [`${label(resource)} / swing`, num(productionYield(base, p)), num(productionYield(base, next))]; });
+      rows.push(...produced.map(resource => [`${label(resource)} harvests / node`, num(productionNodeCapacity(resource, p)), num(productionNodeCapacity(resource, next))]), ['Resource regrowth', `${num(productionRegrowSeconds(produced[0], p))} seconds`, `${num(productionRegrowSeconds(produced[0], next))} seconds`], ['Storage capacity', `${num(plotStorageCapacity(p))} weight`, `${num(plotStorageCapacity(next))} weight`], ['Building health', num(p.maxHp || Math.round(type.maxHp * currentStats.healthMultiplier)), num(Math.round(type.maxHp * nextStats.healthMultiplier))]);
+      html += structureUpgrade(p, 'Production', rows, upgrade, 3, mine, 'upgradeProduction');
     }
-    if(mine && DEFENSE_UPGRADES[p.building]) {const upgrade=DEFENSE_UPGRADES[p.building];html+='<h3>Building upgrade</h3><p>'+costText({gold:upgrade.gold,...upgrade.resources})+'</p>'+command((p.level||1)>=2?'Fully upgraded':p.building==='church'?'Upgrade to four beds':'Upgrade to level 2','upgradeDefense',{plotId:id},(p.level||1)>=2||wallet()<upgrade.gold||!hasCost(p.storage,upgrade.resources)||p.hp<=0);}
+    if (DEFENSE_UPGRADES[p.building]) {
+      const level = p.level || 1, upgrade = level < 2 ? { ...DEFENSE_UPGRADES[p.building], level: 2 } : null;
+      const rows = [['Building health', num(p.maxHp), num(p.maxHp + (upgrade ? Math.ceil(p.maxHp * .5) : 0))]];
+      if (p.building === 'church') rows.push(['Treatment beds', num(bedCapacity(p)), '4']);
+      if (p.building === 'barracks') rows.push(['Troop health', level >= 2 ? '220' : '160', '220'], ['Troop damage', level >= 2 ? '18' : '14', '18']);
+      if (TOWER_STATS[p.building]) { const tower = TOWER_STATS[p.building]; rows.push(['Damage per shot', num(tower.damage * (level >= 2 ? 1.5 : 1)), num(tower.damage * 1.5)], ['Firing range', `${tower.range} m`, `${tower.range} m`]); }
+      html += structureUpgrade(p, 'Building upgrade', rows, upgrade, 2, mine, 'upgradeDefense');
+    }
     if (mine || p.building) html += '<h3>Building storage</h3><p>Capacity: ' + num(inventoryWeight(p.storage||{})) + ' / ' + num(plotStorageCapacity(p)) + ' weight. Materials stored on an empty plot can fund its construction.</p>' + storage(p.storage || {}, id, false, mine);
     if (mine) {
       html += '<h3>' + (p.building ? 'Convert this plot' : 'Choose a building') + '</h3><p>Browse one building plan at a time. Construction uses gold and this plot’s materials before supplies in your pack. Converting removes the existing structure.</p>' + buildCarousel.render(buildOptions(id));

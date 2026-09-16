@@ -4,7 +4,7 @@
 import ctypes as C, ctypes.util as U, re
 class Renderer:
  def __init__(self,w,h):
-  self.w,self.h=w,h
+  self.w,self.h=w,h;self.textures={}
   self.egl=C.CDLL(U.find_library('EGL'));e=self.egl
   self.bind(e,'eglGetProcAddress',C.c_void_p,[C.c_char_p])
   platform=C.CFUNCTYPE(C.c_void_p,C.c_uint,C.c_void_p,C.POINTER(C.c_int))(e.eglGetProcAddress(b'eglGetPlatformDisplayEXT'))
@@ -28,6 +28,7 @@ class Renderer:
    ('glGetShaderiv',None,[C.c_uint,C.c_uint,C.POINTER(C.c_int)]),('glGetShaderInfoLog',None,[C.c_uint,C.c_int,C.POINTER(C.c_int),C.c_char_p]),
    ('glCreateProgram',C.c_uint,[]),('glAttachShader',None,[C.c_uint,C.c_uint]),('glLinkProgram',None,[C.c_uint]),('glGetProgramiv',None,[C.c_uint,C.c_uint,C.POINTER(C.c_int)]),('glGetProgramInfoLog',None,[C.c_uint,C.c_int,C.POINTER(C.c_int),C.c_char_p]),
    ('glUseProgram',None,[C.c_uint]),('glGetUniformLocation',C.c_int,[C.c_uint,C.c_char_p]),('glUniform1f',None,[C.c_int,C.c_float]),('glUniform1i',None,[C.c_int,C.c_int]),('glUniform2fv',None,[C.c_int,C.c_int,C.POINTER(C.c_float)]),('glUniform3fv',None,[C.c_int,C.c_int,C.POINTER(C.c_float)]),('glUniform4fv',None,[C.c_int,C.c_int,C.POINTER(C.c_float)]),('glUniformMatrix4fv',None,[C.c_int,C.c_int,C.c_ubyte,C.POINTER(C.c_float)]),
+   ('glGenTextures',None,[C.c_int,C.POINTER(C.c_uint)]),('glBindTexture',None,[C.c_uint,C.c_uint]),('glActiveTexture',None,[C.c_uint]),('glTexParameteri',None,[C.c_uint,C.c_uint,C.c_int]),('glTexImage2D',None,[C.c_uint,C.c_int,C.c_int,C.c_int,C.c_int,C.c_int,C.c_uint,C.c_uint,C.c_void_p]),
    ('glGetAttribLocation',C.c_int,[C.c_uint,C.c_char_p]),('glEnableVertexAttribArray',None,[C.c_uint]),('glVertexAttribPointer',None,[C.c_uint,C.c_int,C.c_uint,C.c_ubyte,C.c_int,C.c_void_p]),('glDrawElements',None,[C.c_uint,C.c_int,C.c_uint,C.c_void_p]),
    ('glDrawArrays',None,[C.c_uint,C.c_int,C.c_int]),('glEnable',None,[C.c_uint]),('glBlendFunc',None,[C.c_uint,C.c_uint]),('glDisableVertexAttribArray',None,[C.c_uint]),
    ('glViewport',None,[C.c_int,C.c_int,C.c_int,C.c_int]),('glClearColor',None,[C.c_float,C.c_float,C.c_float,C.c_float]),('glClear',None,[C.c_uint]),('glReadPixels',None,[C.c_int,C.c_int,C.c_int,C.c_int,C.c_uint,C.c_uint,C.c_void_p]),('glFinish',None,[]),('glDisable',None,[C.c_uint])]:self.bind(g,name,restype,args)
@@ -53,6 +54,16 @@ class Renderer:
  def uniform(self,name,v):
   loc=self.gl.glGetUniformLocation(self.p,name.encode())
   if loc<0:return
+  if isinstance(v,dict) and 'texture' in v:
+   from PIL import Image
+   g=self.gl;key=(v['texture'],v.get('srgb',False),v.get('flipY',True));g.glActiveTexture(0x84C0)
+   if key not in self.textures:
+    image=Image.open(v['texture']).convert('RGBA')
+    if v.get('flipY',True):image=image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    ident=C.c_uint();g.glGenTextures(1,C.byref(ident));g.glBindTexture(0x0DE1,ident.value)
+    for parameter,value in [(0x2801,0x2601),(0x2800,0x2601),(0x2802,0x2901),(0x2803,0x812F)]:g.glTexParameteri(0x0DE1,parameter,value)
+    pixels=C.create_string_buffer(image.tobytes());g.glTexImage2D(0x0DE1,0,0x8C43 if v.get('srgb') else 0x8058,image.width,image.height,0,0x1908,0x1401,C.cast(pixels,C.c_void_p));self.textures[key]=ident.value
+   g.glBindTexture(0x0DE1,self.textures[key]);g.glUniform1i(loc,0);return
   if isinstance(v,(int,float)):self.gl.glUniform1f(loc,v);return
   values=(C.c_float*len(v))(*v)
   if len(v)==16:self.gl.glUniformMatrix4fv(loc,1,False,values)
@@ -88,7 +99,7 @@ if __name__=='__main__':
  r=Renderer(data['width'],data['height']);by_name={mesh['name']:mesh for mesh in data['meshes']}
  for mesh in data['meshes']:
   mesh['program']=r.program(mesh['vertex'],mesh['fragment']);print('Compiled',mesh['name'])
- gap=18;header=82;footer=36;w=data['width'];h=data['height'];sheet=Image.new('RGB',(w*2+gap*3,h*2+header+gap*2+footer),'#101c22');draw=ImageDraw.Draw(sheet)
+ gap=18;header=82;footer=36;w=data['width'];h=data['height'];rows=(len(data['frames'])+1)//2;sheet=Image.new('RGB',(w*2+gap*3,h*rows+header+gap*rows+footer),'#101c22');draw=ImageDraw.Draw(sheet)
  fontpath='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
  title=ImageFont.truetype(fontpath,25);label=ImageFont.truetype(fontpath,22);small=ImageFont.truetype(fontpath,15)
  draw.text((gap,16),'EMBERWATCH / LIVING SKY',font=title,fill='#f6ddb0')
@@ -98,7 +109,8 @@ if __name__=='__main__':
   for item in sorted(frame['meshes'],key=lambda item:by_name[item['name']]['renderOrder']):
    if item['visible']:r.draw(by_name[item['name']],item['uniforms'])
   image=r.pixels();x=gap+(i%2)*(w+gap);y=header+(i//2)*(h+gap);sheet.paste(image,(x,y))
-  draw.rounded_rectangle((x+12,y+12,x+230,y+48),radius=7,fill='#102027');draw.text((x+24,y+16),frame['label'],font=label,fill='#f2e8cb')
+  label_width=draw.textlength(frame['label'],font=label)+36
+  draw.rounded_rectangle((x+12,y+12,x+12+label_width,y+48),radius=7,fill='#102027');draw.text((x+24,y+16),frame['label'],font=label,fill='#f2e8cb')
   print('Rendered',frame['label'])
  draw.text((gap,sheet.height-24),'Sky-only validation view; no world geometry. Camera faces the sun or moon at each phase.',font=small,fill='#b7c9ca')
  sheet.save(output,quality=92);print(output)

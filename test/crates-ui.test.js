@@ -1,20 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createCratesUI, crateOdds, crateReel, crateResultText } from '../public/src/crates-ui.js';
-import { CRATE_POOLS, CRATE_PRICES, emptyLoadout } from '../shared/crates.js';
+import { CRATE_POOLS, CRATE_PRICES, LOADOUT_SLOTS, emptyLoadout } from '../shared/crates.js';
+import { CRATE_TIERS, crateItem } from '../public/src/crate-catalog.js';
 
 const clone = value => structuredClone(value);
+const plainText = value => value.replace(/<[^>]*>/g, '').replace(/&(?:amp|lt|gt|quot|#39);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" }[entity])).replace(/\s+/g, ' ').trim();
+function elementsWithClass(html, className) {
+  const matches = [...html.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*class="([^"]*)"[^>]*>/g)].filter(match => match[2].split(/\s+/).includes(className));
+  return matches.map(match => html.slice(match.index, html.indexOf(`</${match[1]}>`, match.index) + match[1].length + 3));
+}
+function assertRealItemImage(html, expectedId) {
+  const images = [...html.matchAll(/<img\b([^>]*)>/g)];
+  assert.ok(images.length, 'Artwork must use an image');
+  const image = expectedId ? images.find(match => match[1].includes(`src="/assets/crate-items/${expectedId}.png"`)) : images[0];
+  assert.ok(image, `Missing artwork for ${expectedId || 'item'}`);
+  const source = image[1].match(/\bsrc="([^"]+)"/)?.[1];
+  assert.match(source, /^\/assets\/crate-items\/[a-z0-9_]+\.png$/);
+  assert.match(image[1], /\balt="[^"]*"/);
+  const png = readFileSync(new URL(`../public${source}`, import.meta.url));
+  assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `Invalid PNG: ${source}`);
+  assert.ok(png.readUInt32BE(16) > 32 && png.readUInt32BE(20) > 32, `Artwork is too small: ${source}`);
+}
 function memory() { const values = new Map(); return { values, getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; }
 function snapshot() { return { nights: 99, bank: 200000, credits: 20000, unlocks: ['padded_cap', 'mining_pack'], loadout: emptyLoadout(), earnedCrates: [{ id: 'grant-basic', tier: 'basic', milestone: 10 }], history: [], charges: { total: 2, available: 1, reserved: 1 }, run: { villageId: 'v1', forfeited: false, phoenixAvailable: true } }; }
 function fixture(options = {}) {
-  const data = options.data || snapshot(), storage = options.storage === undefined ? memory() : options.storage, requests = [], timers = new Map(), fields = new Map();
-  let account = 'alice', html = '', panel = null, buttons = [], selects = [], nodes = [], renders = 0, nextId = 0, nextTimer = 0;
-  const me = { id: 'alice', crateEquipment: { head: 'iron_coif', body: '', feet: '', utility: '' }, inventory: { food: 4 } };
+  const data = options.data || snapshot(), storage = options.storage === undefined ? memory() : options.storage, requests = [], accountUpdates = [], timers = new Map(), fields = new Map();
+  let account = options.account || 'alice', html = '', panel = null, buttons = [], selects = [], nodes = [], renders = 0, nextId = 0, nextTimer = 0;
+  const me = { id: account, crateEquipment: { head: 'iron_coif', body: '', feet: '', utility: '' }, inventory: { food: 4 } };
   const content = { contains: node => nodes.includes(node), querySelectorAll: selector => selector === '[data-crate-action]' ? buttons : selector === '[data-crate-slot]' ? selects.filter(select => select.dataset.crateSlot) : [] };
   const dialog = { scrollTop: 0 }, doc = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   function render(next, nextPanel) {
     html = next; panel = nextPanel; renders++; fields.clear();
-    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => ({ tagName: 'BUTTON', dataset: { crateAction: match[1].match(/data-crate-action="(\d+)"/)[1] }, text: match[2], disabled: /\sdisabled(?:\s|$)/.test(match[1]) }));
+    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => ({ tagName: 'BUTTON', dataset: { crateAction: match[1].match(/data-crate-action="(\d+)"/)[1] }, text: plainText(match[1].match(/\baria-label="([^"]*)"/)?.[1] ?? match[2]), disabled: /\sdisabled(?:\s|$)/.test(match[1]) }));
     selects = [...html.matchAll(/<select\b([^>]*)>(.*?)<\/select>/gs)].map(match => {
       const choices = [...match[2].matchAll(/<option\b([^>]*)>(.*?)<\/option>/gs)];
       const selected = choices.find(choice => /\sselected(?:\s|$)/.test(choice[1])) || choices[0];
@@ -42,8 +61,8 @@ function fixture(options = {}) {
     return { crates: clone(data), result: clone(result) };
   };
   const api = async (path, settings) => { const action = settings ? JSON.parse(settings.body) : null; requests.push({ path, action }); return options.api ? options.api(path, settings, defaultApi) : defaultApi(path, settings); };
-  const ui = createCratesUI({ getMe: () => me, getAccountKey: () => account, getActivePanel: () => panel, openPanel: render, api, document: doc, storage, reducedMotion: () => Boolean(options.reducedMotion), makeRequestId: () => `request-${++nextId}`, schedule: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, cancel: id => timers.delete(id) });
-  return { ui, data, me, storage, requests, timers, fields, doc, get html() { return html; }, get buttons() { return buttons; }, get renders() { return renders; }, setAccount(value) { account = value; }, close() { panel = null; }, async click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); return button.onclick(); }, field(id, value) { const field = fields.get(id); assert.ok(field, `Missing field ${id}`); if (typeof value === 'boolean') field.checked = value; else field.value = value; return field.onchange(); } };
+  const ui = createCratesUI({ getMe: () => me, getAccountKey: () => account, getActivePanel: () => panel, openPanel: render, api, onAccountUpdate: next => accountUpdates.push({ account, data: clone(next) }), document: doc, storage, reducedMotion: () => Boolean(options.reducedMotion), makeRequestId: () => `request-${++nextId}`, schedule: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, cancel: id => timers.delete(id) });
+  return { ui, data, me, storage, requests, accountUpdates, timers, fields, doc, get account() { return account; }, get html() { return html; }, get buttons() { return buttons; }, get renders() { return renders; }, setAccount(value) { account = value; me.id = value; }, close() { panel = null; }, async click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); return button.onclick(); }, field(id, value) { const field = fields.get(id); assert.ok(field, `Missing field ${id}`); if (typeof value === 'boolean') field.checked = value; else field.value = value; return field.onchange(); } };
 }
 
 test('tier pools are transparent 4/6/4/5 and the reel stop is exactly the committed result', () => {
@@ -132,4 +151,68 @@ test('storage failure blocks a purchase before funds are sent and a different ac
   assert.match(f.html, /could not save the opening receipt/); assert.equal(f.requests.filter(request => request.action).length, 0);
   const saved = memory(); saved.setItem('emberwatch-crates:alice:pending', JSON.stringify({ kind: 'crate_open', requestId: 'old', tier: 'basic', currency: 'bank' }));
   const other = fixture({ storage: saved }); other.setAccount('bob'); await other.ui.show(); assert.equal(other.requests.filter(request => request.action).length, 0);
+});
+
+test('all four rarity choices and every pool reward use real illustrated assets with accessible tier selection', async () => {
+  const f = fixture(); await f.ui.show();
+  const tiers = elementsWithClass(f.html, 'crate-tier-card');
+  assert.equal(tiers.length, 4);
+  for (const card of tiers) { assertRealItemImage(card); assert.match(card, /aria-label="(?:Basic|Rare|Epic|Legendary)"/); assert.match(card, /aria-pressed="(?:true|false)"/); }
+  for (const [tier, pool] of Object.entries(CRATE_POOLS)) {
+    await f.click(CRATE_TIERS[tier].label);
+    const cards = elementsWithClass(f.html, 'crate-item'); assert.equal(cards.length, pool.length);
+    for (const id of pool) assertRealItemImage(cards.find(card => card.includes(`src="/assets/crate-items/${id}.png"`)), id);
+    assert.match(f.html, new RegExp(`${pool.length} listed items are equally likely`));
+    assert.match(f.html, /class="crate-purchase-controls"/); assert.match(f.html, /Available/);
+    assert.ok(f.buttons.some(button => button.text === `Open ${CRATE_TIERS[tier].label} · ${CRATE_PRICES[tier].bank.toLocaleString('en-US')} bank gold`));
+  }
+});
+
+test('future loadout renders selected gear next to its control and current equipment stays separately illustrated', async () => {
+  const f = fixture(); await f.ui.show(); await f.click('Future loadout');
+  assert.equal(elementsWithClass(f.html, 'crate-slot-card').length, LOADOUT_SLOTS.length + 1);
+  assert.equal(elementsWithClass(f.html, 'crate-current-slot').length, 4);
+  assert.match(f.html, /class="crate-slot-placeholder"/); assertRealItemImage(f.html, 'iron_coif');
+  f.field('crate-slot-head', 'padded_cap'); f.field('crate-slot-utility', 'mining_pack');
+  const slots = elementsWithClass(f.html, 'crate-slot-card');
+  assertRealItemImage(slots.find(card => card.includes('data-crate-slot="head"')), 'padded_cap');
+  assertRealItemImage(slots.find(card => card.includes('data-crate-slot="utility"')), 'mining_pack');
+  assert.match(f.html, /Enemy damage reduction<\/span><strong>2%/);
+  assert.match(f.html, /Unsaved choices/); assert.equal(f.me.crateEquipment.head, 'iron_coif');
+});
+
+test('saved results show the actual reward, payment and odds; unrecognized result text cannot create an asset request', async () => {
+  const f = fixture({ reducedMotion: true, resultId: 'runed_helm' }); await f.ui.show(); await f.click('Epic'); await f.click('Open Epic · 50,000 bank gold');
+  const result = elementsWithClass(f.html, 'crate-result')[0]; assertRealItemImage(result, 'runed_helm');
+  assert.match(result, /data-reward-id="runed_helm"/); assert.match(result, /Paid 50,000 bank gold/); assert.match(result, /1 in 4 · 25% each/);
+  assert.match(f.html, /class="crate-result-stage"/); assert.match(f.html, /class="crate-result-receipt"/);
+  const unsafe = fixture({ reducedMotion: true, resultId: '"><img src=x onerror=alert(1)>' }); await unsafe.ui.show(); await unsafe.click('Open Basic · 1,000 bank gold');
+  assert.doesNotMatch(unsafe.html, /<img src=x|src="\/assets\/crate-items\/&quot;/);
+  assert.match(unsafe.html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test('an account switch isolates in-flight openings, loadout drafts and saved receipts', async () => {
+  let release;
+  const bob = snapshot(); bob.bank = 17; bob.unlocks = []; bob.earnedCrates = [];
+  const f = fixture({ api: async (path, settings, fallback) => {
+    if (f.account === 'bob') return { crates: clone(bob) };
+    if (settings) { await new Promise(resolve => { release = resolve; }); return fallback(path, settings); }
+    return fallback(path, settings);
+  } });
+  await f.ui.show(); await f.click('Future loadout'); f.field('crate-slot-head', 'padded_cap'); await f.click('Open crates');
+  const original = f.buttons.find(button => button.text === 'Open Basic · 1,000 bank gold').onclick();
+  f.setAccount('bob'); await f.ui.show(); const updates = f.accountUpdates.length;
+  release(); await original;
+  assert.equal(f.accountUpdates.length, updates, 'an old response never updates the next account');
+  assert.equal(f.ui.getSnapshot().bank, 17); assert.doesNotMatch(f.html, /crate-result-stage/);
+  assert.ok(f.storage.values.has('emberwatch-crates:alice:pending'));
+  assert.equal(f.storage.values.has('emberwatch-crates:bob:pending'), false);
+  await f.click('Future loadout'); assert.equal(f.fields.get('crate-slot-head').value, ''); assert.equal(f.fields.get('crate-slot-head').choices.length, 1);
+});
+
+test('responsive armory stylesheet preserves reduced motion and fixed saved-result reel alignment', () => {
+  const css = readFileSync(new URL('../public/crates-menu.css', import.meta.url), 'utf8');
+  assert.match(css, /@media\(max-width:680px\)/); assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
+  assert.match(css, /animation:none!important/); assert.match(css, /50% - 68px - var\(--crate-stop\)/);
+  assert.match(css, /:focus-visible/); assert.doesNotMatch(css, /url\(https?:/);
 });

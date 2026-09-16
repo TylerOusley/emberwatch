@@ -37,7 +37,7 @@ test('worker management is discoverable from the pack and treasury and shows onl
   const f = fixture(t);
   f.state.workers.push({ ...f.worker, id: 'other-worker', ownerId: 'bob', name: 'Hidden Bob worker', cargo: { iron: 10 } });
   f.ui.show('inventory'); f.click('Manage workers');
-  assert.match(f.html, /1 \/ 2/); assert.match(f.html, /1 gold \/ 30 working seconds/);
+  assert.match(f.html, new RegExp(`1 / ${WORKER_RULES.maxPerPlayer}`)); assert.match(f.html, /1 gold \/ 30 working seconds/);
   assert.match(f.html, /Hiring and wages use your wallet/); assert.doesNotMatch(f.html, /Hidden Bob worker/);
   f.click(`Hire a worker · ${WORKER_RULES.hireCost}g`);
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_hire' });
@@ -86,8 +86,8 @@ test('missing or incompatible buildings retain the selected order and require an
 test('worker controls enforce wallet hiring, crew limits, proximity, partial collection and reviewed dismissal', t => {
   const f = fixture(t); f.ui.show('workers');
   f.player.wallet = WORKER_RULES.hireCost - 1; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
-  f.player.wallet = 200; f.state.workers.push({ ...f.worker, id: 'second' }); f.ui.refresh(); assert.equal(f.button('Worker limit reached').disabled, true);
-  f.state.workers.pop(); f.player.x = 10; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
+  f.player.wallet = 200; for (let i = 1; i < WORKER_RULES.maxPerPlayer; i++) f.state.workers.push({ ...f.worker, id: `worker-${i}` }); f.ui.refresh(); assert.equal(f.button('Worker limit reached').disabled, true);
+  f.state.workers.splice(1); f.player.x = 10; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
   f.click('Mark the treasury'); assert.equal(f.ui.getWaypoint().id, 'bank');
   f.click('Find worker'); assert.deepEqual(f.ui.getWaypoint(), { kind: 'worker', id: f.worker.id, name: f.worker.name, x: f.worker.x, z: f.worker.z });
   Object.assign(f.player, treasuryEntrance); f.worker.paused = false; f.worker.cargo = { stone: 10 }; f.player.inventory = { wheat: 97 }; f.ui.refresh();
@@ -139,4 +139,15 @@ test('worker hiring requires the player entrance while returning workers can wai
   f.ui.show('workers'); f.click('Dismiss worker');
   f.player.x = bank.x - bank.w / 2 - 1; f.click('Confirm change');
   assert.equal(f.sent.length, 2); assert.match(f.html, /BUILDING ENTRANCE/);
+});
+
+test('illustrated worker training compares numeric next-rank effects while retaining five crew places', t => {
+  const f = fixture(t); f.worker.attributes = { gathering: 2, speed: 1, carry: 0 }; f.worker.upgradePoints = 1; f.worker.level = 4;
+  f.ui.show('workers');
+  assert.match(f.html, /data-worker-portrait=/); assert.match(f.html, /1 \/ 5 workers/);
+  assert.match(f.html, /3.2 seconds \/ harvest/); assert.match(f.html, /2.8 seconds \/ harvest/);
+  assert.match(f.html, /3.3 movement speed/); assert.match(f.html, /3.6 movement speed/);
+  assert.match(f.html, /40 cargo capacity/); assert.match(f.html, /50 cargo capacity/);
+  assert.match(f.html, /Rank 2 \/ 5/); f.click('+1 rank · 1 point');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'gathering' });
 });

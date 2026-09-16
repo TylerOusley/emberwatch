@@ -1,12 +1,11 @@
 import { canUseBuilding, canUsePlot } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES, resolveResource, clearResourceSegment, plotSolids } from '../shared/world.js';
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, STORAGE_CAPACITY, inventoryWeight, resourceWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, carryCapacity, inventoryWeight, resourceWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
 import { TOWER_STATS } from '../shared/defense.js';
 import { moveResource } from '../shared/transfers.js';
 import { requireCartAllowance } from '../shared/cart-ownership.js';
-import { plotStorageCapacity } from '../shared/production.js';
-import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds } from '../shared/production.js';
+import { plotStorageCapacity, PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionLevel, productionStats, productionUpgrade, productionYield } from '../shared/production.js';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -53,7 +52,7 @@ export function ensureOwnership(village) {
   village.plots = PLOTS.map(m => {
     const plot = existing.get(m.id) ?? { id: m.id, ownerId: null, building: null, level: 1, hp: 0, maxHp: 0 };
     plot.storage ??= {}; plot.allowVisitors ??= true; plot.splitRemainders ??= {};
-    if (Object.hasOwn(PRODUCTION_UPGRADES, plot.building ?? '')) plot.level = plot.level === 2 ? 2 : 1;
+    if (Object.hasOwn(PRODUCTION_UPGRADES, plot.building ?? '')) plot.level = productionLevel(plot);
     return plot;
   });
   village.plotResources ??= [];
@@ -108,13 +107,14 @@ export function ownershipAction(sim, village, player, action) {
     if (plot && (plot.hp <= 0 || !plot.ownerId)) throw new Error('Repair this production plot before harvesting.');
     if (plot && plot.ownerId !== player.id && !plot.allowVisitors) throw new Error('This owner has closed the plot to visitors.');
     const tier = TOOL_TIERS[player.tiers[tool]] ?? TOOL_TIERS.wood;
+    const output = productionYield(tier.yield, plot);
     let ownerYield = 0, nextRemainder = 0;
     if (plot && plot.ownerId !== player.id) {
-      const numerator = tier.yield + yieldRemainder(plot, node.type);
+      const numerator = output + yieldRemainder(plot, node.type);
       ownerYield = Math.floor(numerator / 5); nextRemainder = numerator % 5;
       if (inventoryWeight(plot.storage) + ownerYield * RESOURCE_WEIGHTS[node.type] > plotStorageCapacity(plot)) throw new Error('The owner needs to make room in plot storage.');
     }
-    const received = tier.yield - ownerYield;
+    const received = output - ownerYield;
     checkCapacity(player, node.type, received);
     // Commit all three ledgers together only after permissions and both capacities pass.
     player.inventory[node.type] += received;
@@ -145,7 +145,8 @@ export function ownershipAction(sim, village, player, action) {
   if (action.kind === 'plot_buy') {
     if (plot.ownerId) throw new Error('This plot already belongs to another resident.');
     const count = village.plots.filter(p => p.ownerId === player.id).length;
-    if (count >= MAX_PLOTS) throw new Error('You may own at most five plots.');
+    if (count >= MAX_PLOTS) throw new Error(`You may own at most ${MAX_PLOTS} plots.`);
+    if (!Number.isSafeInteger(village.treasury + PLOT_PRICES[count])) throw new Error('The treasury cannot accept this plot payment.');
     chargePurchase(sim, village, player, PLOT_PRICES[count], { credit: true });
     village.treasury += PLOT_PRICES[count];
     plot.ownerId = player.id; plot.purchasedDay = village.day;
@@ -197,9 +198,9 @@ export function ownershipAction(sim, village, player, action) {
   }
   checkOwner(plot, player);
   if (action.kind === 'upgradeProduction') {
-    const upgrade = Object.hasOwn(PRODUCTION_UPGRADES, plot.building ?? '') ? PRODUCTION_UPGRADES[plot.building] : null;
-    if (!upgrade) throw new Error('Only mines, tree farms and wheat farms have production upgrades.');
-    if (plot.level >= 2) throw new Error('This production building is already level 2.');
+    if (!Object.hasOwn(PRODUCTION_UPGRADES, plot.building ?? '')) throw new Error('Only mines, tree farms and wheat farms have production upgrades.');
+    const upgrade = productionUpgrade(plot);
+    if (!upgrade) throw new Error(`This production building is already fully upgraded at level ${productionLevel(plot)}.`);
     if (plot.hp <= 0) throw new Error('Repair this production building before upgrading it.');
     if (!Number.isSafeInteger(player.wallet) || player.wallet < upgrade.gold) throw new Error(`This upgrade costs ${upgrade.gold} wallet gold.`);
     if (!Number.isSafeInteger(village.treasury + upgrade.gold)) throw new Error('The treasury cannot accept this upgrade payment.');
@@ -214,14 +215,15 @@ export function ownershipAction(sim, village, player, action) {
     player.wallet -= upgrade.gold; village.treasury += upgrade.gold;
     for (const { id, stored, carried } of deductions) { plot.storage[id] = (plot.storage[id] ?? 0) - stored; player.inventory[id] = (player.inventory[id] ?? 0) - carried; }
     const prior = { ...plot };
-    plot.level = 2;
-    const maxHp = Math.round(BUILDING_TYPES[plot.building].maxHp * 1.5);
+    plot.level = upgrade.level;
+    const stats = productionStats(plot), priorStats = productionStats(prior);
+    const maxHp = Math.round(BUILDING_TYPES[plot.building].maxHp * stats.healthMultiplier);
     plot.hp = Math.min(maxHp, plot.hp + Math.max(0, maxHp - plot.maxHp)); plot.maxHp = maxHp;
     for (const node of village.plotResources.filter(node => node.plotId === plot.id)) {
       if (node.available) node.remaining += productionNodeCapacity(node.type, plot) - productionNodeCapacity(node.type, prior);
-      else node.regrowAt = village.clock + Math.max(0, node.regrowAt - village.clock) * .75;
+      else node.regrowAt = village.clock + Math.max(0, node.regrowAt - village.clock) * stats.regrowMultiplier / priorStats.regrowMultiplier;
     }
-    return `${BUILDING_TYPES[plot.building].name} upgraded to level 2: more harvests per node, 25% faster regrowth and 2,000 storage capacity.`;
+    return `${BUILDING_TYPES[plot.building].name} upgraded to level ${plot.level}: +${stats.yieldBonus} yield per harvest, larger reserves, ${Math.round((1 - stats.regrowMultiplier) * 100)}% faster regrowth and ${stats.storageCapacity.toLocaleString('en-US')} storage capacity.`;
   }
   if (action.kind === 'plot_access') {
     if (typeof action.allowVisitors !== 'boolean') throw new Error('Choose whether visitors may harvest.');
@@ -271,8 +273,12 @@ export function ownershipTick(sim, village, dt) {
 export function ownershipSnapshot(village, viewerId) {
   ensureOwnership(village);
   return {
-    plots: village.plots.map(plot => ({ ...metadata(plot.id), ...plot, ownerName: village.players[plot.ownerId]?.name ?? null })),
-    plotResources: village.plotResources.map(({ id, type, x, z, plotId, available, remaining, seed }) => ({ id, type, x, z, plotId, available, remaining, seed })),
+    plots: village.plots.map(plot => ({ ...metadata(plot.id), ...plot, ownerName: village.players[plot.ownerId]?.name ?? null,
+      ...(Object.hasOwn(PRODUCTION_UPGRADES, plot.building ?? '') ? { production: productionStats(plot) } : {}) })),
+    plotResources: village.plotResources.map(({ id, type, x, z, plotId, available, remaining, seed }) => {
+      const plot = village.plots.find(plot => plot.id === plotId), stats = productionStats(plot);
+      return { id, type, x, z, plotId, available, remaining, seed, productionLevel: stats.level, productionScale: stats.resourceScale };
+    }),
     backpackTier: village.players[viewerId]?.backpackTier ?? 0,
     carryCapacity: carryCapacity(village.players[viewerId]), carryWeight: inventoryWeight(village.players[viewerId] ?? {})
   };

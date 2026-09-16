@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { accountCrateSnapshot, crateAccountAction } from './crates.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary' };
 function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(JSON.stringify(value));
@@ -121,6 +121,7 @@ export function createApp(options = {}) {
     socket.on('pong', () => { socket.lastSeen = networkClock(); });
     const joinTimeout = setTimeout(() => { if (!identity) socket.close(1008, 'Sign in to join.'); }, 10000);
     socket.on('message', data => {
+      let requestId = null;
       try {
         const now = performance.now();
         socket.lastSeen = networkClock();
@@ -134,6 +135,7 @@ export function createApp(options = {}) {
         let message;
         try { message = JSON.parse(data.toString()); } catch { throw new Error('Invalid message.'); }
         if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid message.');
+        if (message.type === 'action' && typeof message.requestId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(message.requestId)) requestId = message.requestId;
         if (message.type === 'join') {
           if (identity) throw new Error('You have already joined.');
           const account = store.accountFromToken(message.token);
@@ -177,11 +179,15 @@ export function createApp(options = {}) {
           } else if (message.type === 'typing') sendVillage(identity, chat.setTyping(identity, message.typing), false);
           else if (message.type === 'action') {
             const response = simulation.action(identity.villageId, identity.playerId, message);
+            if (requestId && ['investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet'].includes(message.kind)) {
+              const receipt = store.financeReceipt(identity.villageId, identity.playerId, requestId);
+              if (receipt) send(socket, { type: 'financeReceipt', requestId, receipt });
+            }
             // Routine hits and harvests already have visual and HUD feedback.
-            if (response && !['attack', 'gather', 'repair', 'repairPlot'].includes(message.kind)) send(socket, { type: 'notice', message: response });
+            if (response && !['attack', 'gather', 'repair', 'repairPlot'].includes(message.kind)) send(socket, { type: 'notice', message: response, ...(requestId ? { requestId } : {}) });
           } else throw new Error('Unknown message.');
         }
-      } catch (error) { send(socket, { type: 'error', message: error.message || 'Action failed.', ...(identity ? {} : { code: error.code ?? 'JOIN_FAILED', fatal: true }) }); }
+      } catch (error) { send(socket, { type: 'error', message: error.message || 'Action failed.', ...(requestId ? { requestId } : {}), ...(identity ? {} : { code: error.code ?? 'JOIN_FAILED', fatal: true }) }); }
     });
     socket.on('close', () => {
       clearTimeout(joinTimeout);

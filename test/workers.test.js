@@ -49,8 +49,10 @@ test('hiring is capped, costs wallet gold once, and never uses treasury, bank or
   owner.x = home.x; const a = hire(), b = hire();
   assert.notEqual(a.id, b.id); assert.equal(owner.wallet, 850); assert.equal(v.treasury, 20000);
   assert.equal(owner.bank, 10000); assert.equal(owner.credit, 10000);
-  assert.throws(() => act({ kind: 'worker_hire', price: 0, limit: 100 }), /at most 2/);
-  assert.equal(v.workers.length, 2); assert.equal(owner.wallet, 850);
+  for (let i = 2; i < WORKER_RULES.maxPerPlayer; i++) hire();
+  assert.equal(WORKER_RULES.maxPerPlayer, 5);
+  assert.throws(() => act({ kind: 'worker_hire', price: 0, limit: 100 }), /at most 5/);
+  assert.equal(v.workers.length, 5); assert.equal(owner.wallet, 625);
 });
 
 test('orders require ownership and compatible living source/storage buildings', () => {
@@ -109,11 +111,28 @@ test('workers use level-two regrowth and the expanded destination capacity', () 
   const plot = built('mine'); plot.level = 2;
   const w = hire(), node = v.plotResources.find(node => node.plotId === plot.id && node.type === 'coal'); node.remaining = 1;
   assign(w, { sourcePlotId: plot.id, resource: 'coal' }); atNode(w, node); advance(4);
-  assert.equal(w.cargo.coal, 1); assert.ok(Math.abs(node.regrowAt - v.clock - 73.125) < 1e-6);
+  assert.equal(w.cargo.coal, 2); assert.ok(Math.abs(node.regrowAt - v.clock - 73.125) < 1e-6);
   plot.storage.stone = 499; w.cargo.stone = 5;
   assign(w, { mode: 'store', destinationPlotId: plot.id }); Object.assign(w, plotFront(PLOTS.find(p => p.id === plot.id), 1));
-  advance(.1); assert.equal(plot.storage.stone, 504); assert.equal(plot.storage.coal, 1);
+  advance(.1); assert.equal(plot.storage.stone, 504); assert.equal(plot.storage.coal, 2);
   assert.equal(w.cargo.stone, 0); assert.equal(w.cargo.coal, 0);
+});
+
+test('level-three workers gather triple yield with one experience point and preserve whole batches at cargo/storage limits', () => {
+  const { v, owner, hire, assign, advance, atNode, built } = fixture();
+  const plot = built('mine'); plot.level = 3;
+  const w = hire(), node = v.plotResources.find(node => node.plotId === plot.id && node.type === 'stone'); node.remaining = 1;
+  assign(w, { sourcePlotId: plot.id }); atNode(w, node); advance(4);
+  assert.equal(w.cargo.stone, 3); assert.equal(w.workXp, 1); assert.equal(node.remaining, 0);
+  assert.ok(Math.abs(node.regrowAt - v.clock - 48.75) < 1e-6);
+  Object.assign(node, { available: true, remaining: 1 });
+  w.cargo.stone = 11; w.delivering = false; atNode(w, node); advance(.1);
+  assert.equal(w.delivering, true); assert.equal(w.cargo.stone, 11); assert.equal(node.remaining, 1, 'insufficient room for all three units starts a delivery without consuming the node');
+  w.cargo.stone = 0; plot.storage.stone = 999;
+  assign(w, { sourcePlotId: plot.id, mode: 'store', destinationPlotId: plot.id }); atNode(w, node);
+  const wallet = owner.wallet, wages = w.paidWorkSeconds; advance(4);
+  assert.equal(w.cargo.stone, 0); assert.equal(node.remaining, 1); assert.equal(w.workXp, 1);
+  assert.equal(owner.wallet, wallet); assert.equal(w.paidWorkSeconds, wages); assert.match(w.status, /Storage full/);
 });
 
 test('cargo is delivered physically, fills only available storage, and survives full or demolished destinations', () => {
@@ -342,15 +361,15 @@ test('unreachable sidewall woodland is left for players instead of trapping hire
   assert.match(w.status, /Waiting for resources/);
 });
 
-test('sixteen hired workers can all deliver at the Resource Exchange without sharing one arrival point', () => {
+test('forty hired workers can all deliver at the Resource Exchange and return within treasury dismissal range', () => {
   const { v, owner, act, advance } = fixture();
   for (let i = 0; i < 8; i++) {
     const p = { ...owner, id: `employer-${i}`, name: `Employer ${i}`, wallet: 1000, inventory: {}, durability: {} }; v.players[p.id] = p;
-    for (let j = 0; j < 2; j++) {
+    for (let j = 0; j < WORKER_RULES.maxPerPlayer; j++) {
       act({ kind: 'worker_hire' }, p); const w = v.workers.at(-1);
       w.cargo.stone = 1;
       act({ kind: 'worker_assign', workerId: w.id, resource: 'stone', sourcePlotId: null, mode: 'sell', destinationPlotId: null }, p);
-      const n = i * 2 + j; w.x = 2 + n % 2 * 1.2; w.z = -27.2 + Math.floor(n / 2) * 1.2;
+      const n = i * WORKER_RULES.maxPerPlayer + j; w.x = 2 + n % 4 * 1.2; w.z = -27.2 + Math.floor(n / 4) * 1.2;
     }
   }
   const stock = v.stock.stone;
@@ -358,6 +377,12 @@ test('sixteen hired workers can all deliver at the Resource Exchange without sha
     advance(.1);
     for (const w of v.workers) if (w.cargo.stone === 0) w.paused = true;
   }
-  assert.equal(v.stock.stone, stock + 16); assert.ok(v.workers.every(w => w.cargo.stone === 0));
+  assert.equal(v.stock.stone, stock + 40); assert.ok(v.workers.every(w => w.cargo.stone === 0));
   assert.ok(v.workers.every(w => canStand(w.x, w.z, .4)));
+  for (let i = 0; i < 600 && v.workers.some(w => w.status !== 'Paused'); i++) advance(.1);
+  for (const w of [...v.workers]) {
+    const p = v.players[w.ownerId]; Object.assign(p, home);
+    assert.doesNotThrow(() => act({ kind: 'worker_dismiss', workerId: w.id }, p), `${w.name} returns in dismissal range (${w.x}, ${w.z}; ${w.status})`);
+  }
+  assert.equal(v.workers.length, 0);
 });

@@ -31,7 +31,12 @@ export class Store {
       CREATE TABLE IF NOT EXISTS crate_openings(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),request_id TEXT NOT NULL,result TEXT NOT NULL,created INTEGER NOT NULL,UNIQUE(account_id,request_id));
       CREATE TABLE IF NOT EXISTS crate_runs(account_id TEXT NOT NULL REFERENCES accounts(id),village_id TEXT NOT NULL REFERENCES villages(id),state TEXT NOT NULL,PRIMARY KEY(account_id,village_id));
       CREATE TABLE IF NOT EXISTS crate_charges(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),source_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL CHECK(state IN ('available','reserved','consumed')),village_id TEXT);
-      CREATE TABLE IF NOT EXISTS test_admin_bank_grants(account_id TEXT PRIMARY KEY REFERENCES accounts(id),granted_at INTEGER NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS test_admin_bank_grants(account_id TEXT PRIMARY KEY REFERENCES accounts(id),granted_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS village_finance_positions(village_id TEXT NOT NULL REFERENCES villages(id),account_id TEXT NOT NULL REFERENCES accounts(id),state TEXT NOT NULL,PRIMARY KEY(village_id,account_id));
+      CREATE TABLE IF NOT EXISTS village_finance_receipts(village_id TEXT NOT NULL REFERENCES villages(id),account_id TEXT NOT NULL REFERENCES accounts(id),request_id TEXT NOT NULL,kind TEXT NOT NULL,receipt TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(village_id,account_id,request_id));
+      CREATE INDEX IF NOT EXISTS village_finance_receipts_tavern_recent ON village_finance_receipts(village_id,account_id,created DESC) WHERE kind='tavern_bet';
+      CREATE INDEX IF NOT EXISTS village_finance_receipts_investment_recent ON village_finance_receipts(village_id,account_id,created DESC) WHERE kind<>'tavern_bet';
+      CREATE TABLE IF NOT EXISTS village_finance_dawns(village_id TEXT NOT NULL REFERENCES villages(id),day INTEGER NOT NULL,report TEXT NOT NULL,PRIMARY KEY(village_id,day));`);
     // Account credit is restricted purchasing power, never protected savings or
     // spendable wallet gold. Migrate existing Railway databases without a reset.
     const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));
@@ -217,6 +222,24 @@ export class Store {
       if (run) { run.phoenixStatus = 'released'; this.saveCrateRun(id, villageId, run); }
     }
   }
+  financePosition(villageId, accountId) {
+    const row = this.db.prepare('SELECT state FROM village_finance_positions WHERE village_id=? AND account_id=?').get(villageId, accountId);
+    return row ? JSON.parse(row.state) : { principal: 0, earnings: 0, lots: [], remainder: 0 };
+  }
+  financePositions(villageId) { return this.db.prepare('SELECT account_id,state FROM village_finance_positions WHERE village_id=? ORDER BY account_id').all(villageId).map(row => ({ id: row.account_id, ...JSON.parse(row.state) })); }
+  saveFinancePosition(villageId, accountId, state) { this.db.prepare('INSERT INTO village_finance_positions(village_id,account_id,state) VALUES(?,?,?) ON CONFLICT(village_id,account_id) DO UPDATE SET state=excluded.state').run(villageId, accountId, JSON.stringify(state)); }
+  financeReceipt(villageId, accountId, requestId) {
+    const row = this.db.prepare('SELECT receipt FROM village_finance_receipts WHERE village_id=? AND account_id=? AND request_id=?').get(villageId, accountId, requestId);
+    return row ? JSON.parse(row.receipt) : null;
+  }
+  saveFinanceReceipt(villageId, accountId, receipt) { this.db.prepare('INSERT INTO village_finance_receipts(village_id,account_id,request_id,kind,receipt,created) VALUES(?,?,?,?,?,?)').run(villageId, accountId, receipt.requestId, receipt.kind, JSON.stringify(receipt), receipt.createdAt); }
+  financeReceipts(villageId, accountId, tavern = false) {
+    const comparison = tavern ? '=' : '<>';
+    return this.db.prepare(`SELECT receipt FROM village_finance_receipts WHERE village_id=? AND account_id=? AND kind ${comparison} 'tavern_bet' ORDER BY created DESC,rowid DESC LIMIT 20`).all(villageId, accountId).map(row => JSON.parse(row.receipt));
+  }
+  financeDawn(villageId, day) { const row = this.db.prepare('SELECT report FROM village_finance_dawns WHERE village_id=? AND day=?').get(villageId, day); return row ? JSON.parse(row.report) : null; }
+  latestFinanceDawn(villageId) { const row = this.db.prepare('SELECT report FROM village_finance_dawns WHERE village_id=? ORDER BY day DESC LIMIT 1').get(villageId); return row ? JSON.parse(row.report) : null; }
+  saveFinanceDawn(villageId, day, report) { this.db.prepare('INSERT INTO village_finance_dawns(village_id,day,report) VALUES(?,?,?)').run(villageId, day, JSON.stringify(report)); }
   saveVillage(village) { this.db.prepare('INSERT INTO villages VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,updated=excluded.updated').run(village.id, JSON.stringify(village), Date.now()); }
   loadVillages() { return this.db.prepare('SELECT state FROM villages').all().map(row => JSON.parse(row.state)); }
   close() { this.db.close(); }

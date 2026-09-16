@@ -5,7 +5,7 @@ import { RESOURCE_WEIGHTS, inventoryWeight, carryCapacity, resourceWeight } from
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
 import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../shared/workers.js';
-import { plotStorageCapacity, productionRegrowSeconds } from '../shared/production.js';
+import { plotStorageCapacity, productionRegrowSeconds, productionYield } from '../shared/production.js';
 import { stepNpcNavigation } from './navigation.js';
 
 const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss', 'worker_upgrade', 'worker_color']);
@@ -23,13 +23,18 @@ const nearBank = p => Math.hypot(Math.max(0, Math.abs(p.x - bank.x) - bank.w / 2
 const requireBank = p => { if (!canUseBuilding(p, bank)) throw new Error('Visit the Village Treasury to hire or dismiss workers.'); };
 const homeFor = (v, w) => {
   const slot = Math.max(0, v.workers.indexOf(w));
-  return { x: home.x + slot % 2 * 1.2, z: bank.z + (Math.floor(slot / 2) - 3.5) * 1.2 };
+  // Twenty wait at each side of the treasury. The extra clearance accounts
+  // for the navigation arrival tolerance, keeping all forty in dismissal range.
+  const side = slot < 20 ? 1 : -1, local = slot % 20;
+  return { x: bank.x + side * (bank.w / 2 + .9 + local % 2 * 1.2), z: bank.z + (Math.floor(local / 2) - 4.5) };
 };
 const marketFor = (v, w) => {
-  // Four short queue rows fit wholly in front of the counter. Sales still
-  // require its actual entrance range; no side/rear unloading is possible.
-  const slot = Math.max(0, v.workers.indexOf(w)) % 16;
-  return { x: marketDoor.x - Math.floor(slot / 4) * .6, z: marketDoor.z + (slot % 4 - 1.5) * .9 };
+  // First arrivals occupy the counter; the remaining queue extends into the
+  // open forecourt and advances as deliveries finish. Offline/paused workers
+  // cannot reserve a counter position and block other owners' crews.
+  const queue = v.workers.filter(worker => !worker.paused && v.players?.[worker.ownerId]?.online && worker.mode === 'sell' && worker.delivering && hasCargo(worker));
+  const slot = Math.max(0, queue.indexOf(w)), row = Math.floor(slot / 4);
+  return { x: marketDoor.x - (row < 4 ? row * .6 : 1.8 + (row - 3) * .9), z: marketDoor.z + (slot % 4 - 1.5) * .9 };
 };
 
 function ensureWorkerProgress(w) {
@@ -276,8 +281,9 @@ export function workersTick(sim, v, dt) {
     if (w.sourcePlotId !== null && !sourcePlot(v, w) && !hasCargo(w)) { returnHome(v, w, 'Choose a resource source', dt, neighbors, solids); continue; }
     const time = allowance(w, p, dt);
     if (!time) { returnHome(v, w, 'Needs wallet gold for wages', dt, neighbors, solids); continue; }
-    const resourceWeight = RESOURCE_WEIGHTS[w.resource];
-    if (inventoryWeight(w.cargo) + resourceWeight > stats.carryCapacity) w.delivering = true;
+    const harvestYield = productionYield(1, w.sourcePlotId === null ? null : sourcePlot(v, w));
+    const harvestWeight = RESOURCE_WEIGHTS[w.resource] * harvestYield;
+    if (inventoryWeight(w.cargo) + harvestWeight > stats.carryCapacity) w.delivering = true;
     const nodes = availableNodes(v, w);
     if (!nodes.length && hasCargo(w)) w.delivering = true;
     if (w.delivering && hasCargo(w)) {
@@ -295,7 +301,7 @@ export function workersTick(sim, v, dt) {
     }
     if (w.mode === 'store') {
       const plot = destinationPlot(v, w);
-      if (inventoryWeight(plot.storage) + resourceWeight > plotStorageCapacity(plot)) { w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue; }
+      if (inventoryWeight(plot.storage) + harvestWeight > plotStorageCapacity(plot)) { w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue; }
     }
     if (w.mode === 'sell' && (!whole(v.treasury) || v.treasury <= TREASURY_RESERVE)) { w.status = 'Waiting for treasury funds'; w.gatherProgress = 0; continue; }
     let chosen = nodes.find(({ node }) => node.id === w.targetNodeId), target = chosen && approach(chosen.node, w, solids);
@@ -322,7 +328,7 @@ export function workersTick(sim, v, dt) {
     // Re-read the shared node at the moment of harvest: another worker or a
     // player may have exhausted it earlier in this same simulation step.
     if (!chosen.state.available || chosen.state.remaining <= 0) continue;
-    w.cargo[w.resource]++; chosen.state.remaining--;
+    w.cargo[w.resource] += harvestYield; chosen.state.remaining--;
     w.workXp = Math.min(WORKER_MAX_XP, w.workXp + 1); ensureWorkerProgress(w);
     if (chosen.state.remaining <= 0) {
       chosen.state.available = false;

@@ -18,7 +18,7 @@ function fixture(t, options = {}) {
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = prior; });
-  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
+  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, showInvestments: options.showInvestments, showTavern: options.showTavern, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
     html = next; activePanel = panel; openCount++; fields.clear();
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
       const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[1].match(/aria-label="([^"]*)"/)?.[1] || match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
@@ -573,4 +573,46 @@ test('pack and merchant displays use deployed gear and keep stored resource weig
   assert.match(f.html, /1.6 weight each with your equipped pack/); assert.match(f.html, /8 \/ 100/);
   f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, storage: { timber: 5 } }];
   f.visit('plot', site.id); assert.match(f.html, /Capacity: 10 \/ 1,500 weight/);
+});
+
+test('production upgrade cards compare current and next numeric benefits through the third tier', t => {
+  const f = fixture(t), site = PLOTS[0];
+  const plot = { id: site.id, ownerId: f.player.id, ownerName: 'Alice', building: 'mine', level: 1, hp: 450, maxHp: 450, storage: { timber: 100, stone: 100, iron: 100 } };
+  f.state.plots = [plot]; f.visit('plot', site.id);
+  assert.match(f.html, /data-building-art="mine"/); assert.match(f.html, /Current tier 1 → Next tier 2/);
+  assert.match(f.html, /Stone \/ swing<\/span><strong>1<\/strong><strong>2<\/strong>/);
+  assert.match(f.html, /Stone harvests \/ node<\/span><strong>8<\/strong><strong>12<\/strong>/);
+  assert.match(f.html, /Storage capacity<\/span><strong>1,500 weight<\/strong><strong>2,000 weight<\/strong>/);
+  assert.match(f.html, /150 gold/); f.click('Upgrade production to level 2');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'upgradeProduction', plotId: site.id });
+  Object.assign(plot, { level: 2, hp: 675, maxHp: 675 }); f.ui.refresh();
+  assert.match(f.html, /Current tier 2 → Next tier 3/);
+  assert.match(f.html, /Stone \/ swing<\/span><strong>2<\/strong><strong>3<\/strong>/);
+  assert.match(f.html, /Stone harvests \/ node<\/span><strong>12<\/strong><strong>16<\/strong>/);
+  assert.match(f.html, /Storage capacity<\/span><strong>2,000 weight<\/strong><strong>3,000 weight<\/strong>/);
+  assert.match(f.html, /Building health<\/span><strong>675<\/strong><strong>900<\/strong>/);
+  assert.match(f.html, /300 gold/); f.click('Upgrade production to level 3');
+  Object.assign(plot, { level: 3, hp: 900, maxHp: 900 }); f.ui.refresh();
+  assert.match(f.html, /Tier 3 \/ 3/); assert.match(f.html, /Maximum tier reached/);
+  assert.equal(f.buttons.find(button => button.text === 'Fully upgraded').disabled, true);
+});
+
+test('defense upgrade cards show numeric health, beds, troop strength and tower damage with material costs', t => {
+  const f = fixture(t), site = PLOTS[0];
+  for (const [building, hp, metric, current, next] of [['church', 650, 'Treatment beds', 2, 4], ['barracks', 650, 'Troop damage', 14, 18], ['archer_tower', 700, 'Damage per shot', 20, 30], ['cannon', 900, 'Damage per shot', 48, 72]]) {
+    f.state.plots = [{ id: site.id, ownerId: f.player.id, building, level: 1, hp, maxHp: hp, storage: { timber: 100, stone: 100, iron: 100 } }];
+    f.visit('plot', site.id);
+    assert.match(f.html, new RegExp(`${metric}</span><strong>${current}</strong><strong>${next}</strong>`));
+    assert.match(f.html, new RegExp(`Building health</span><strong>${hp.toLocaleString('en-US')}</strong><strong>${(hp * 1.5).toLocaleString('en-US')}</strong>`));
+    assert.match(f.html, /class="menu-costs" aria-label="Upgrade cost"/);
+    assert.match(f.html, /Current tier 1 → Next tier 2/);
+  }
+});
+
+test('illustrated treasury service links invoke their supplied panels and retain normal bank controls', t => {
+  const opened = [], f = fixture(t, { showInvestments: () => opened.push('investments'), showTavern: () => opened.push('tavern') });
+  f.visit('bank'); f.click('Open investments'); f.click('Visit tavern');
+  assert.deepEqual(opened, ['investments', 'tavern']); assert.match(f.html, /data-building-art="tool_shop"/);
+  f.fields.get('bank-amount').value = '10'; f.fields.get('bank-amount').oninput(); f.click('Deposit');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'deposit', amount: 10 });
 });

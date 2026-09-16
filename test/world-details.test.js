@@ -4,13 +4,14 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { BUILDINGS, PLOTS, RESOURCES, WALLS, WORLD_BOUNDS, plotBedPoint } from '../shared/world.js';
 import { buildingEntrance } from '../shared/access.js';
+import { createOrganicTreeGeometry, createWheatGeometry, createMountainGeometry } from '../public/src/environment-geometry.js';
 
 const threeURL=new URL('../node_modules/three/build/three.module.js',import.meta.url).href;
 const sharedURL=new URL('../shared/world.js',import.meta.url).href;
 const moduleURL=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64');
-const plots=readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL));
-const source=readFileSync(new URL('../public/src/world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./plots-world.js'",JSON.stringify(moduleURL(plots)));
-const {createWorld,createWorldDetailLayout,createWorldDetails}=await import(moduleURL(source));
+const plots=readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href));
+const source=readFileSync(new URL('../public/src/world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./plots-world.js'",JSON.stringify(moduleURL(plots))).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href));
+const {createWorld,createWorldDetailLayout,createWorldDetails,carveGroundForCave}=await import(moduleURL(source));
 const previousDocument=globalThis.document;
 globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({},{get:()=>()=>{},set:()=>true})})};
 let world;
@@ -68,4 +69,103 @@ test('foliage geometry is finite and instanced with bounded render cost and cons
   const shader={uniforms:{},vertexShader:'#include <begin_vertex>'};world.details.root.children[0].material.onBeforeCompile(shader);
   assert.equal(shader.uniforms.detailTime,world.details.time);assert.ok(shader.vertexShader.includes('#ifdef USE_INSTANCING'));
   world.details.update(NaN);assert.equal(world.details.time.value,0);
+});
+
+test('organic harvest meshes remain deterministic, finite and rooted at the saved resource pivot',()=>{
+  for(const pine of [true,false]){
+    const first=createOrganicTreeGeometry(315,{pine,height:6}),again=createOrganicTreeGeometry(315,{pine,height:6}),distant=createOrganicTreeGeometry(315,{pine,height:6,detail:.65});
+    let triangles=0,distantTriangles=0;
+    for(const part of ['trunk','foliage']){
+      assert.deepEqual(first[part].attributes.position.array,again[part].attributes.position.array);
+      assert.deepEqual(first[part].index.array,again[part].index.array);
+      for(const geometry of [first[part],distant[part]]){
+        assert.ok(geometry.attributes.position.array.every(Number.isFinite));assert.ok(geometry.attributes.normal.array.every(Number.isFinite));
+        assert.ok(geometry.index.array.every(i=>i<geometry.attributes.position.count));
+        assert.ok(geometry.boundingBox.min.y>-.2&&geometry.boundingBox.max.y<6.8);
+        assert.ok(Math.max(Math.abs(geometry.boundingBox.min.x),Math.abs(geometry.boundingBox.max.x),Math.abs(geometry.boundingBox.min.z),Math.abs(geometry.boundingBox.max.z))<3.7);
+      }
+      triangles+=first[part].index.count/3;distantTriangles+=distant[part].index.count/3;
+      first[part].dispose();again[part].dispose();distant[part].dispose();
+    }
+    assert.ok(triangles<5500);assert.ok(distantTriangles<triangles*.85,'distant trees retain the branching silhouette at lower detail');
+  }
+  const crop=createWheatGeometry(722);
+  for(const geometry of Object.values(crop)){
+    assert.ok(geometry.attributes.position.array.every(Number.isFinite));
+    assert.ok(geometry.boundingBox.min.y>=-.015&&geometry.boundingBox.max.y<1.4);
+    assert.ok(geometry.index.count/3<1000);geometry.dispose();
+  }
+});
+
+test('mountain ridges stay inside the previous instance envelope and distant patches can cull independently',()=>{
+  for(const seed of [301,324,347,370]){
+    const ridge=createMountainGeometry(seed),p=ridge.attributes.position;
+    for(let i=0;i<p.count;i++)assert.ok(Math.abs(p.getX(i))<=1&&Math.abs(p.getZ(i))<=1&&p.getY(i)>=-.50001&&p.getY(i)<=.50001);
+    assert.ok(p.array.every(Number.isFinite));assert.ok(ridge.attributes.normal.array.every(Number.isFinite));
+    assert.ok(ridge.index.count/3<=1200);ridge.dispose();
+  }
+  const transform=new THREE.Matrix4(),position=new THREE.Vector3();let forestPatches=0,ridgePatches=0;
+  world.root.traverse(mesh=>{
+    if(!mesh.isInstancedMesh||!mesh.geometry.userData.forest&&!mesh.geometry.userData.distantMountain)return;
+    const forest=mesh.geometry.userData.forest,cell=forest?32:64,sectors=new Set();
+    for(let i=0;i<mesh.count;i++){mesh.getMatrixAt(i,transform);position.setFromMatrixPosition(transform);sectors.add(`${Math.floor(position.x/cell)},${Math.floor(position.z/cell)}`);}
+    assert.equal(sectors.size,1,'a distant scenery batch never spans the entire village');
+    forest?forestPatches++:ridgePatches++;
+  });
+  assert.ok(forestPatches>16&&ridgePatches>12);
+});
+
+test('terrain carving preserves smooth interpolated normals without bridging the cave opening',()=>{
+  const source=new THREE.BufferGeometry();
+  source.setAttribute('position',new THREE.Float32BufferAttribute([-2,0,-2,2,0,-2,-2,0,2],3));
+  const normals=[[0,1,0],[.6,.8,0],[0,.8,.6]];
+  source.setAttribute('normal',new THREE.Float32BufferAttribute(normals.flat(),3));
+  const carved=carveGroundForCave(source,[{x:0,z:0,w:1,d:1}]),p=carved.attributes.position,n=carved.attributes.normal;
+  let interpolated=false;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),z=p.getZ(i),b=(x+2)/4,c=(z+2)/4,a=1-b-c;
+    const expected=new THREE.Vector3(...normals[0]).multiplyScalar(a).addScaledVector(new THREE.Vector3(...normals[1]),b).addScaledVector(new THREE.Vector3(...normals[2]),c).normalize();
+    assert.ok(expected.distanceTo(new THREE.Vector3().fromBufferAttribute(n,i))<1e-6,'clipping retains the source smooth shading');
+    assert.ok(Math.abs(Math.hypot(n.getX(i),n.getY(i),n.getZ(i))-1)<1e-6);
+    if(Math.abs(x)===.5||Math.abs(z)===.5)interpolated=true;
+  }
+  for(let i=0;i<p.count;i+=3){const x=(p.getX(i)+p.getX(i+1)+p.getX(i+2))/3,z=(p.getZ(i)+p.getZ(i+1)+p.getZ(i+2))/3;assert.ok(Math.abs(x)>=.5-1e-6||Math.abs(z)>=.5-1e-6);}
+  assert.ok(interpolated);source.dispose();carved.dispose();
+});
+
+test('complete village geometry stays within representative camera budgets',()=>{
+  world.root.updateMatrixWorld(true);
+  function cost(camera){
+    const frustum=camera?new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse)):null;
+    let calls=0,triangles=0;
+    world.root.traverse(mesh=>{
+      if(!mesh.isMesh)return;for(let parent=mesh;parent;parent=parent.parent)if(!parent.visible)return;
+      if(frustum&&mesh.frustumCulled&&!frustum.intersectsObject(mesh))return;
+      const count=mesh.isInstancedMesh?mesh.count:1;if(!count)return;
+      calls+=Array.isArray(mesh.material)?mesh.geometry.groups.length:1;
+      triangles+=Math.min(mesh.geometry.index?.count??mesh.geometry.attributes.position.count,mesh.geometry.drawRange.count)/3*count;
+    });return {calls,triangles};
+  }
+  const all=cost();assert.ok(all.calls<1200,JSON.stringify(all));assert.ok(all.triangles<1_400_000,JSON.stringify(all));
+  for(const [eye,target,budget]of [[[0,6,8],[0,2,-6],650_000],[[0,8,-44],[0,2,-66],525_000],[[0,8,-97],[0,5,-135],450_000]]){
+    const camera=new THREE.PerspectiveCamera(60,16/9,.1,540);camera.position.fromArray(eye);camera.lookAt(new THREE.Vector3(...target));camera.updateMatrixWorld();
+    const visible=cost(camera);assert.ok(visible.triangles<budget,JSON.stringify({eye,...visible}));assert.ok(visible.calls<460,JSON.stringify({eye,...visible}));
+  }
+});
+
+test('slate roofs have individual overlapping tiles and preserve hard normals at gable creases',()=>{
+  let tiles=0,shells=0;
+  world.root.traverse(mesh=>{
+    if(!mesh.isMesh)return;
+    if(mesh.geometry.userData.roofTiles){assert.ok(mesh.isInstancedMesh);tiles+=mesh.count;assert.equal(mesh.geometry.index.count/3,10);}
+    if(mesh.geometry.name!=='flat-faced-gabled-roof')return;
+    shells++;const p=mesh.geometry.attributes.position,n=mesh.geometry.attributes.normal;
+    assert.equal(mesh.geometry.index,null);
+    for(let i=0;i<p.count;i+=3){
+      const a=new THREE.Vector3().fromBufferAttribute(p,i),b=new THREE.Vector3().fromBufferAttribute(p,i+1),c=new THREE.Vector3().fromBufferAttribute(p,i+2);
+      const face=b.sub(a).cross(c.sub(a)).normalize();
+      for(let j=0;j<3;j++)assert.ok(face.distanceTo(new THREE.Vector3().fromBufferAttribute(n,i+j))<1e-6,'roof slope and gable must not share smoothed corner normals');
+    }
+  });
+  assert.ok(shells>=8);assert.ok(tiles>1200&&tiles<3000,'bounded thin tiles replace the broad alternating strips');
 });
