@@ -2,11 +2,15 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — controls and first-watch build 19.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — mine entrance performance build 21.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 21 keeps the six nearby torch lights registered throughout mine entry and exit, setting unused lights to zero intensity instead of removing them from the renderer. This prevents proximity changes from selecting new lighting shader variants across the scene. Torch reach, brightness, nearest-fixture selection, day/night behavior and the shadow-free light budget are unchanged. Cave geometry, camera collision, multiplayer rules and saved data are untouched. This targets a reproduced shader-churn cause of entrance hitching; real-device frame-time confirmation is still needed.
+
+Build 20 added Quick Sell for carried raw resources, visit-stable merchant stock, rear carriage storage-chest animation and E-to-close, worker route recovery, a 5,000-gold nightly treasury award cap and a 1,000-gold outstanding personal-loan cap.
 
 Build 19 keeps a held gathering click active as the nearest valid matching node changes, so a dwarf can sweep across wheat or continue through adjacent ore without releasing the mouse. Closing an in-game panel now immediately asks the browser to recapture the mouse, while **F** toggles fullscreen from gameplay or a menu. The first-watch guide is now an illustrated progress card with step artwork, a completion meter, an expandable visual route and a one-click map marker.
 

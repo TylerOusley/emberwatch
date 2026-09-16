@@ -92,7 +92,14 @@ export function createTorchSystem(scene,fixtures=[],{maxLights=6}={}){
     if(key!==previousDynamic){previousDynamic=key;active=[...staticFixtures,...dynamic];writeFlames();}
     const p=viewer&&Number.isFinite(viewer.x)&&Number.isFinite(viewer.z)?viewer:camera?.position??{x:0,y:0,z:0};
     const ranked=active.map(f=>({f,d:Math.hypot(f.x-p.x,f.y-(p.y??0),f.z-p.z),lit:f.visible===false?0:f.alwaysLit?1:uniforms.nightAmount.value})).filter(f=>f.lit>.001&&f.d<30).sort((a,b)=>a.d-b.d);
-    for(let i=0;i<lights.length;i++){const light=lights[i],entry=ranked[i];if(!entry){light.intensity=0;light.visible=false;continue;}const f=entry.f;light.visible=true;light.position.set(f.x,f.y+.28,f.z);light.intensity=(f.alwaysLit?19:23)*entry.lit*torchFlicker(uniforms.time.value,f.seed??i);light.userData.fixtureId=f.id;}
+    // Keep every pool slot visible to Three, even when it emits no light.
+    // Changing the visible light count changes every lit material's shader key,
+    // causing compilation hitches as cave torches enter/leave the selection radius.
+    for(let i=0;i<lights.length;i++){
+      const light=lights[i],entry=ranked[i];
+      if(!entry){light.intensity=0;light.userData.fixtureId=undefined;continue;}
+      const f=entry.f;light.position.set(f.x,f.y+.28,f.z);light.intensity=(f.alwaysLit?19:23)*entry.lit*torchFlicker(uniforms.time.value,f.seed??i);light.userData.fixtureId=f.id;
+    }
   }
   function dispose(){if(disposed)return;disposed=true;root.removeFromParent();root.traverse(n=>{if(n.isInstancedMesh)n.dispose();});for(const g of geometries)g.dispose();for(const m of materials)m.dispose();root.clear();}
   return {root,flames,lights,fixtures:staticFixtures,update,dispose};

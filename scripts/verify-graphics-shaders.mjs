@@ -45,7 +45,7 @@ export async function buildGraphicsShaderBundle() {
   const { createSurfaceMaterial, applySurface } = await import('../public/src/surface-materials.js');
   const { presentationVertex, presentationFragment } = await import('../public/src/render-pipeline.js');
   const programs = [], materials = [];
-  const lighting = { numDirLights: 2, numHemiLights: 1, numPointLights: 2, numDirLightShadows: 1,
+  const lighting = { numDirLights: 2, numHemiLights: 1, numPointLights: 6, numDirLightShadows: 1,
     shadowMapEnabled: true, shadowMapType: THREE.PCFSoftShadowMap, useFog: true, fog: true, fogExp2: true };
   const variants = [
     { name: 'surface-standard-smooth', kind: 'rock', flags: {} },

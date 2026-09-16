@@ -204,7 +204,8 @@ function showMenu(){
 }
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
- openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 20</p><h2>Trade faster. Travel better.</h2><p>Worker recovery, useful merchant bargains and a carriage that feels connected to the journey.</p></div><span>${itemArt('cart')}</span></header><div class="build-feature-grid">
+ openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 21</p><h2>A smoother mine approach.</h2><p>A focused rendering fix for the journey into and out of the Deepworks.</p></div><span>${buildingArt('mine')}</span></header><div class="build-feature-grid">
+ ${feature(buildingArt('mine'),'Stable mine lighting','Nearby torches reuse one fixed light pool as you enter and leave the mine, avoiding repeated lighting shader changes at the entrance. Cave lighting, mining and camera collision stay intact.')}
  ${feature(itemArt('gold'),'Quick Sell your haul','Sell every eligible carried raw resource in one protected transaction while the treasury keeps its emergency reserve. Personal loans now allow up to 1,000 gold of outstanding purchase credit.')}
  ${feature(itemArt('cart'),'A working carriage chest','The cart has an attached rear storage chest. Press E at the cart to open its real cargo inventory; the lid opens with the panel and E closes it again.')}
  ${feature(buildingArt('house'),'Merchant bargains','Each merchant visit brings a different pair of specialist goods at a 20–30% discount. Stock stays fixed for the visit, preventing menu rerolls.')}

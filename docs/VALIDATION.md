@@ -1,5 +1,19 @@
 # Emberwatch build validation
 
+## Build 21: mine entrance shader stability
+
+Validated September 16, 2026: **623/623 tests pass** with `npm test` (no failures, cancellations or skips); all **95 runtime JavaScript modules** pass syntax checks and `git diff --check` passes. An independent review also passed 11 focused torch, camera and HTTP asset-serving tests.
+
+The mine-approach reproduction followed the centerline from z=-70 to z=-150 in 0.25-meter steps. In daylight, Build 20 selected six different point-light counts (0, 2, 3, 4, 5, 6), with the last boundary at z=-117.5 near the entrance. Three.js 180 includes this count in each lit material's program-cache key. Hiding unused torch lights therefore invalidated the lighting layout and requested new shader variants while approaching or leaving the mine.
+
+The fix retains the existing six light objects in the renderer and sets unused slots to zero intensity. Fixture selection, active brightness, flame geometry, day/night behavior and the no-shadow rule are unchanged; inactive fixture IDs are cleared. This trades a fixed six-slot lighting loop, including outdoors, for a stable shader layout. It does not reduce scene geometry or promise a higher average frame rate.
+
+- The seven torch tests pass. The two new regressions failed on the original implementation and pass with the fix. They use the installed Three.js `WebGLLights` and `WebGLPrograms` code, not a substitute cache-key calculation. Across **1,926 sampled updates** (321 positions, both directions, daylight/dusk/night), the light-state version and material program key remain unchanged while active lights still cover all original daytime counts. Dynamic fixture hiding/removal, out-of-range fixtures, empty pools and capacities 0/1/3/8 are also covered. Unused light uniforms are black and light objects are reused.
+- All **13 expanded graphics shader programs compile and link** in Mesa OpenGL ES 3.2 via `node scripts/verify-graphics-shaders.mjs`. The lit fixtures now use six point lights to match the runtime pool, including shadow/fog, instancing, skinning, reflection and direct-render variants.
+- Read-only camera/cutaway profiling found no comparable transition work: cave updates were approximately 0.75 microseconds/call, camera constraints approximately 32–119 microseconds/call, and cave-view switching touches nine prebuilt mountain batches. Frustum estimates found the cave geometry already submitted before reaching the threshold, not a sudden mesh-load spike. These are local CPU/geometry observations, not device frame times.
+
+The available Chrome test browser failed to create a WebGL context, including one reload, so no interactive entrance FPS measurement is claimed. Desktop confirmation remains: cross the mine entrance repeatedly in both directions at day and night, check torch appearance, and compare first-visit and repeat-crossing frame times at the same graphics preset. No server logic, player/village data, production settings or collision rules are changed by this patch.
+
 ## Build 18: scenery, sourced materials and lighting
 
 Validated 2026-09-16 on Node 24.19.0: **620/620 tests pass** with `npm test`, with no failures, cancellations or skips. All **95 runtime JavaScript modules** pass syntax checks; **224 local imports** resolve. The entry page has **81 unique IDs** and all **14 linked assets** resolve. Whitespace and private-credential boundary checks pass. This validation covers Build 18, including the preceding Build 17 changes. The recovered release passed a fresh 620-test run and all 13 shader compile/link checks before publication.
