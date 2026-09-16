@@ -31,6 +31,20 @@ test('existing static barracks can be navigated around without changing its coll
   assert.ok(apart(entity, target) < .3);
 });
 
+test('a limited movement allowance does not slow obstacle replanning time', () => {
+  const entity = npc(-27.400001, -3), target = { x: -14, z: -3 };
+  const start = { x: entity.x, z: entity.z }, movementTime = .000005;
+  for (let i = 0; i < 20; i++) {
+    const before = { x: entity.x, z: entity.z };
+    stepNpcNavigation(entity, target, 3, movementTime, [entity], [], .1);
+    assert.ok(canStand(entity.x, entity.z, .4));
+    assert.ok(apart(entity, before) <= 3 * movementTime * 1.15 + 1e-10,
+      'only the funded movement allowance can be traveled');
+  }
+  assert.ok(apart(entity, start) > .0001,
+    'real elapsed time triggers a detour from the barracks face');
+});
+
 test('a cached route responds to a moving target and newly constructed obstacle', () => {
   const solids = [{ x: 50, z: -90, w: 10, d: 10 }], entity = npc(40, -90);
   walk(entity, { x: 60, z: -90 }, solids, 3);

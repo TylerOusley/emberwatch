@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — mine entrance performance build 21.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — worker recovery build 22.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 22 fixes a reproduced worker stall caused by tiny remaining fractions of prepaid work time. Workers now account for every positive movement and renew their normal wage block when it is spent. Navigation retry timers follow simulation time even when the worker can afford only a tiny final step. Existing saved workers recover through ordinary simulation, keeping their identities, assignments, cargo and earned upgrades. Paused workers, offline owners, full storage and insufficient wages/treasury funds still follow their existing rules.
 
 Build 21 keeps the six nearby torch lights registered throughout mine entry and exit, setting unused lights to zero intensity instead of removing them from the renderer. This prevents proximity changes from selecting new lighting shader variants across the scene. Torch reach, brightness, nearest-fixture selection, day/night behavior and the shadow-free light budget are unchanged. Cave geometry, camera collision, multiplayer rules and saved data are untouched. This targets a reproduced shader-churn cause of entrance hitching; real-device frame-time confirmation is still needed.
 

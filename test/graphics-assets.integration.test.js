@@ -21,5 +21,5 @@ test('local graphics assets reach browser clients with their exact bytes and ima
   for(const path of ['/src/render-pipeline.js','/src/render-quality.js','/src/surface-materials.js','/src/environment-geometry.js','/graphics-settings.css']){
     const response=await fetch(base+path,{method:'HEAD'});assert.equal(response.status,200,path);assert.match(response.headers.get('content-type'),path.endsWith('.js')?/javascript/:/text\/css/);
   }
-  const home=await(await fetch(base)).text();assert.match(home,/PLAYABLE BUILD 21/);assert.match(home,/id="lobby-graphics-button"/);
+  const home=await(await fetch(base)).text();assert.match(home,/PLAYABLE BUILD 22/);assert.match(home,/id="lobby-graphics-button"/);
 });

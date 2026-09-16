@@ -204,12 +204,12 @@ function showMenu(){
 }
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
- openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 21</p><h2>A smoother mine approach.</h2><p>A focused rendering fix for the journey into and out of the Deepworks.</p></div><span>${buildingArt('mine')}</span></header><div class="build-feature-grid">
+ openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 22</p><h2>Get your crew moving again.</h2><p>A fix for workers stalled by tiny remainders of prepaid work time, including workers saved in that state.</p></div><span>${itemArt('pickaxe')}</span></header><div class="build-feature-grid">
  ${feature(buildingArt('mine'),'Stable mine lighting','Nearby torches reuse one fixed light pool as you enter and leave the mine, avoiding repeated lighting shader changes at the entrance. Cave lighting, mining and camera collision stay intact.')}
  ${feature(itemArt('gold'),'Quick Sell your haul','Sell every eligible carried raw resource in one protected transaction while the treasury keeps its emergency reserve. Personal loans now allow up to 1,000 gold of outstanding purchase credit.')}
  ${feature(itemArt('cart'),'A working carriage chest','The cart has an attached rear storage chest. Press E at the cart to open its real cargo inventory; the lid opens with the panel and E closes it again.')}
  ${feature(buildingArt('house'),'Merchant bargains','Each merchant visit brings a different pair of specialist goods at a 20–30% discount. Stock stays fixed for the visit, preventing menu rerolls.')}
- ${feature(itemArt('pickaxe'),'Workers recover','Fresh orders clear stale routes, and workers automatically replan after a prolonged obstruction instead of remaining permanently frozen.')}
+ ${feature(itemArt('pickaxe'),'Worker movement restored','Workers correctly finish their prepaid work time and renew wages. Finding a route around an obstacle keeps running at normal speed, so an almost-empty wage balance cannot leave a worker stuck. Existing workers keep their orders and cargo.')}
  ${feature(buildingArt('barracks'),'Balanced defense rewards','The village night-defense award now tops out at 5,000 gold for one defended night, regardless of the number of residents.')}
  ${feature(itemArt('pickaxe'),'Keep gathering','Hold the mouse button while moving between nearby matching nodes. Mining, chopping and wheat harvesting continue without another click. Close a menu and mouse capture returns immediately.')}
  ${feature(buildingArt('keep'),'A guide you can follow','The first-watch tutorial now uses illustrated step cards, a progress meter, a visual checklist and map markers for every destination.')}

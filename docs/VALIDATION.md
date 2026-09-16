@@ -1,5 +1,19 @@
 # Emberwatch build validation
 
+## Build 22: selective worker stalls
+
+Validated September 16, 2026: **629/629 tests pass** with `npm test`, with no failures, cancellations or skips. Runtime JavaScript syntax checks and `git diff --check` pass.
+
+Reproduced workers becoming nearly motionless when fractional travel billing leaves a tiny positive `paidWorkSeconds` balance. A balance of 0.0001 seconds limited each movement tick to less than 0.001 units; the old billing threshold ignored that movement, so the balance never depleted. Reassigning or restarting preserved the balance. Workers against an obstacle also advanced navigation retry clocks using that tiny movement allowance, delaying detours by thousands of simulation ticks.
+
+The fix charges every positive movement using the existing distance-based wage calculation. Zero movement remains free. Navigation accepts elapsed simulation time separately from its funded movement allowance, so path retries and the worker stall timer progress normally without allowing unpaid travel. Other NPC callers retain the original default timing. No wages, hiring prices, worker limits, harvesting rules or saved ledgers are reset.
+
+- Six new regression tests cover reassignment/resume, cargo sale accounting, blocked storage delivery, free paused return, funded movement bounds during replanning, and recovery from an actual SQLite save/restart. The movement and persistence regressions failed on Build 21. The blocked delivery test also failed with the billing change alone, establishing the need for the separate navigation timer fix.
+- The SQLite test retains the exact affected worker ID, prepaid remainder, cargo, order and experience; after reconnect/reassignment the worker walks at normal speed, purchases only one new wage block and sells its original cargo once. A second save/restart cannot repeat the sale or change protected bank savings.
+- Independent navigation/worker/persistence review passed **36/36 tests**, including collision-safe movement, no charge while blocked, the forty-worker Resource Exchange queue and normal gate/cave routes. A deterministic longer simulation of five workers per resource (25 total, 600 simulated seconds per resource scenario) reproduced several selective stalls before the fix; afterward every worker harvested, none remained path-stalled, all finite mineral/wheat cargo was delivered, and positions remained collision-valid.
+
+These tests reproduce and fix a concrete server-side cause consistent with the report. The exact live workers' private state was not inspected. Legitimate pauses for wages, treasury funding, full storage, offline owners or unavailable resources remain in effect and are reported on worker cards. No production save edits, dismissals or rehires are required for fractional-time recovery.
+
 ## Build 21: mine entrance shader stability
 
 Validated September 16, 2026: **623/623 tests pass** with `npm test` (no failures, cancellations or skips); all **95 runtime JavaScript modules** pass syntax checks and `git diff --check` passes. An independent review also passed 11 focused torch, camera and HTTP asset-serving tests.

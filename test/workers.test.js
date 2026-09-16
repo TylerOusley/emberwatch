@@ -217,6 +217,72 @@ test('workers harvest through night and nearby zombies while consuming wages nor
   assert.match(w.status, /Gathering/);
 });
 
+test('a fractional prepaid wage remainder cannot pin a worker after assignment or resume', () => {
+  for (const command of ['assignment', 'resume']) {
+    const { owner, act, hire, assign, advance } = fixture(), w = hire();
+    assign(w);
+    // Collision sliding and crowd separation charge actual travel, so the
+    // final prepaid slice need not be a whole simulation tick.
+    w.paidWorkSeconds = .0001;
+    if (command === 'assignment') assign(w, { resource: 'iron' });
+    else {
+      act({ kind: 'worker_pause', workerId: w.id, paused: true });
+      act({ kind: 'worker_pause', workerId: w.id, paused: false });
+    }
+    const start = { x: w.x, z: w.z }, wallet = owner.wallet;
+    advance(2);
+    assert.ok(apart(w, start) > 3, `${command}: the worker resumes ordinary travel`);
+    assert.equal(owner.wallet, wallet - WORKER_RULES.wageGold, `${command}: only one new wage block is purchased`);
+    assert.ok(w.paidWorkSeconds > 27 && w.paidWorkSeconds < WORKER_RULES.wageSeconds);
+    assert.equal(w.workXp, 0, 'walking cannot grant harvests or experience');
+  }
+});
+
+test('fractional prepaid wages permit normal cargo delivery without changing sale accounting', () => {
+  const { v, owner, hire, assign, advance } = fixture(), w = hire();
+  w.cargo.stone = 1; assign(w);
+  Object.assign(w, { x: exchange.x - 3, z: exchange.z }); w.paidWorkSeconds = .0001;
+  const stock = v.stock.stone, wallet = owner.wallet, treasury = v.treasury;
+  const quote = taxedSaleQuote('stone', stock, 1, 5);
+  for (let i = 0; i < 40 && w.cargo.stone; i++) advance(.1);
+  assert.equal(w.cargo.stone, 0, 'the carried resource reaches the exchange');
+  assert.equal(v.stock.stone, stock + 1);
+  assert.equal(v.treasury, treasury - quote.total);
+  assert.equal(owner.wallet, wallet + quote.total - WORKER_RULES.wageGold);
+  assert.equal(w.workXp, 0);
+});
+
+test('a worker with fractional wages replans around a storage building without paying while blocked', () => {
+  const { v, owner, hire, assign, advance, built } = fixture();
+  const plot = built('house', 7), site = PLOTS.find(p => p.id === plot.id), w = hire();
+  w.cargo.stone = 1; assign(w, { mode: 'store', destinationPlotId: plot.id });
+  Object.assign(w, { x: site.x - 3.400001, z: site.z, paidWorkSeconds: .000005 });
+  const start = { x: w.x, z: w.z }, wallet = owner.wallet;
+  advance(.2);
+  assert.equal(apart(w, start), 0, 'the initial path is blocked by the actual house footprint');
+  assert.equal(w.paidWorkSeconds, .000005); assert.equal(owner.wallet, wallet);
+  for (let i = 0; i < 150 && w.cargo.stone; i++) {
+    const previous = { x: w.x, z: w.z }; advance(.1);
+    assert.ok(canStand(w.x, w.z, .4, plotSolids(v.plots)));
+    assert.ok(apart(w, previous) <= WORKER_RULES.speed * .1 * 1.15 + 1e-6);
+  }
+  assert.equal(w.cargo.stone, 0, 'elapsed tick time permits a detour and physical delivery');
+  assert.equal(plot.storage.stone, 1); assert.equal(w.workXp, 0);
+  assert.equal(owner.wallet, wallet - WORKER_RULES.wageGold);
+});
+
+test('returning a paused worker keeps a fractional prepaid wage balance intact', () => {
+  const { owner, act, hire, assign, advance } = fixture(), w = hire();
+  assign(w); w.paidWorkSeconds = .0001; w.x = -8; w.z = -35;
+  w.cargo.stone = 2;
+  act({ kind: 'worker_pause', workerId: w.id, paused: true });
+  const before = { x: w.x, z: w.z }, wallet = owner.wallet;
+  advance(2);
+  assert.ok(apart(w, before) > 3, 'the free return trip uses the full simulation timestep');
+  assert.equal(owner.wallet, wallet); assert.equal(w.paidWorkSeconds, .0001);
+  assert.equal(w.cargo.stone, 2); assert.equal(w.workXp, 0);
+});
+
 test('only completed harvests earn points; spending a point improves gathering and cannot be repeated', () => {
   const { v, visitor, act, hire, assign, advance, nodeOnly, atNode } = fixture();
   const w = hire(), { node } = nodeOnly('stone', 4); assign(w); atNode(w, node); w.workXp = 24;

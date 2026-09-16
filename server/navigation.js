@@ -123,12 +123,15 @@ function findRoute(start, target, allSolids, margin) {
   return null;
 }
 
-export function stepNpcNavigation(entity, target, speed, dt, neighbors = [], extraSolids = []) {
-  if (![entity.x, entity.z, target?.x, target?.z, speed, dt].every(Number.isFinite) || dt <= 0 || speed <= 0) return;
+export function stepNpcNavigation(entity, target, speed, dt, neighbors = [], extraSolids = [], elapsedDt = dt) {
+  if (![entity.x, entity.z, target?.x, target?.z, speed, dt, elapsedDt].every(Number.isFinite) || dt <= 0 || elapsedDt <= 0 || speed <= 0) return;
   const solids = [...SOLIDS, ...extraSolids];
   let state = routes.get(entity);
   if (!state) { state = { target: { ...target }, blocked: 0, time: 0, retryAt: 0, failures: 0, path: null, index: 0 }; routes.set(entity, state); }
-  state.time += dt;
+  // A worker may have only a fraction of a prepaid tick left to travel.
+  // Replanning still follows elapsed simulation time, independent of that
+  // movement allowance, so a blocked worker can find a route and spend it.
+  state.time += elapsedDt;
   if (distance(state.target, target) > 3) {
     state.target = { ...target }; state.path = null; state.blocked = 0; state.failures = 0;
   }
@@ -165,7 +168,7 @@ export function stepNpcNavigation(entity, target, speed, dt, neighbors = [], ext
   moveWithCollision(entity, vx / norm * travel, vz / norm * travel, RADIUS, extraSolids);
   const moved = distance(before, entity), progress = distance(before, destination) - distance(entity, destination);
   if (!direct && (!state.path || moved < speed * dt * .15)) {
-    state.blocked = progress < speed * dt * .2 ? state.blocked + dt : Math.max(0, state.blocked - dt * .5);
+    state.blocked = progress < speed * dt * .2 ? state.blocked + elapsedDt : Math.max(0, state.blocked - elapsedDt * .5);
     if (state.path && state.blocked > .5) { state.path = null; state.blocked = .3; }
   }
   if (moved > .001) { entity.yaw = Math.atan2(entity.x - before.x, entity.z - before.z); entity.anim = 'walk'; }

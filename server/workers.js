@@ -208,7 +208,7 @@ function payForTime(w, p, dt) {
   w.paidWorkSeconds = Math.max(0, w.paidWorkSeconds - dt);
 }
 
-function move(w, target, dt, neighbors, solids, p = null) {
+function move(w, target, dt, neighbors, solids, p = null, elapsedDt = dt) {
   const before = { x: w.x, z: w.z };
   let destination = target;
   const inside = w.z < 18, targetInside = target.z < 18;
@@ -220,11 +220,11 @@ function move(w, target, dt, neighbors, solids, p = null) {
     destination = { x: 0, z: approachGate ? (inside ? 11 : 25) : (inside ? 25 : 11) };
   }
   const speed = workerStats(w).speed;
-  stepNpcNavigation(w, destination, speed, dt, neighbors, solids);
+  stepNpcNavigation(w, destination, speed, dt, neighbors, solids, elapsedDt);
   const moved = distance(before, w);
   if (moved > .001) w.stalledFor = 0;
   else if (distance(w, destination) > .7) {
-    w.stalledFor = (Number.isFinite(w.stalledFor) ? w.stalledFor : 0) + dt;
+    w.stalledFor = (Number.isFinite(w.stalledFor) ? w.stalledFor : 0) + elapsedDt;
     if (w.stalledFor >= 2) {
       // A fresh command or a long crowd/obstacle stall must not inherit a
       // failed cached route forever. Replan and release the current node so a
@@ -232,7 +232,10 @@ function move(w, target, dt, neighbors, solids, p = null) {
       resetNpcNavigation(w); w.targetNodeId = null; w.nextSearchAt = 0; w.stalledFor = 0;
     }
   }
-  if (p && moved > .001) payForTime(w, p, Math.min(dt, moved / speed));
+  // Charge even sub-animation movement: otherwise a tiny prepaid remainder
+  // caps every future step without ever being spent, continually throttling the
+  // worker despite fresh orders. Truly blocked movement still costs nothing.
+  if (p && moved > 0) payForTime(w, p, Math.min(dt, moved / speed));
   return moved > .001;
 }
 
@@ -303,7 +306,7 @@ export function workersTick(sim, v, dt) {
       const target = plot ? plotFront(PLOTS.find(m => m.id === plot.id), 1) : marketFor(v, w);
       w.targetNodeId = null; w.gatherProgress = 0;
       if (plot ? distance(w, target) > .7 : !canUseBuilding(w, market)) {
-        const moved = move(w, target, time, neighbors, solids, p);
+        const moved = move(w, target, time, neighbors, solids, p, dt);
         w.status = moved ? (plot ? 'Carrying goods to storage' : 'Carrying goods to Resource Exchange') : 'Waiting for a clear delivery path';
       } else {
         const complete = plot ? storeCargo(v, w) : sellCargo(sim, v, w, p);
@@ -329,7 +332,7 @@ export function workersTick(sim, v, dt) {
     if (!chosen || !target) { w.status = 'Waiting for resources'; continue; }
     if (distance(w, target) > .65 || distance(w, chosen.node) > 3.3 || !openSegment(w, chosen.node, [...SOLIDS, ...solids])) {
       w.gatherProgress = 0;
-      const moved = move(w, target, time, neighbors, solids, p);
+      const moved = move(w, target, time, neighbors, solids, p, dt);
       w.status = moved ? `Walking to ${w.resource}` : 'Waiting for a clear gathering path';
       continue;
     }

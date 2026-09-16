@@ -102,3 +102,52 @@ test('a legacy SQLite village without workers loads an empty roster without repl
   assert.deepEqual(persisted.workers, []);
   assert.equal(persisted.treasury, 777);
 });
+
+test('an existing worker with fractional prepaid time resumes after SQLite restart without losing cargo or duplicating pay', async t => {
+  const f = await fixture(t);
+  const { id } = f.sim.create('Recovering Hired Hand', f.account);
+  const player = f.sim.join(id, f.account), village = f.sim.villages.get(id);
+  player.wallet = 1000;
+  Object.assign(player, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
+  f.store.bank(player.id, 57);
+  f.sim.action(id, player.id, { kind: 'worker_hire' });
+  f.sim.tick(.7);
+  const worker = village.workers[0];
+  const order = { kind: 'worker_assign', workerId: worker.id, resource: 'coal', sourcePlotId: null, mode: 'sell', destinationPlotId: null };
+  f.sim.action(id, player.id, order);
+  f.sim.tick(.7);
+  // Fractional movement billing can leave this valid sub-millisecond balance
+  // in an old save. Keep the exact balance: migration must not reset the worker.
+  Object.assign(worker, { x: 0, z: -100, paidWorkSeconds: .0001, delivering: true, workXp: 9 });
+  worker.cargo.coal = 2;
+  for (const node of village.resources) { node.available = false; node.regrowAt = village.clock + 10000; }
+  const wallet = player.wallet, treasury = village.treasury, stock = village.stock.coal;
+  f.sim.saveAll();
+  f.restart();
+  const restoredVillage = f.sim.villages.get(id), restoredWorker = restoredVillage.workers[0];
+  assert.equal(restoredWorker.id, worker.id);
+  assert.equal(restoredWorker.paidWorkSeconds, .0001);
+  assert.equal(restoredWorker.cargo.coal, 2);
+  const returning = f.sim.join(id, f.store.account(player.id));
+  f.sim.action(id, returning.id, order);
+  assert.equal(restoredWorker.paidWorkSeconds, .0001, 'a new order preserves earned prepaid time');
+  assert.equal(restoredWorker.cargo.coal, 2, 'reassignment preserves the saved haul');
+  for (let i = 0; i < 40; i++) f.sim.tick(.05);
+  assert.ok(Math.hypot(restoredWorker.x, restoredWorker.z + 100) > 4, 'saved worker returns to normal walking speed');
+  assert.equal(returning.wallet, wallet - WORKER_RULES.wageGold, 'one new wage block is purchased after the residual is spent');
+  for (let i = 0; i < 400 && restoredWorker.cargo.coal > 0; i++) f.sim.tick(.05);
+  assert.equal(restoredWorker.cargo.coal, 0, 'the same worker delivers the original saved cargo');
+  assert.equal(restoredVillage.stock.coal, stock + 2);
+  assert.equal(returning.wallet, wallet - WORKER_RULES.wageGold + treasury - restoredVillage.treasury);
+  assert.equal(restoredWorker.workXp, 9, 'movement recovery grants no extra harvest experience');
+  assert.equal(f.store.account(player.id).bank, 57);
+  const snapshot = f.sim.snapshot(restoredVillage, returning.id).workers.find(w => w.id === worker.id);
+  assert.equal(snapshot.cargo.coal, 0); assert.equal(snapshot.x, restoredWorker.x);
+  const settledWallet = returning.wallet, settledTreasury = restoredVillage.treasury;
+  f.sim.saveAll(); f.restart();
+  const finalVillage = f.sim.villages.get(id);
+  f.sim.join(id, f.store.account(player.id)); f.sim.tick(.1);
+  assert.equal(finalVillage.workers.length, 1); assert.equal(finalVillage.workers[0].cargo.coal, 0);
+  assert.equal(finalVillage.players[player.id].wallet, settledWallet);
+  assert.equal(finalVillage.treasury, settledTreasury, 'restart cannot repeat the completed sale');
+});
