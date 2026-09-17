@@ -85,7 +85,10 @@ export function createCivicWorld(scene){
   for(const kind of Object.keys(CIVIC_SIEGE))engine(kind);
   flush();let mason=null,villageId=null,disposed=false;
   function update(state={},dt=1/60,time=0){
-    if(disposed)return;const works=state.civic??{},completed=new Set(works.completed??[]),changedVillage=villageId!==state.id;villageId=state.id;dt=Math.max(0,Math.min(.1,Number(dt)||0));
+    if(disposed)return;
+    // The main render loop passes null while in the lobby and after leaving.
+    // Treat that as an empty village so completed works and effects also reset.
+    state??={};const works=state.civic??{},completed=new Set(works.completed??[]),changedVillage=villageId!==state.id;villageId=state.id;dt=Math.max(0,Math.min(.1,Number(dt)||0));
     paintBoard(works);depot.visible=Object.values(works.depot??{}).some(value=>value>0);reinforcement.visible=completed.has('reinforcement');
     for(const [kind,record]of engines){
       record.group.visible=completed.has(kind);const shot=works.siege?.[kind]?.lastShot;

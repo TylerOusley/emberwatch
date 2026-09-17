@@ -23,6 +23,26 @@ test('village works reveal only completed engines and animate fresh authoritativ
   world.dispose();assert.equal(scene.children.includes(world.root),false);
 });
 
+test('lobby, join, leave and rejoin render updates accept null state and clear village effects',()=>{
+  const world=createCivicWorld(new THREE.Scene()),ballista=world.engines.get('ballista');
+  // main.js calls update(joined ? state : null) on every animation frame.
+  assert.doesNotThrow(()=>world.update(null,1/60,0));
+  assert.doesNotThrow(()=>world.update(undefined,1/60,1));
+  assert.equal(ballista.group.visible,false);
+  const state={id:'first',clock:10,civic:{completed:['reinforcement','repair_crew','ballista'],depot:{timber:2},mason:{x:-10,z:-23,status:'All structures repaired'},siege:{ballista:{lastShot:{id:'old',at:10,x:0,z:40}}}}};
+  world.update(state,1/60,10);
+  const mason=world.root.getObjectByName('village-repair-mason'),depot=world.root.getObjectByName('works-supply-depot'),reinforcement=world.root.getObjectByName('reinforced-gatehouse-masonry');
+  assert.equal(ballista.group.visible,true);assert.equal(mason.visible,true);assert.equal(depot.visible,true);assert.equal(reinforcement.visible,true);
+  state.clock=11;state.civic.siege.ballista.lastShot={id:'new',at:11,x:4,z:41};world.update(state,1/60,11);
+  assert.equal(ballista.projectile.visible,true);
+  assert.doesNotThrow(()=>world.update(null,1/60,11.1));
+  assert.equal(ballista.group.visible,false);assert.equal(ballista.projectile.visible,false);assert.equal(mason.visible,false);assert.equal(depot.visible,false);assert.equal(reinforcement.visible,false);
+  assert.equal(world.board.userData.progress,0);assert.equal(world.board.userData.project,'Choose a village project');
+  world.update(state,1/60,11.2);
+  assert.equal(ballista.group.visible,true);assert.equal(mason.visible,true);assert.equal(ballista.projectile.visible,false,'rejoining does not replay the preceding village shot');
+  world.dispose();assert.doesNotThrow(()=>world.update(null));
+});
+
 test('the communal board tracks contribution progress and the mason follows saved positions',()=>{
   const world=createCivicWorld(),state={id:'works',clock:2,civic:{active:'reinforcement',progress:{timber:150,stone:250,gold:2500},completed:['repair_crew'],mason:{x:-10,z:-23,status:'All structures repaired'},depot:{timber:2}}};
   world.update(state,.1,2);assert.equal(world.board.userData.progress,.5);assert.equal(world.board.userData.project,'Reinforced gate and keep');
