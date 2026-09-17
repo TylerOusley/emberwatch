@@ -169,7 +169,9 @@ export function createWorld(scene) {
   }
   function turret(x,z,w=4.4,d=4.8,h=8.5,roof=true){
     masonry(x,z,w,h,d);
-    for(const dx of [-1,1])for(const dz of [-1,1])box(M.stoneLight,x+dx*(w/2-.24),h/2,z+dz*(d/2-.22),.48,h,.45);
+    // Project the corner stones clear of both mortar faces. Their side faces
+    // previously ended exactly on the shell, producing depth fighting there.
+    for(const dx of [-1,1])for(const dz of [-1,1])box(M.stoneLight,x+dx*(w/2-.22),h/2,z+dz*(d/2-.20),.48,h,.45);
     for(let k=0;k<3;k++){const a=x-w/2+.5+k*(w-1)/2;box(M.stoneLight,a,h+.7,z+d/2,.75,.85,.75);box(M.stoneLight,a,h+.7,z-d/2,.75,.85,.75);}
     if(roof){
       const rg=new THREE.ConeGeometry(w*.86,3,4);rg.rotateY(Math.PI/4);mesh(rg,M.roof,root,x,h+2.1,z,1,1,d/w);
@@ -215,13 +217,17 @@ export function createWorld(scene) {
     // Offset joints and close natural tints keep courses readable at street
     // distance; the local stone texture supplies their smaller surface detail.
     const angle=Math.atan2(h,a),slope=Math.hypot(h,a),rows=Math.ceil(slope/.78),columns=Math.ceil(d/.96),width=d/columns;
+    // Each slate's exposed lip rests above the next course. Parallel slates
+    // at the roof's exact pitch had coplanar overlapping faces; their different
+    // tints alternated in the depth buffer whenever the camera moved.
+    const tileAngle=angle-.035;
     for(const side of [-1,1])for(let row=0;row<rows;row++){
       const t=(row+.52)/rows,start=-d/2-(row%2?width/2:0);
       for(let col=0;col<=columns;col++){
         const low=Math.max(-d/2,start+col*width),high=Math.min(d/2,start+(col+1)*width);
         if(high-low<.04)continue;
         const tone=(row*7+col*3+(side+1)*2)%11,shade=tone<2?M.roofDark:tone>8?M.roofLight:M.roof;
-        batch(tileG,shade,x+side*a*t,base+h*(1-t)+.047,z+(low+high)/2,slope/rows+.07,.062,high-low-.022,0,0,-side*angle);
+        batch(tileG,shade,x+side*a*t,base+h*(1-t)+.047,z+(low+high)/2,slope/rows+.07,.062,high-low-.022,0,0,-side*tileAngle);
       }
     }
     return shell;
@@ -643,7 +649,7 @@ export function createResourceEffects(parent,{maxParticles=192,maxGhosts=16}={})
   }
   const chips=pool('harvest-chips',new THREE.TetrahedronGeometry(1,0),chipMaterial,Math.max(1,Math.floor(maxParticles*.75)));
   const dust=pool('harvest-dust',new THREE.IcosahedronGeometry(1,1),dustMaterial,Math.max(1,Math.floor(maxParticles*.25)));
-  const palettes={timber:['#b98a53','#8b663d','#65884a'],stone:['#999c8e','#727c72','#b0ad98'],iron:['#a0744b','#8a6a4c','#79796e'],coal:['#333b39','#636a62','#878679'],wheat:['#e2c171','#c5a150','#9bac62']};
+  const palettes={timber:['#b98a53','#8b663d','#65884a'],stone:['#999c8e','#727c72','#b0ad98'],iron:['#a0744b','#8a6a4c','#79796e'],coal:['#333b39','#636a62','#878679'],sulfur:['#d3b93f','#f5e287','#897934'],wheat:['#e2c171','#c5a150','#9bac62']};
   const smooth=t=>t*t*(3-2*t),clamp=t=>THREE.MathUtils.clamp(t,0,1);
   function restore(record){record.object.position.copy(record.position);record.object.quaternion.copy(record.quaternion);record.object.scale.copy(record.scale);}
   function register(node,object){

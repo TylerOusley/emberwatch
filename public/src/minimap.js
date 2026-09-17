@@ -75,7 +75,7 @@ export function createMinimap(canvas) {
     const current=new Map((state.resources||[]).map(n=>[n.id,n]));
     for(const meta of RESOURCES){if(!view.visible(meta,1)||!!meta.caveTier!==view.underground)continue;const live=current.get(meta.id);if(live?.available===false)continue;const n=resolveResource(meta,live);
       if(n.type==='timber')tree(n);else if(n.type==='wheat'){const p=view.project(n);c.fillStyle='#ead087';c.fillRect(p.x-1.3,p.y-1.3,2.6,3.5);}
-      else{const p=view.project(n);c.save();c.translate(p.x,p.y);c.rotate(Math.PI/4);c.fillStyle={stone:'#e0d5b6',iron:'#d69867',coal:'#344449'}[n.type];c.strokeStyle=n.type==='coal'?'#a7b7b9':'#615b48';c.lineWidth=1.3;c.fillRect(-3.1,-3.1,6.2,6.2);c.strokeRect(-3.1,-3.1,6.2,6.2);c.restore();}
+      else{const p=view.project(n);c.save();c.translate(p.x,p.y);c.rotate(Math.PI/4);c.fillStyle={stone:'#e0d5b6',iron:'#d69867',coal:'#344449',sulfur:'#e8d463'}[n.type];c.strokeStyle=n.type==='coal'?'#a7b7b9':'#615b48';c.lineWidth=1.3;c.fillRect(-3.1,-3.1,6.2,6.2);c.strokeRect(-3.1,-3.1,6.2,6.2);c.restore();}
     }
     if(!view.underground){
       for(const b of BUILDINGS){if(!view.visible(b,12))continue;rect(b.x,b.z,b.w,b.d,'#866f53','#ead7a1');poi(b,b.id==='tools'?'shop':b.kind,b.name,27);}

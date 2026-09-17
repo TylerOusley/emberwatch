@@ -2,11 +2,21 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — tavern controls build 24.** This build expands the village into the full 48-plot map and connects ownership, crafting, the treasury economy, defenses, care, and transport. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — seasons and industry build 25.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 25 implements four one-hour seasons, season-aware rain/snow/clouds/fog, and six timed village events with actual production, public supply and demand effects. The HUD explains the current season, weather and event with countdowns. Schedules pause in empty villages and persist across restarts.
+
+Five personal workers remain available alongside one additional plot worker per building level: gatherers for mines and farms, transporters for shops, defenses and churches. New staff start paused without a hiring charge; activate them through **Pack → Manage workers**, where transporters can select another owned source and maintain a 1–100% destination storage target by weight. Active work uses existing wallet wages. Staff, cargo, assignments and training survive restarts.
+
+Mine sulfur from eight dedicated public veins or owned mines. Tinker owners can make **5 gunpowder from 2 sulfur + 1 coal**, a **musket from 14 iron + 16 timber**, and **8 musket shots from 4 stone + 2 gunpowder**. Craft powder and shot into shop storage for sale or use. Shop owners set each recipe's price from 1 to 10,000 gold; buyers see the current quote. Equip a musket through the pack's hotbar controls: 64 base damage, 38m range, 1.6-second reload, and one ammunition/durability per shot.
+
+Owned barracks recruit swordsmen, archers and musketeers, with individual veteran training. Upgrading a barracks increases its shared capacity from three to six troops. Ranged soldiers use arrows or musket shot from their own barracks, follow orders when ammunition runs out, and have distinct equipment and shot effects.
+
+At **The Wayfarer entrance**, press **E → Play tavern games** to reach coin flip or roulette, including when the traveling merchant is absent. Maximum stake rises to **10,000 gold**, subject to wallet funds and treasury payout cover. Overlapping roof tiles and turret corner stones now have physical clearance, and light-space shadow stabilization reduces movement shimmer. Existing mine-light pooling and percentage merchant exports remain in place.
 
 Build 24 fixes tavern button presses being interrupted when wallet or treasury updates rebuild the menu. Controls retain the active press while still checking current funds before accepting a bet. Clear guidance beside Place bet explains invalid stakes and unavailable funds. The same interaction protection covers village investment controls. Betting odds, payouts, wallet funding, the treasury reserve and entrance requirements keep their existing rules.
 

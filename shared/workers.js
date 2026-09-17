@@ -5,7 +5,22 @@ export const WORKER_RULES = Object.freeze({
   carryCapacity: 40, gatherSeconds: 4, speed: 3,
   xpPerPoint: 25, maxAttributeRank: 5
 });
-export const WORKER_RESOURCES = Object.freeze(['wheat', 'timber', 'stone', 'iron', 'coal']);
+export const WORKER_RESOURCES = Object.freeze(['wheat', 'timber', 'stone', 'iron', 'coal', 'sulfur']);
+// Plot staff are additional to the five personally hired workers. An empty or
+// destroyed plot has no active staff; staff never create stock by themselves.
+export const PLOT_STAFF = Object.freeze({
+  wheat_farm: 'gatherer', tree_farm: 'gatherer', mine: 'gatherer',
+  tool_shop: 'transporter', tinker_shop: 'transporter', sword_shop: 'transporter',
+  archer_tower: 'transporter', cannon: 'transporter', barracks: 'transporter', church: 'transporter'
+});
+export function plotStaffCount(plot) {
+  return plot?.ownerId && plot.hp > 0 && Object.hasOwn(PLOT_STAFF, plot.building ?? '') && Number.isInteger(plot.level)
+    ? Math.max(0, Math.min(3, plot.level)) : 0;
+}
+export function transporterTarget(capacity, resourceWeight, percent) {
+  return Number.isFinite(capacity) && capacity > 0 && Number.isFinite(resourceWeight) && resourceWeight > 0 && Number.isInteger(percent) && percent >= 1 && percent <= 100
+    ? Math.floor((capacity * percent / 100 + 1e-6) / resourceWeight) : 0;
+}
 export const WORKER_ATTRIBUTES = Object.freeze({
   gathering: Object.freeze({ name: 'Gathering', benefit: '0.4 seconds faster per harvest' }),
   speed: Object.freeze({ name: 'Movement', benefit: '+0.3 movement speed' }),

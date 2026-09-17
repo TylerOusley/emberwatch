@@ -60,10 +60,15 @@ test('WebSocket recovery returns the exact durable finance receipt after it leav
   assert.deepEqual({ wallet: player.wallet, treasury: village.treasury, position: app.store.financePosition(village.id, player.id) }, before);
 });
 
-test('WebSocket tavern bets settle once during day and night while the traveling merchant is away', async t => {
+test('WebSocket 10,000-gold tavern bets settle once during day and night while the traveling merchant is away', async t => {
   const { app, village, player, receipt } = await fixture(t);
   Object.assign(player, buildingEntrance(BUILDINGS.find(building => building.id === 'merchant')));
   village.merchant.present = false;
+  player.wallet = 1000000; village.treasury = 5000000;
+  const beforeInvalid = { wallet: player.wallet, treasury: village.treasury };
+  const invalid = await receipt({ kind: 'tavern_bet', requestId: randomUUID(), game: 'coinflip', choice: 'heads', stake: 10001 });
+  assert.equal(invalid.type, 'error'); assert.match(invalid.message, /1 to 10,000/);
+  assert.deepEqual({ wallet: player.wallet, treasury: village.treasury }, beforeInvalid);
   let accepted = 0;
   for (const phase of ['day', 'night']) {
     village.phase = phase;
@@ -78,10 +83,11 @@ test('WebSocket tavern bets settle once during day and night while the traveling
     ]) {
       const snapshot = app.simulation.snapshot(village, player.id);
       assert.equal(snapshot.merchant.present, false);
-      assert.ok(snapshot.tavern.coinflipMaximumStake >= 10);
-      assert.ok(snapshot.tavern.rouletteNumberMaximumStake >= 10);
+      assert.equal(snapshot.tavern.maxStake, 10000);
+      assert.equal(snapshot.tavern.coinflipMaximumStake, 10000);
+      assert.equal(snapshot.tavern.rouletteNumberMaximumStake, 10000);
       const before = { wallet: player.wallet, treasury: village.treasury };
-      const action = { kind: 'tavern_bet', requestId: randomUUID(), stake: 10, ...selection };
+      const action = { kind: 'tavern_bet', requestId: randomUUID(), stake: 10000, ...selection };
       const response = await receipt(action);
       assert.equal(response.type, 'financeReceipt', `${phase} ${selection.game} ${selection.choice}`);
       assert.equal(response.requestId, action.requestId);
@@ -90,7 +96,7 @@ test('WebSocket tavern bets settle once during day and night while the traveling
       assert.equal(saved.game, action.game);
       assert.equal(saved.choice, action.choice);
       assert.equal(saved.stake, action.stake);
-      assert.ok([0, selection.choice === 'number' ? 360 : 20].includes(saved.payout));
+      assert.ok([0, selection.choice === 'number' ? 360000 : 20000].includes(saved.payout));
       assert.equal(saved.net, saved.payout - action.stake);
       assert.equal(player.wallet, before.wallet + saved.net);
       assert.equal(village.treasury, before.treasury - saved.net);

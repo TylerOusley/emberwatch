@@ -1,12 +1,12 @@
 import { TREASURY_RESERVE } from './market.js';
 
 export const INVESTMENT_RULES = Object.freeze({ dividendRate: .01, rateDenominator: 100, minimumCompletedDays: 1, maxAction: 1_000_000, maxPrincipal: 1_000_000_000, reserve: TREASURY_RESERVE });
-export const TAVERN_RULES = Object.freeze({ minStake: 1, maxStake: 1000, reserve: TREASURY_RESERVE, coinflipMultiplier: 2, rouletteNumberMultiplier: 36, rouletteEvenMoneyMultiplier: 2 });
+export const TAVERN_RULES = Object.freeze({ minStake: 1, maxStake: 10_000, reserve: TREASURY_RESERVE, coinflipMultiplier: 2, rouletteNumberMultiplier: 36, rouletteEvenMoneyMultiplier: 2 });
 export const ROULETTE_RED = Object.freeze([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 export function rouletteColor(number) { return number === 0 ? 'green' : ROULETTE_RED.includes(number) ? 'red' : 'black'; }
 
 export function normalizeTavernBet(action) {
-  if (!Number.isSafeInteger(action.stake) || action.stake < TAVERN_RULES.minStake || action.stake > TAVERN_RULES.maxStake) throw new Error('Choose a whole-gold stake from 1 to 1,000.');
+  if (!Number.isSafeInteger(action.stake) || action.stake < TAVERN_RULES.minStake || action.stake > TAVERN_RULES.maxStake) throw new Error(`Choose a whole-gold stake from ${TAVERN_RULES.minStake.toLocaleString('en-US')} to ${TAVERN_RULES.maxStake.toLocaleString('en-US')}.`);
   if (action.game === 'coinflip') {
     if (!['heads', 'tails'].includes(action.choice)) throw new Error('Choose heads or tails.');
     return { game: 'coinflip', stake: action.stake, choice: action.choice, multiplier: 2 };

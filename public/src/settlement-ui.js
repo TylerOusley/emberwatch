@@ -1,9 +1,11 @@
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carryCapacity, MAX_PLOTS, PLOT_PRICES, TOOL_WEIGHTS, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount, acquiredToolDurability } from '../../shared/content.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, RESOURCE_WEIGHTS, BACKPACKS, carryCapacity, MAX_PLOTS, PLOT_PRICES, TOOL_WEIGHTS, SHOP_PRICE_LIMIT, SHOP_CRAFT_BATCH_LIMIT, shopPrice, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount, acquiredToolDurability } from '../../shared/content.js';
+import { MUSKET } from '../../shared/firearms.js';
 import { BUILDINGS, PLOTS, CAVE_ENTRANCE } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
 import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote, merchantExportPercent } from '../../shared/economy.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../../shared/defense.js';
+import { TROOP_TYPES, barracksCapacity, troopType, troopStats } from '../../shared/troops.js';
 import { ROLE_STATS } from '../../shared/roles.js';
 import { WORKER_RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../../shared/workers.js';
 import { NOTICEBOARD_POINT } from './noticeboard.js';
@@ -17,11 +19,11 @@ import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, p
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
-const label = id => ({ food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows', cart: 'Cargo cart' }[id] || String(id).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()));
+const label = id => ({ food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows', musket_ammo: 'Musket shots', cart: 'Cargo cart' }[id] || String(id).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()));
 const exportPolicyLabel = priority => `${label(priority)} · ${merchantExportPercent(priority)}% of surplus`;
 const costText = cost => Object.entries(cost || {}).map(([id, count]) => `${num(count)} ${id}`).join(' · ');
-const resources = ['timber', 'stone', 'wheat', 'iron', 'coal'];
-const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow'];
+const resources = ['timber', 'stone', 'wheat', 'iron', 'coal', 'sulfur'];
+const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow', 'musket'];
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
@@ -30,7 +32,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const transferDrafts = new Map();
   let renderedDraftKey = null;
-  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount'];
+  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount', ...Object.keys(RECIPES).flatMap(id => [`shop-price-${id}`, `shop-batches-${id}`])];
   const draftKey = () => `${current?.kind}:${current?.id || ''}`;
   const transferDraft = () => { const key = draftKey(); if (!transferDrafts.has(key)) transferDrafts.set(key, {}); return transferDrafts.get(key); };
   function captureTransferDrafts() {
@@ -80,6 +82,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function gearFacts(id, tier = 'wood') {
     const quality = TOOL_TIERS[tier] || TOOL_TIERS.wood;
+    if (id === 'musket') return [['Damage', `${MUSKET.damage} base / shot`], ['Reload', `${MUSKET.cooldown} seconds`], ['Range', `${MUSKET.range} m`], ['Durability', `${MUSKET.durability} shots`]];
     return [[id === 'sword' || id === 'bow' ? 'Damage' : id === 'hammer' ? 'Repair' : 'Yield', id === 'sword' ? `${quality.swordDamage} base / hit` : id === 'bow' ? '22 base / arrow' : id === 'hammer' ? `${quality.repair} health / swing` : `${quality.yield} ${quality.yield === 1 ? 'resource' : 'resources'} / swing`], ['Durability', `${acquiredToolDurability(me(), id, tier)} uses`]];
   }
   function materialDisplay(cost, stored) {
@@ -134,11 +137,11 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       if (input) input.oninput = () => { tradeAmounts.set(resource, input.value); updateTrade(resource); };
     }
     if (current?.kind === 'workers') ownWorkers().forEach((worker, index) => {
-      for (const field of ['resource', 'sourcePlotId', 'mode', 'destinationPlotId']) {
+      for (const field of ['resource', 'sourcePlotId', 'mode', 'destinationPlotId', 'targetPercent']) {
         const input = document.getElementById(`worker-${index}-${field}`);
         if (input) input.onchange = () => {
           const draft = workerDraft(worker);
-          draft.order[field] = input.value || null; draft.dirty = true;
+          draft.order[field] = field === 'targetPercent' ? Number(input.value) : input.value || null; draft.dirty = true;
           render();
         };
       }
@@ -207,7 +210,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.boundInventory, p.crateEquipment, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.boundInventory, p.crateEquipment, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color, w.staffPlotId, w.staffRole, w.staffRetired, w.targetPercent]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
@@ -277,7 +280,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const bank = BUILDINGS.find(b => b.id === 'bank');
     return Math.hypot(Math.max(0, Math.abs(player.x - bank.x) - bank.w / 2), Math.max(0, Math.abs(player.z - bank.z) - bank.d / 2)) <= 3.5;
   }
-  const workerOrder = worker => ({ resource: worker.resource || 'timber', sourcePlotId: worker.sourcePlotId || null, mode: worker.mode || 'sell', destinationPlotId: worker.destinationPlotId || null });
+  const workerOrder = worker => ({ resource: worker.resource || 'timber', sourcePlotId: worker.sourcePlotId || null, mode: worker.mode || 'sell', destinationPlotId: worker.destinationPlotId || null, ...(worker.staffRole === 'transporter' ? { targetPercent: worker.targetPercent ?? 50 } : {}) });
   function workerDraft(worker) {
     const order = workerOrder(worker);
     let draft = workerDrafts.get(worker.id);
@@ -291,7 +294,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return `${place?.name || id} · ${BUILDING_TYPES[plot?.building]?.name || 'Unavailable building'}${plot?.level >= 2 ? ` · Level ${plot.level}` : ''}`;
   }
   function workerSourcePlots(resource) {
-    const building = { timber: 'tree_farm', wheat: 'wheat_farm', stone: 'mine', iron: 'mine', coal: 'mine' }[resource];
+    const building = { timber: 'tree_farm', wheat: 'wheat_farm', stone: 'mine', iron: 'mine', coal: 'mine', sulfur: 'mine' }[resource];
     return owned().filter(p => p.building === building && p.hp > 0);
   }
   function workerSelect(id, caption, options, selected) {
@@ -300,23 +303,29 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function workers() {
     const p = me(), crew = ownWorkers(), destinations = owned().filter(plot => plot.building && plot.hp > 0);
-    const nearBank = atTreasury(p), full = crew.length >= WORKER_RULES.maxPerPlayer;
-    let html = menuHero(workerPortrait(), 'HIRED HANDS', 'Build your village crew.', 'Choose a gathering ground, train each worker and decide where every haul goes.', `<span class="menu-tier">${crew.length} / ${WORKER_RULES.maxPerPlayer} workers</span>`) + stats([['Your workers', `${crew.length} / ${WORKER_RULES.maxPerPlayer}`], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
+    const personal = crew.filter(worker => !worker.staffPlotId).length, staff = crew.filter(worker => worker.staffPlotId && !worker.staffRetired).length;
+    const nearBank = atTreasury(p), full = personal >= WORKER_RULES.maxPerPlayer;
+    let html = menuHero(workerPortrait(), 'HIRED HANDS', 'Build your village crew.', 'Choose a gathering ground, train each worker and decide where every haul goes.', `<span class="menu-tier">${personal} / ${WORKER_RULES.maxPerPlayer} personal workers · ${staff} plot staff</span>`) + stats([['Personal workers', `${personal} / ${WORKER_RULES.maxPerPlayer}`], ['Plot staff', staff], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
     html += `<p>Workers start with ${WORKER_RULES.carryCapacity} cargo capacity and work day and night while you are online. Hiring and wages use your wallet; work stops when you cannot pay. Sales follow village prices and tax, with proceeds paid to you. Every ${WORKER_RULES.xpPerPoint} completed harvests earns one upgrade point. Spend points below to train each worker.</p>`;
+    html += '<p>Production plots add one gatherer per building level, up to three. Shops, churches, barracks and defenses add transporters at the same rate. Plot staff are extra and arrive paused with no hiring fee; activate their orders when you are ready to pay wages. Empty or destroyed plots have no active staff.</p>';
     html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury entrance to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
     if (!nearBank) html += '<p>Visit the Village Treasury entrance to hire or dismiss workers.</p>' + button('Mark the treasury', () => markService('bank'));
     if (!crew.length) html += '<p>Your hired workers will appear here. Manage their orders from your pack at any time.</p>';
     crew.forEach((worker, index) => {
-      const draft = workerDraft(worker), order = draft.order, sources = workerSourcePlots(order.resource);
-      const sourceValid = !order.sourcePlotId || sources.some(plot => plot.id === order.sourcePlotId);
-      const destinationValid = order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId);
+      const transporter = worker.staffRole === 'transporter', gatherer = worker.staffRole === 'gatherer';
+      const resources = transporter ? Object.keys(RESOURCE_WEIGHTS) : gatherer ? WORKER_RESOURCES.filter(resource => workerSourcePlots(resource).some(plot => plot.id === worker.staffPlotId)) : WORKER_RESOURCES;
+      const draft = workerDraft(worker), order = draft.order, sources = transporter ? destinations.filter(plot => plot.id !== worker.staffPlotId) : workerSourcePlots(order.resource).filter(plot => !gatherer || plot.id === worker.staffPlotId);
+      const sourceValid = (!transporter && !gatherer && !order.sourcePlotId) || sources.some(plot => plot.id === order.sourcePlotId);
+      const destinationValid = (order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId)) && (!transporter || order.mode === 'store' && order.destinationPlotId === worker.staffPlotId && Number.isInteger(order.targetPercent) && order.targetPercent >= 1 && order.targetPercent <= 100);
       const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker);
-      const room = carryCapacity(p) - inventoryWeight(p), canCollect = WORKER_RESOURCES.some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
-      const cargoText = WORKER_RESOURCES.filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
+      const room = carryCapacity(p) - inventoryWeight(p), canCollect = Object.keys(RESOURCE_WEIGHTS).some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
+      const cargoText = Object.keys(RESOURCE_WEIGHTS).filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
       const currentSource = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : 'Public gathering grounds';
       const currentDestination = worker.mode === 'store' ? workerPlotName(worker.destinationPlotId) : 'Sell to the village';
       html += `<section class="worker-card" data-worker-card="${esc(worker.id)}"><header class="worker-card-heading"><div class="worker-card-portrait">${workerPortrait(worker.color)}</div><div><span class="menu-tier">Level ${worker.level || 1} · ${worker.paused ? 'Paused' : 'On duty'}</span><h3>${esc(worker.name || `Worker ${index + 1}`)}</h3><p>${esc(worker.status || 'Waiting for orders')}</p><small>${esc(worker.resource ? `${label(worker.resource)} · ${currentSource} → ${currentDestination}` : 'No resource assigned yet.')}</small></div><div class="worker-assignment-art">${itemArt(worker.resource || 'timber')}</div></header>`;
       html += '<div class="worker-card-body">' + row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`) + meter(weight, ability.carryCapacity, 'Worker cargo capacity');
+      if (worker.staffPlotId) html += row(worker.staffRetired ? 'Inactive plot staff' : transporter ? 'Plot transporter' : 'Plot gatherer', workerPlotName(worker.staffPlotId));
+      if (worker.staffRetired) html += '<p class="settlement-warning">This building no longer supports this worker. Cargo stays safe with them. Rebuild to reactivate this staff slot, or collect the cargo and dismiss them at the treasury.</p>';
       html += stats([['Level', worker.level || 1], ['Upgrade points', worker.upgradePoints || 0], ['Next point', (worker.workXp || 0) >= WORKER_MAX_XP ? 'Training complete' : `${(worker.workXp || 0) % WORKER_RULES.xpPerPoint} / ${WORKER_RULES.xpPerPoint} harvests`]]);
       html += '<h4>Worker attributes</h4><div class="worker-training">';
       for (const [attribute, rule] of Object.entries(WORKER_ATTRIBUTES)) {
@@ -331,21 +340,27 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         html += command(`${selected ? '✓ ' : ''}${color.name}`, 'worker_color', { workerId: worker.id, color: color.value }, selected, `Choose ${color.name.toLowerCase()} worker clothing`).replace('<button ', `<button aria-pressed="${selected}" style="border-left:8px solid ${color.value}" `);
       }
       html += '</div><h4>Work orders</h4>';
-      html += '<div class="worker-order-grid">' + workerSelect(`worker-${index}-resource`, 'Resource', WORKER_RESOURCES.map(resource => [resource, label(resource)]), order.resource);
-      html += workerSelect(`worker-${index}-sourcePlotId`, 'Gather from', [['', 'Public gathering grounds'], ...sources.map(plot => [plot.id, workerPlotName(plot.id)])], order.sourcePlotId);
-      html += workerSelect(`worker-${index}-mode`, 'Deliver the haul', [['sell', 'Sell to the village'], ['store', 'Store in my building']], order.mode);
-      if (order.mode === 'store') html += workerSelect(`worker-${index}-destinationPlotId`, 'Store at', [['', 'Choose a building'], ...destinations.map(plot => [plot.id, workerPlotName(plot.id)])], order.destinationPlotId);
+      html += '<div class="worker-order-grid">' + workerSelect(`worker-${index}-resource`, 'Resource', resources.map(resource => [resource, label(resource)]), order.resource);
+      html += workerSelect(`worker-${index}-sourcePlotId`, transporter ? 'Fetch from owned storage' : 'Gather from', [[ '', transporter ? 'Choose a supply building' : gatherer ? 'Choose this production plot' : 'Public gathering grounds'], ...sources.map(plot => [plot.id, workerPlotName(plot.id)])], order.sourcePlotId);
+      if (transporter) {
+        html += row('Deliver to', workerPlotName(worker.staffPlotId));
+        html += `<label for="worker-${index}-targetPercent">Target % of storage capacity <input id="worker-${index}-targetPercent" type="number" min="1" max="100" step="1" value="${esc(order.targetPercent)}"></label>`;
+      } else {
+        html += workerSelect(`worker-${index}-mode`, 'Deliver the haul', [['sell', 'Sell to the village'], ['store', 'Store in my building']], order.mode);
+        if (order.mode === 'store') html += workerSelect(`worker-${index}-destinationPlotId`, 'Store at', [['', 'Choose a building'], ...destinations.map(plot => [plot.id, workerPlotName(plot.id)])], order.destinationPlotId);
+      }
       html += '</div><p>Applying orders starts or resumes work. Pausing calls the worker back with their cargo and stops wages.</p>';
+      if (transporter) html += '<p>The selected resource is stocked to this share of the destination’s total weight capacity. The transporter physically collects existing goods from your other building when below target. Full storage or an empty source pauses fetching without wages. Each completed delivery earns training experience.</p>';
       if (!sourceValid || !destinationValid) html += '<p class="settlement-warning">Choose an available gathering ground and delivery building. Your current orders remain until you apply a change.</p>';
       if (draft.dirty) html += '<p>Order changes have not been applied yet.</p>';
       html += '<div class="panel-actions">' + button('Apply orders', () => {
         draft.order = { ...order, destinationPlotId: order.mode === 'store' ? order.destinationPlotId : null };
         send({ type: 'action', kind: 'worker_assign', workerId: worker.id, ...draft.order });
-      }, !sourceValid || !destinationValid);
-      html += command(worker.paused ? 'Resume work' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused });
+      }, !sourceValid || !destinationValid || worker.staffRetired);
+      html += command(worker.paused ? 'Resume work' : worker.staffPlotId ? 'Pause & return to plot' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused }, worker.staffRetired || transporter && worker.paused && (!worker.resource || !worker.sourcePlotId), transporter && !worker.sourcePlotId ? 'Apply a supply route first.' : '');
       html += button('Find worker', () => { waypoint = { kind: 'worker', id: worker.id, name: worker.name || 'Your worker', x: worker.x, z: worker.z }; toast('Your worker is marked on the minimap.'); });
       html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Take as much as your pack can hold. The worker keeps any remainder.');
-      html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
+      if (!worker.staffPlotId || worker.staffRetired) html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
       html += '</div></div></section>';
     });
     return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div>';
@@ -427,7 +442,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     let html = head('OAK & IRON', 'Tools for the job. Room for the haul.', 'Start with 10 gold and choose your first wooden tool. An axe gathers timber, a pickaxe mines stone and ore, and a scythe harvests wheat. Hammers repair structures using village supplies.') + stats([['Wallet', `${num(p.wallet)} gold`], ...(state().loan?.credit > 0 ? [['Purchase credit', `${num(state().loan.credit)} gold`]] : []), ['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`]]) + '<h3>Wooden tools · 10 gold each</h3><div class="shop-item-grid">';
     for (const id of ['axe', 'pickaxe', 'scythe', 'hammer']) {
       const owned = p.durability?.[id] > 0, full = inventoryWeight(p) + TOOL_WEIGHTS[id] > carryCapacity(p), available = money() >= 10 && !owned && !full;
-      const use = { axe: 'Chop trees for timber.', pickaxe: 'Mine every stone, iron and coal outcrop.', scythe: 'Harvest individual wheat stalks.', hammer: 'Repair damaged structures using timber or stone from village supplies.' }[id];
+      const use = { axe: 'Chop trees for timber.', pickaxe: 'Mine stone, iron, coal and sulfur outcrops.', scythe: 'Harvest individual wheat stalks.', hammer: 'Repair damaged structures using timber or stone from village supplies.' }[id];
       html += itemCard({ id: `wood_${id}`, item: id, tier: 'wood', name: 'Wooden ' + id, tag: 'Starter equipment', facts: gearFacts(id),
         copy: `${use} ${TOOL_WEIGHTS[id]} carrying weight. Wooden tools need no workshop materials. All tiers swing at the same speed.`,
         status: owned ? `${num(p.durability[id])} / ${num(p.maxDurability?.[id] || TOOL_TIERS[p.tiers?.[id] || 'wood'].durability)} uses remain · replace it once broken` : full ? 'Make room in your pack.' : money() < 10 ? 'Not enough gold or purchase credit.' : `${acquiredToolDurability(p, id)} durability · ${id === 'hammer' ? 'repairs damaged structures' : 'one resource per swing'}`,
@@ -448,7 +463,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function watch() {
     const replacements = (state().guardReplacements || []).filter(g => !g.plotId && !g.ownerId);
-    return menuHero(buildingArt('barracks'), 'THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword or bow.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + menuSection('Keep the watch supplied', `Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with ${RECRUIT.capacity} recruited troops.`, replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !transferableCount(me(), 'wheat')), itemArt('wheat')) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
+    return menuHero(buildingArt('barracks'), 'THE WATCH', 'One gate. Every dwarf helps.', 'The public watch marches from this barracks to the road outside the gate. Any role may defend with a sword, bow or musket.') + stats([['Village watch', num(state().guards.filter(g => !g.ownerId && g.hp > 0).length)], ['Awaiting replacement', num(replacements.length)], ['Stored wheat', num(state().barracks?.wheat)]]) + deliveries('barracks') + menuSection('Keep the watch supplied', `Each deployed troop eats one wheat each night. Hungry troops deal less damage. Fallen guards return after ${RECRUIT.respawnSeconds} seconds if the barracks has ${RECRUIT.respawnWheat} wheat per replacement. Guards can build up to two owned barracks, each with three troop slots, or six after upgrading. Recruit swordsmen, archers and musketeers, and train each soldier individually.`, replacementRows(replacements) + command('Donate carried wheat', 'donate', { targetId: 'barracks' }, !transferableCount(me(), 'wheat')), itemArt('wheat')) + '<div class="panel-actions">' + button('Your land', () => show('atlas')) + '</div>';
   }
   function deliveries(id) {
     if (typeof showDeliveries !== 'function') return '';
@@ -507,7 +522,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function merchant() {
     const m = state().merchant || {};
-    let html = head('TRAVELING MERCHANT', m.present ? 'Fresh wares at the crossroads.' : 'The merchant is on the road.', 'The merchant visits during the day after every second night. Dwarfs gather the village’s basic materials; the steward can export a safe surplus.');
+    let html = head('THE WAYFARER', 'Tavern games & traveling wares.', 'The inn’s gaming table is open day and night, including when the traveling merchant is away.');
+    if (showTavern) html += menuSection('Tavern games', 'Play coin flip or European roulette with your wallet gold.', button('Play tavern games', () => showTavern(), false, '', 'primary-button'), itemArt('gold'));
+    html += head('TRAVELING MERCHANT', m.present ? 'Fresh wares at the crossroads.' : 'The merchant is on the road.', 'The merchant visits during the day after every second night. Dwarfs gather the village’s basic materials; the steward can export a safe surplus.');
     html += `<p>The current council policy sells ${merchantExportPercent(state().policies?.exportPriority)}% of surplus wheat, timber and stone on each visit, with no unit cap. Food and repair reserves are set aside first; sales round down to whole units. Change the percentage through the Village Council.</p>`;
     if (m.summary) html += `<p>${esc(m.summary)}</p>`;
     if (m.present) {
@@ -648,18 +665,23 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (['mine', 'wheat_farm', 'tree_farm'].includes(p.building)) html += '<p>' + (mine ? 'Your harvest is yours. When visitors harvest, their output is split 80% to them and 20% into your storage over time.' : p.allowVisitors ? 'Visitors may gather here. Your share is 80%; the owner receives the remaining 20% over time.' : 'This owner has closed harvesting to visitors.') + '</p>' + (mine ? command(p.allowVisitors ? 'Close visitor harvesting' : 'Allow visitor harvesting', 'plot_access', { plotId: id, allowVisitors: !p.allowVisitors }) : '');
     const recipes = Object.entries(RECIPES).filter(([, r]) => r.shop === p.building);
     if (recipes.length) {
-      html += '<h3>Crafted to order</h3><p>Each purchase uses this shop’s stored materials. Payment goes to its owner. Equipment replaces your current item of that type.</p><div class="shop-item-grid">';
+      html += '<h3>Workshop counter</h3><p>The owner sets each item’s price. Purchases use ready stock or craft from stored materials. Payment goes to the owner after village trade tax. Equipment replaces your current item of that type.</p>' + (mine ? '<p>Set a whole-gold price for each item or bundle below. You can also craft gunpowder and musket shots into storage for customers, transporters or your own use.</p>' : '') + '<div class="shop-item-grid">';
       for (const [recipe, r] of recipes) {
-        const stocked = hasCost(p.storage, r.cost), owned = r.tool && me().durability?.[r.tool] > 0;
+        const price = shopPrice(p, recipe), readyStock = r.stockable && (p.storage?.[r.item] || 0) >= r.amount;
+        const stocked = readyStock || hasCost(p.storage, r.cost), owned = r.tool && me().durability?.[r.tool] > 0;
         const addedWeight = r.tool ? owned ? 0 : TOOL_WEIGHTS[r.tool] : resourceWeight(me(), r.item) * r.amount;
         const cartOwned = r.item === 'cart' && ownedCartCount(state(), me()) >= TRANSPORT.maxCarts;
-        const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= r.price && p.hp > 0 && !full && !cartOwned;
-        const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One cart per dwarf']];
-        const copy = r.tool ? r.tool === 'sword' ? 'A forward sweep can hit several enemies. Guards deal 20% extra damage. Each swing uses one durability. Replacing a sword discards the equipped weapon.' : r.tool === 'bow' ? 'A ranged shot consumes one carried arrow and one durability. Guards deal 20% extra damage. Aim toward your enemy.' : r.tool === 'hammer' ? 'Restores damaged structures using the village’s repair materials. Each repair uses one durability.' : 'Every tool tier can gather every matching resource. Higher tiers give more resources at the same swing speed. Each harvest uses one durability.' : r.item === 'arrows' ? 'A bundle for your bow. These go into your inventory and weigh 0.1 each. Archer towers do not need arrows.' : 'Place this cart, then attach it to your horse to move stored supplies. Cart storage is separate from your pack.';
-        const controls = button(`Buy · ${r.price}g`, () => { if (r.tool && me().durability?.[r.tool] > 0) confirm('Replace your equipped item?', `${r.name} costs ${r.price} gold and uses ${costText(r.cost)} from this shop. Your existing ${r.tool} and its remaining durability will be lost.`, 'craft_buy', { plotId: id, recipe, confirm: true }); else send({ type: 'action', kind: 'craft_buy', plotId: id, recipe }); }, !available, !stocked ? 'The shop needs more materials.' : 'Crafts from shop storage.');
-        html += itemCard({ id: recipe, item: r.tool || r.item, tier: r.tier, name: r.name, tag: r.tier ? TOOL_TIERS[r.tier].name + ' quality' : 'Workshop supply', facts, copy,
+        const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= price && p.hp > 0 && !full && !cartOwned;
+        const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : r.item === 'gunpowder' ? [['Bundle', `${r.amount} gunpowder`], ['Use', 'Craft musket ammunition']] : r.item === 'musket_ammo' ? [['Bundle', `${r.amount} musket shots`], ['Use', 'One per musket shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One cart per dwarf']];
+        const copy = r.tool ? r.tool === 'sword' ? 'A forward sweep can hit several enemies. Guards deal 20% extra damage. Each swing uses one durability. Replacing a sword discards the equipped weapon.' : r.tool === 'bow' ? 'A ranged shot consumes one carried arrow and one durability. Guards deal 20% extra damage. Aim toward your enemy.' : r.tool === 'musket' ? 'A powerful ranged shot with a slower reload. Each shot uses one carried musket shot and one durability. Guards deal 20% extra damage.' : r.tool === 'hammer' ? 'Restores damaged structures using the village’s repair materials. Each repair uses one durability.' : 'Every tool tier can gather every matching resource. Higher tiers give more resources at the same swing speed. Each harvest uses one durability.' : r.item === 'arrows' ? 'A bundle for your bow. These go into your inventory and weigh 0.1 each. Archer towers do not need arrows.' : r.item === 'gunpowder' ? 'Combine mined sulfur and coal at a tinker shop. Store this crafted supply to make ammunition, or sell it at your own price.' : r.item === 'musket_ammo' ? 'Combine stone and gunpowder into ready musket shots. Carry them to fire your musket or supply your barracks musketeers.' : 'Place this cart, then attach it to your horse to move stored supplies. Cart storage is separate from your pack.';
+        let controls = button(`Buy · ${price}g`, () => { if (r.tool && me().durability?.[r.tool] > 0) confirm('Replace your equipped item?', `${r.name} costs ${price} gold and uses ${costText(r.cost)} from this shop. Your existing ${r.tool} and its remaining durability will be lost.`, 'craft_buy', { plotId: id, recipe, price, confirm: true }); else send({ type: 'action', kind: 'craft_buy', plotId: id, recipe, price }); }, !available, !stocked ? 'The shop needs more materials.' : readyStock ? 'Buys the prepared stock.' : 'Crafts from shop storage.');
+        if (mine) {
+          controls += `<label>Price for ${esc(r.name)} · gold${quantity(`shop-price-${recipe}`, SHOP_PRICE_LIMIT, price)}</label>` + button('Save item price', () => send({ type: 'action', kind: 'shop_price', plotId: id, recipe, price: amount(`shop-price-${recipe}`) }), p.hp <= 0);
+          if (r.stockable) controls += `<label>Craft batches · ${r.amount} per batch${quantity(`shop-batches-${recipe}`, SHOP_CRAFT_BATCH_LIMIT)}</label>` + button('Craft into storage', () => send({ type: 'action', kind: 'craft_stock', plotId: id, recipe, batches: amount(`shop-batches-${recipe}`) }), p.hp <= 0 || !hasCost(p.storage, r.cost));
+        }
+        html += itemCard({ id: recipe, item: r.tool || r.item, tier: r.tier, name: r.name, tag: r.tool === 'musket' ? 'Heavy ranged weapon' : r.tier ? TOOL_TIERS[r.tier].name + ' quality' : 'Workshop supply', facts, copy,
           extra: materialDisplay(r.cost, p.storage), controls, available,
-          status: p.hp <= 0 ? 'Workshop needs rebuilding.' : cartOwned ? 'You already own a cargo cart, packed, stored or deployed.' : !stocked ? 'The shop needs more materials.' : full ? 'Make room in your pack.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : 'Materials ready · crafted when purchased' });
+          status: p.hp <= 0 ? 'Workshop needs rebuilding.' : cartOwned ? 'You already own a cargo cart, packed, stored or deployed.' : !stocked ? 'The shop needs more materials.' : full ? 'Make room in your pack.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : readyStock ? `${num(p.storage[r.item])} ready in stock` : 'Materials ready · crafted when purchased' });
       }
       html += '</div>';
     }
@@ -667,11 +689,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (p.building === 'barracks') {
       const troops = state().guards.filter(g => g.plotId === id && g.hp > 0);
       const replacements = (state().guardReplacements || []).filter(g => g.plotId === id);
-      html += '<h3>Barracks troops</h3>' + stats([['Recruited slots', `${troops.length + replacements.length} / ${RECRUIT.capacity}`], ['Living troops', num(troops.length)], ['Awaiting replacement', num(replacements.length)], ['Hungry troops', num(troops.filter(g => g.hungry).length)], ['Stored wheat', num(p.storage?.wheat)]]) + '<div class="barracks-roster">' + Array.from({ length: RECRUIT.capacity }, (_, index) => {
-        const troop = troops[index], replacing = index >= troops.length && index < troops.length + replacements.length;
-        return `<article class="barracks-slot"><div>${troop || replacing ? workerPortrait('#71808f') : itemArt('sword')}</div><span class="menu-tier">Troop ${index + 1}</span><strong>${troop ? `${num(troop.hp)} / ${num(troop.maxHp || (p.level >= 2 ? 220 : 160))} health` : replacing ? 'Awaiting replacement' : 'Open recruit slot'}</strong><small>${troop ? troop.hungry ? 'Hungry · supply wheat' : 'Fed and ready' : replacing ? 'Stock wheat to reinforce' : `${RECRUIT.gold} gold to recruit`}</small></article>`;
-      }).join('') + '</div>' + `<p>Each deployed troop consumes one stored wheat per night. Unfed troops deal 25% less damage. Fallen troops keep their recruited slot and return after ${RECRUIT.respawnSeconds} seconds when this barracks has ${RECRUIT.respawnWheat} wheat per replacement. Replacements cost no gold.</p>` + replacementRows(replacements, p.hp <= 0) + '<p>Recruiting an additional slot costs ' + costText({gold:RECRUIT.gold,...RECRUIT.resources}) + '.</p>';
-      if (mine) html += command('Recruit a guard', 'recruitGuard', { plotId: id }, troops.length + replacements.length >= RECRUIT.capacity || wallet() < RECRUIT.gold || !hasCost(p.storage, RECRUIT.resources) || p.hp <= 0);
+      const capacity = barracksCapacity(p);
+      html += '<h3>Barracks troops</h3>' + stats([['Recruited slots', `${troops.length + replacements.length} / ${capacity}`], ['Living troops', num(troops.length)], ['Awaiting replacement', num(replacements.length)], ['Hungry troops', num(troops.filter(g => g.hungry).length)], ['Stored wheat', num(p.storage?.wheat)], ['Stored arrows', num(p.storage?.arrows)], ['Stored musket ammo', num(p.storage?.musket_ammo)]]) + '<div class="barracks-roster">' + Array.from({ length: capacity }, (_, index) => {
+        const troop = troops[index], replacement = replacements[index - troops.length], replacing = Boolean(replacement), info = troopStats(troop || replacement);
+        const supply = troop && info.ammo && !(p.storage?.[info.ammo] > 0) ? 'Out of ammunition · restock this barracks' : troop?.hungry ? 'Hungry · supply wheat' : 'Fed and ready';
+        const train = mine && troop && info.level < 2 ? command(`Train ${info.name} · ${info.upgrade.gold}g`, 'upgradeTroop', { plotId: id, guardId: troop.id }, wallet() < info.upgrade.gold || !hasCost(p.storage, info.upgrade.resources) || p.hp <= 0, `Level 2: ${info.veteranHp} health, ${info.veteranDamage} damage. Requires ${costText(info.upgrade.resources)} in this barracks.`) : '';
+        return `<article class="barracks-slot"><div>${itemArt(troop || replacing ? info.tool : 'sword')}</div><span class="menu-tier">${troop || replacing ? `${info.name} · Level ${info.level}` : `Troop ${index + 1}`}</span><strong>${troop ? `${num(troop.hp)} / ${num(troop.maxHp || info.hp)} health` : replacing ? 'Awaiting replacement' : 'Open recruit slot'}</strong><small>${troop ? `${info.damage} damage · ${info.range} m range · ${supply}` : replacing ? 'Stock wheat to reinforce' : 'Choose a troop type below'}</small>${troop && info.level < 2 ? `<small>Training: ${costText({ gold: info.upgrade.gold, ...info.upgrade.resources })} → ${info.veteranHp} health · ${info.veteranDamage} damage</small>` : ''}${train}</article>`;
+      }).join('') + '</div>' + `<p>Each deployed troop consumes one stored wheat per night. Unfed troops deal 25% less damage. Archers consume one stored arrow per shot; musketeers consume one stored musket ammunition. Supply this barracks, not the soldier’s pack. Fallen troops retain their type and training and return after ${RECRUIT.respawnSeconds} seconds with ${RECRUIT.respawnWheat} stored wheat; no recruitment gold is charged again.</p>` + replacementRows(replacements, p.hp <= 0);
+      for (const [unitType, info] of Object.entries(TROOP_TYPES)) html += row(info.name, `${info.hp} health · ${info.damage} damage · ${info.range} m range · ${info.cooldown}s between attacks. Recruit: ${costText({ gold: info.gold, ...info.resources })}.`, mine ? command(`Recruit ${info.name} · ${info.gold}g`, 'recruitGuard', { plotId: id, unitType }, troops.length + replacements.length >= capacity || wallet() < info.gold || !hasCost(p.storage, info.resources) || p.hp <= 0) : '');
     }
     if (TOWER_STATS[p.building]) {
       const tower = TOWER_STATS[p.building], status = state().defenseStatus?.find(d => d.plotId === id);
@@ -693,7 +718,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     if (Object.hasOwn(PRODUCTION_UPGRADES, p.building || '')) {
       const upgrade = productionUpgrade(p), currentStats = productionStats(p), next = upgrade ? { ...p, level: upgrade.level } : p, nextStats = productionStats(next);
-      const produced = p.building === 'mine' ? ['stone', 'iron', 'coal'] : [p.building === 'tree_farm' ? 'timber' : 'wheat'];
+      const produced = p.building === 'mine' ? ['stone', 'iron', 'coal', 'sulfur'] : [p.building === 'tree_farm' ? 'timber' : 'wheat'];
       const rows = produced.map(resource => { const tool = resource === 'timber' ? 'axe' : resource === 'wheat' ? 'scythe' : 'pickaxe', base = TOOL_TIERS[me().tiers?.[tool] || 'wood'].yield; return [`${label(resource)} / swing`, num(productionYield(base, p)), num(productionYield(base, next))]; });
       rows.push(...produced.map(resource => [`${label(resource)} harvests / node`, num(productionNodeCapacity(resource, p)), num(productionNodeCapacity(resource, next))]), ['Resource regrowth', `${num(productionRegrowSeconds(produced[0], p))} seconds`, `${num(productionRegrowSeconds(produced[0], next))} seconds`], ['Storage capacity', `${num(plotStorageCapacity(p))} weight`, `${num(plotStorageCapacity(next))} weight`], ['Building health', num(p.maxHp || Math.round(type.maxHp * currentStats.healthMultiplier)), num(Math.round(type.maxHp * nextStats.healthMultiplier))]);
       html += structureUpgrade(p, 'Production', rows, upgrade, 3, mine, 'upgradeProduction');
@@ -702,7 +727,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const level = p.level || 1, upgrade = level < 2 ? { ...DEFENSE_UPGRADES[p.building], level: 2 } : null;
       const rows = [['Building health', num(p.maxHp), num(p.maxHp + (upgrade ? Math.ceil(p.maxHp * .5) : 0))]];
       if (p.building === 'church') rows.push(['Treatment beds', num(bedCapacity(p)), '4']);
-      if (p.building === 'barracks') rows.push(['Troop health', level >= 2 ? '220' : '160', '220'], ['Troop damage', level >= 2 ? '18' : '14', '18']);
+      if (p.building === 'barracks') rows.push(['Troop capacity', num(barracksCapacity(p)), '6']);
       if (TOWER_STATS[p.building]) { const tower = TOWER_STATS[p.building]; rows.push(['Damage per shot', num(tower.damage * (level >= 2 ? 1.5 : 1)), num(tower.damage * 1.5)], ['Firing range', `${tower.range} m`, `${tower.range} m`]); }
       html += structureUpgrade(p, 'Building upgrade', rows, upgrade, 2, mine, 'upgradeDefense');
     }
@@ -720,7 +745,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     let html = head('VILLAGE ATLAS', 'Find your place in the village.', 'Gold marks your land. Open plots lie beyond the central services, with exposed defense plots beside the approach road. Mark a destination to find it on your minimap.');
     html += '<h3>Permanent services</h3><div class="atlas-list">';
     html += row(NOTICEBOARD_POINT.name, `${Math.round(gap(NOTICEBOARD_POINT, me()))} m · treasury east wall · press E to read`, button('Find request board', () => { waypoint = { ...NOTICEBOARD_POINT }; toast('Request board marked on your minimap. Close the atlas to walk there.'); }));
-    html += row('Mountain mine', `${Math.round(gap(CAVE_ENTRANCE, me()))} m to entrance · stone on the upper level · mixed iron and coal below`, button('Find mountain mine', () => { waypoint = { ...CAVE_ENTRANCE, id: 'mountain-mine', kind: 'cave', name: 'Mountain mine entrance' }; toast('Mountain mine entrance marked on your minimap.'); }));
+    html += row('Mountain mine', `${Math.round(gap(CAVE_ENTRANCE, me()))} m to entrance · stone above · iron and coal below · sulfur in the deepest chamber`, button('Find mountain mine', () => { waypoint = { ...CAVE_ENTRANCE, id: 'mountain-mine', kind: 'cave', name: 'Mountain mine entrance' }; toast('Mountain mine entrance marked on your minimap.'); }));
     for (const b of BUILDINGS.filter(b => !['house'].includes(b.kind))) html += row(b.name, `${Math.round(gap(buildingEntrance(b), me()))} m to entrance`, button('Mark', () => markService(b.id)));
     html += '</div><h3>Plots & player businesses</h3><div class="atlas-list">';
     for (const place of PLOTS) {

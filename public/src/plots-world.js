@@ -12,6 +12,7 @@ export function mineralOutcropGeometry(type,seed,{width=1.85,depth=1.55,height=.
  const pale=new THREE.Color(type==='coal'?'#ddd3bb':'#fff2d5');
  const dark=new THREE.Color(type==='coal'?'#353d40':'#9aab9e');
  const rust=new THREE.Color('#b46d44'),rustLight=new THREE.Color('#e0ad74');
+ const sulfur=new THREE.Color('#d3b93f'),sulfurLight=new THREE.Color('#f5e287');
  const soil=new THREE.Color('#b8a68a'),color=new THREE.Color();
  const phase=random()*9,tilt=.13+random()*.14;
  function tint(x,y,z,chip=false){
@@ -28,6 +29,10 @@ export function mineralOutcropGeometry(type,seed,{width=1.85,depth=1.55,height=.
    const seam=Math.abs(Math.sin(strata*12+phase));
    const deposit=1-THREE.MathUtils.smoothstep(seam,.36,.61);
    color.lerp(dark,deposit*.97);
+  }else if(type==='sulfur'){
+   const seam=Math.abs(Math.sin(strata*12+phase));
+   const deposit=1-THREE.MathUtils.smoothstep(seam,.32,.68);
+   color.lerp(sulfur,deposit*.93).lerp(sulfurLight,deposit*Math.max(0,grain)*.35);
   }
   if(y<.12)color.lerp(soil,.35);
   if(chip)color.lerp(pale,.12);
@@ -216,11 +221,12 @@ export function createPlotsWorld(parent){
    for(const side of [-1,1]){
     box('roof',side*(bw/4+.225),height+rise/2,0,slope,.18,bd+1.05,0,-side*angle);
     box('dark',side*(bw/2+.46),height,0,.18,.3,bd+1.15);
-    // Overlapping courses create actual eave shadows without separate meshes.
+    // A shallow pitch change lifts each overlapping lip off the next course;
+    // coplanar tops otherwise compete for depth as the camera moves.
     const rows=Math.ceil(slope/.58),columns=Math.ceil((bd+1.0)/.75),tileWidth=(bd+1.0)/columns;
     for(let row=0;row<rows;row++)for(let column=0;column<columns;column++){
      const t=(row+.5)/rows,x=side*(bw/2+.45)*t,y=height+rise*(1-t)+.135;
-     box('roof',x,y,-(bd+1)/2+(column+.5)*tileWidth,slope/rows+.055,.06,tileWidth-.023,0,-side*angle);
+     box('roof',x,y,-(bd+1)/2+(column+.5)*tileWidth,slope/rows+.055,.06,tileWidth-.023,0,-side*(angle-.035));
     }
     for(const end of[-1,1])box('trim',side*(bw/4+.225),height+rise/2+.07,end*(bd/2+.57),slope+.08,.15,.13,0,-side*angle);
    }

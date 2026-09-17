@@ -15,9 +15,9 @@ const minerals=RESOURCES.filter(n=>n.caveTier);
 
 function rayHits(root,x,y,z,dx,dy,dz,far=Infinity){root.updateMatrixWorld(true);return new THREE.Raycaster(new THREE.Vector3(x,y,z),new THREE.Vector3(dx,dy,dz).normalize(),0,far).intersectObject(root,true);}
 
-test('cave has one continuous floor following the authoritative ramps and all44 public mineral positions',()=>{
+test('cave has one continuous floor following the authoritative ramps and all52 public mineral positions',()=>{
   const cave=createCaveWorld(new THREE.Scene()),floor=cave.root.getObjectByName('continuous-cave-floor'),layout=createCaveLayout();
-  assert.equal(minerals.length,44);assert.deepEqual(layout,cave.root.userData.layout);
+  assert.equal(minerals.length,52);assert.equal(minerals.filter(node=>node.type==='sulfur').length,8);assert.deepEqual(layout,cave.root.userData.layout);
   for(const point of [...minerals,...CAVE_ROUTE.filter(p=>caveAreaAt(p.x,p.z)),...layout.cells.filter((_,i)=>i%17===0).map(c=>({x:(c.x0+c.x1)/2,z:(c.z0+c.z1)/2}))]){
     const hits=rayHits(floor,point.x,30,point.z,0,-1,0);assert.ok(hits.length>0,`${point.x},${point.z} missingfloor`);
     for(const hit of hits)assert.ok(Math.abs(hit.point.y-groundHeight(point.x,point.z)-.018)<1e-4,'rendered floor agrees with server height without stacked floorplanes');

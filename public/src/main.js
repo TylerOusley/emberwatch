@@ -6,6 +6,8 @@ import { createTorchSystem } from './torch-world.js';
 import { constrainCaveCamera, localDwarfOccludesCamera } from './cave-camera.js';
 import { createSkyEnvironment, sampleSkyCycle } from './sky.js';
 import { createWorldClock } from './world-clock.js';
+import { createEnvironmentWorld } from './environment-world.js';
+import { createEnvironmentUI } from './environment-ui.js';
 import { createCharacter } from './characters.js';
 import { createZombiePresentation } from './zombie-presentation.js';
 import { createNoticeboard, noticeboardTakesPriority } from './noticeboard.js';
@@ -33,7 +35,9 @@ import { createCrateEquipmentWorld } from './crate-equipment-world.js';
 import { chooseInteraction, choosePlotInteraction, nearestGatherable, nearestHealingTarget, directCompanionInteraction } from './interactions.js';
 import { CONFIG, BUILDINGS, ROAD, RESOURCES, TOOLS, WALLS, PLOTS, WORLD_BOUNDS, caveAreaAt, caveDepthAt, groundHeight, resolveResource, plotSolids, moveWithCollision } from '/shared/world.js';
 import { TOOL_TIERS, carryCapacity, inventoryWeight } from '/shared/content.js';
-import { productionYield } from '/shared/production.js';
+import { productionHarvest } from '/shared/production.js';
+import { MUSKET } from '/shared/firearms.js';
+import { stabilizeDirectionalShadow } from './shadow-stability.js';
 import { TRANSPORT } from '/shared/transport.js';
 import { createSettlementUI } from './settlement-ui.js';
 import { createTransportWorld } from './transport-world.js';
@@ -49,7 +53,7 @@ let joined=false, connecting=false, lastStateAt=0, cameraYaw=0, cameraPitch=.39,
 let cameraLook=null,heldGather=null,cosmeticsWorld=null,crateEquipmentWorld=null,swordTrails=null,defenseTroopWorld=null;
 let localActionId=0, lastToolUse=-Infinity, interaction=null, activePanel=null, dynamicSolids=[], resumeMouseAfterPanel=false;
 let hotbar=['sword','axe','pickaxe','scythe','hammer','food','bow','good_food'],savedHotbar=false;
-try{const saved=JSON.parse(localStorage.getItem('emberwatch-hotbar')||'null');if(Array.isArray(saved)&&saved.length===8&&saved.every(id=>['sword','axe','pickaxe','scythe','hammer','bow','food','good_food','best_food','heal'].includes(id))){hotbar=saved;savedHotbar=true;}}catch{}
+try{const saved=JSON.parse(localStorage.getItem('emberwatch-hotbar')||'null');if(Array.isArray(saved)&&saved.length===8&&saved.every(id=>['sword','axe','pickaxe','scythe','hammer','bow','musket','food','good_food','best_food','heal'].includes(id))){hotbar=saved;savedHotbar=true;}}catch{}
 const poseTracks=new Map(),worldClock=createWorldClock();
 const keys=new Set(), actors=new Map(), desired={x:0,z:0,yaw:Math.PI}, predicted={x:0,z:4};
 const dialog=$('panel-dialog');
@@ -58,6 +62,7 @@ const settlement=createSettlementUI({getState:()=>state,getMe:()=>me,getActivePa
 const trading=createTradingUI({getState:()=>state,getMe:()=>me,getActivePanel:()=>dialog.open?activePanel:null,openPanel,send,toast});
 const crates=createCratesUI({getMe:()=>me,getAccountKey:()=>auth?.playerId||auth?.name||null,getActivePanel:()=>dialog.open?activePanel:null,openPanel,api,toast,onAccountUpdate:snapshot=>{if(state){state.crates=snapshot;if(me)me.bank=snapshot.bank;}}});
 const inventoryHUD=createInventoryHUD($('pack-hud'),{onOpen:showInventory});
+const environmentUI=createEnvironmentUI($('environment-hud'));
 const villageFinance=createVillageFinanceUI({getState:()=>state,getMe:()=>me,getActivePanel:()=>dialog.open?activePanel:null,openPanel,send,toast,isConnected:()=>connection.status==='connected',markWaypoint:point=>settlement.setWaypoint(point)});
 const renderQuality=createRenderQuality();let qualitySettings=renderQuality.getSettings();
 const graphicsUI=createGraphicsUI({openPanel,getActivePanel:()=>dialog.open?activePanel:null,getSettings:()=>renderQuality.getSettings(),setSettings:value=>renderQuality.setSettings(value),getRendererInfo:()=>renderer?.info.render});
@@ -76,13 +81,13 @@ for(const [id,r] of Object.entries(roles)){
   b.onclick=()=>{role=id;document.querySelectorAll('[data-role]').forEach(e=>{e.classList.toggle('active',e.dataset.role===id);e.setAttribute('aria-checked',e.dataset.role===id);});};$('role-options').append(b);
 }
 const foodIds=FOOD_IDS;
-const itemName=id=>!id?'Empty hands':foodIds.includes(id)?({food:'Bread',good_food:'Hearty meal',best_food:'Feast'}[id]):id==='heal'?'Priest blessing':`${TOOL_TIERS[me?.tiers?.[id]||'wood']?.name||'Wooden'} ${id}`;
+const itemName=id=>!id?'Empty hands':foodIds.includes(id)?({food:'Bread',good_food:'Hearty meal',best_food:'Feast'}[id]):id==='heal'?'Priest blessing':id==='musket'?'Musket':`${TOOL_TIERS[me?.tiers?.[id]||'wood']?.name||'Wooden'} ${id}`;
 function renderHotbar(){
- $('hotbar').replaceChildren();hotbar.forEach((id,index)=>{const b=document.createElement('button');b.className='slot';b.dataset.tool=id;b.title=itemName(id)+' ('+(index+1)+')';b.setAttribute('aria-label',b.title);b.innerHTML=`<span class="slot-key">${index+1}</span>${icon(foodIds.includes(id)?'food':id)}${['sword','axe','pickaxe','scythe','hammer','bow'].includes(id)?'<span class="durability"><i></i></span><span class="slot-tier"></span>':'<span class="slot-count"></span>'}`;b.onclick=()=>selectTool(id);$('hotbar').append(b);});updateHotbar();
+ $('hotbar').replaceChildren();hotbar.forEach((id,index)=>{const b=document.createElement('button');b.className='slot';b.dataset.tool=id;b.title=itemName(id)+' ('+(index+1)+')';b.setAttribute('aria-label',b.title);b.innerHTML=`<span class="slot-key">${index+1}</span>${icon(foodIds.includes(id)?'food':id)}${['sword','axe','pickaxe','scythe','hammer','bow','musket'].includes(id)?'<span class="durability"><i></i></span><span class="slot-tier"></span>':'<span class="slot-count"></span>'}`;b.onclick=()=>selectTool(id);$('hotbar').append(b);});updateHotbar();
 }
 function updateHotbar(){
  for(const b of document.querySelectorAll('[data-tool]')){const id=b.dataset.tool,tier=TOOL_TIERS[me?.tiers?.[id]||'wood'],bar=b.querySelector('.durability i'),durability=me?.durability?.[id]??(me?0:100);b.classList.toggle('active',id===selected);b.classList.toggle('disabled',!canEquip(me,id));b.setAttribute('aria-disabled',String(!canEquip(me,id)));b.classList.toggle('empty',me&&(foodIds.includes(id)?!me.inventory?.[id]:id==='heal'?false:!durability));if(bar)bar.style.width=Math.min(100,Math.max(0,durability/(me?.maxDurability?.[id]||tier?.durability||100)*100))+'%';const count=b.querySelector('.slot-count');if(count)count.textContent=foodIds.includes(id)?pretty(me?.inventory?.[id]):'';const badge=b.querySelector('.slot-tier');if(badge)badge.textContent=!canEquip(me,id)?'':me?.tiers?.[id]==='iron'?'III':me?.tiers?.[id]==='stone'?'II':'I';b.title=itemName(id)+(canEquip(me,id)?'':' · Not in your inventory');}
- $('tool-caption').textContent=itemName(selected).toUpperCase()+' · '+(!selected?'Buy your first tool at Oak & Iron':foodIds.includes(selected)?'Eat when you need it':selected==='bow'?'Aim toward an enemy · uses arrows':toolDescriptions[selected]||'');
+ $('tool-caption').textContent=itemName(selected).toUpperCase()+' · '+(!selected?'Buy your first tool at Oak & Iron':foodIds.includes(selected)?'Eat when you need it':selected==='musket'?`${pretty(me?.inventory?.musket_ammo)} shot · ${MUSKET.cooldown}s reload · aim toward an enemy`:selected==='bow'?'Aim toward an enemy · uses arrows':toolDescriptions[selected]||'');
 }
 function selectTool(id){heldGather?.stop();if(!canEquip(me,id)){toast(id==='heal'?'Only priests can use a blessing.':'You do not have this item. Visit Oak & Iron for wooden tools.');return;}selected=id;updateHotbar();sendInput();}
 renderHotbar();
@@ -122,12 +127,12 @@ function action(kind,extra={}){if(connection.status!=='connected'||!joined||!me|
 function useTool({targetId=null,quiet=false}={}){
  if(connection.status!=='connected'||!joined||!me||me.downed||inputBlocked()||me.carriedBy||me.bedPlotId)return;
  if(!selected||!canEquip(me,selected)){toast('Choose an owned tool from your hotbar. Buy your first tool at Oak & Iron.');return;}
- const now=performance.now();if(now-lastToolUse<580)return;
+ const now=performance.now();if(now-lastToolUse<(selected==='musket'?MUSKET.cooldown*1000:580))return;
  if(foodIds.includes(selected)){lastToolUse=now;action('eat',{tier:selected});return;}
  if(me.mountedHorseId||me.carryingId){toast('Dismount or put down your companion before using equipment.');return;}
  const face=target=>{desired.yaw=Math.atan2(target.x-me.x,target.z-me.z);};
  const swing=()=>{lastToolUse=now;localActionId++;};
- if(selected==='sword'||selected==='bow'){if(selected==='bow')desired.yaw=cameraYaw+Math.PI;swing();action('attack');sound('swing');}
+ if(selected==='sword'||selected==='bow'||selected==='musket'){if(selected==='bow'||selected==='musket')desired.yaw=cameraYaw+Math.PI;if(selected==='musket'&&!(me.inventory?.musket_ammo>0)){toast('You need musket shot. Visit a stocked tinker shop.');return;}swing();action('attack');sound(selected==='musket'?'musket':'swing');}
  else if(selected==='hammer'){
    const choices=[{id:'gate',x:0,z:18,...state.gate},{id:'keep',...BUILDINGS.find(b=>b.id==='keep'),...state.keep},...(state.plots||[]).filter(p=>p.building).map(p=>({...PLOTS.find(v=>v.id===p.id),...p,plot:true}))];
    const target=choices.filter(p=>p.hp<p.maxHp).sort((a,b)=>distance(a,me)-distance(b,me))[0];
@@ -152,7 +157,7 @@ function updateInteraction(){
  if(churchBed?.atBed)interaction={kind:'church',id:churchBed.site.id,title:'Bring your companion to a church bed',subtitle:'Press E for treatment · G to put down'};
  else if(companion)interaction=companion;
  else if(noticeboardTakesPriority(me,candidate))interaction={kind:'noticeboard',title:'Village request board',subtitle:'Read funded requests · Mark a delivery entrance'};
- else if(candidate?.kind==='gather')interaction={...candidate,title:{timber:'Chop this tree',stone:'Mine this outcrop',iron:'Mine this iron',coal:'Mine this coal',wheat:'Harvest this wheat'}[candidate.resource.type],subtitle:`${productionYield(TOOL_TIERS[me.tiers?.[selected]||'wood'].yield,state.plots?.find(p=>p.id===candidate.resource.plotId))} resources per swing · Tool durability ${pretty(me.durability?.[selected])}`};
+ else if(candidate?.kind==='gather')interaction={...candidate,title:{timber:'Chop this tree',stone:'Mine this outcrop',iron:'Mine this iron',coal:'Mine this coal',sulfur:'Mine this sulfur',wheat:'Harvest this wheat'}[candidate.resource.type],subtitle:`${productionHarvest(TOOL_TIERS[me.tiers?.[selected]||'wood'].yield,state.plots?.find(p=>p.id===candidate.resource.plotId),candidate.resource.type,state.environment,me.environmentYieldRemainders?.[candidate.resource.type]).yield} resources per swing · Tool durability ${pretty(me.durability?.[selected])}`};
  else if(candidate?.kind==='repair'&&state.gate.hp<state.gate.maxHp)interaction={...candidate,title:'Repair the gate',subtitle:`${pretty(state.gate.hp)} / ${pretty(state.gate.maxHp)} health · Uses village supplies`};
  else if(candidate?.building){const b=candidate.building;interaction={kind:b.kind,id:b.id,title:b.name,subtitle:{bank:'Protect your savings and manage loans',market:'Buy and sell village resources · Sell max',shop:'Buy basic wooden tools',food:'Buy meals to carry and eat later',church:'Priest care and the church registry',barracks:'Feed and inspect the village watch',stable:'Buy horses and prepare for travel',merchant:state.merchant?.present?'Tavern games & traveling merchant · Open day and night':'Tavern games are open · Merchant returns on his next visit',keep:'Village policies and council votes'}[b.kind]};}
  if(!interaction){const carried=me.carryingId;const downed=!carried&&state.players.filter(p=>p.online&&p.downed&&!p.carriedBy&&!p.bedPlotId&&p.id!==ownId&&distance(me,p)<=2.5).sort((a,b)=>distance(me,a)-distance(me,b))[0];
@@ -204,7 +209,15 @@ function showMenu(){
 }
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
- openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 24</p><h2>Tavern bets stay responsive.</h2><p>Changing village balances no longer interrupt a button press at the tavern. Clear stake guidance explains when a bet is unavailable.</p></div><span>${itemArt('gold')}</span></header><div class="build-feature-grid">
+ openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 25</p><h2>Seasons, industry & ranged defenders.</h2><p>Build a larger operation as seasons change and village events reshape production and demand.</p></div><span>${itemArt('musket')}</span></header><div class="build-feature-grid">
+ ${feature(buildingArt('wheat_farm'),'Four living seasons','Spring, summer, autumn and winter each last one hour of active village time. Rain, fog, clouds and snow follow the seasons, with production changes and a visible countdown.')}
+ ${feature(buildingArt('keep'),'Village events','Caravans, bumper harvests, rich ore, cold snaps, festivals and construction drives change supplies or demand. The season panel explains the active event and time remaining.')}
+ ${feature(itemArt('pickaxe'),'Workers for your plots','Keep five personal workers and gain one plot worker per farm or mine level. Shops and defenses gain transporters. Open Workers to activate staff, choose a source and set a destination stock percentage.')}
+ ${feature(itemArt('musket'),'Sulfur, gunpowder & muskets','Mine sulfur and craft gunpowder, muskets and musket shot at an owned tinker shop. Equip your musket through the pack hotbar controls: hard hits, one shot per attack and a 1.6-second reload.')}
+ ${feature(itemArt('gold'),'Set your shop prices','Owners can price each recipe separately. Stock gunpowder and musket shot for sale, or craft directly from the shop’s supplies. Buyer quotes track the current owner price.')}
+ ${feature(buildingArt('barracks'),'Archers & musketeers','Recruit swordsmen, archers or musketeers and train each soldier individually. Barracks hold three troops at level 1 and six at level 2. Supply arrows or musket shot to keep ranged defenders firing.')}
+ ${feature(buildingArt('house'),'Tavern bets up to 10,000','At The Wayfarer entrance, press E and choose Play tavern games. Coin flip and roulette work day or night, even when the traveling merchant is away. The maximum stake is now 10,000 gold, subject to available funds.')}
+ ${feature(buildingArt('house'),'Steadier buildings & walls','Roof tiles and corner stones now clear overlapping surfaces, while nearby shadows move in stable increments as you travel.')}
  ${feature(buildingArt('house'),'Reliable tavern controls','Wallet and treasury updates keep your button press intact. The tavern explains stake limits beside Place bet, and checks current funds before accepting a wager.')}
  ${feature(itemArt('gold'),'Merchant exports by percentage','Choose Conserve (25%), Balanced (50%) or Trade (100%) through the Village Council. The steward sets aside food and repair reserves first, then sells that share of the remaining wheat, timber and stone.')}
  ${feature(buildingArt('mine'),'Stable mine lighting','Nearby torches reuse one fixed light pool as you enter and leave the mine, avoiding repeated lighting shader changes at the entrance. Cave lighting, mining and camera collision stay intact.')}
@@ -225,14 +238,14 @@ function showBuildStatus(){
  ${feature(buildingArt('house'),'A seat at The Wayfarer','The tavern is open day and night for coin flip and European roulette. Your stake comes from your wallet; winnings and losses settle with the village treasury.')}
  </div><p class="build-feature-note">Bank savings and permanent crate unlocks survive between villages. Investments belong to their village; read the treasury’s withdrawal and payout rules before contributing.</p></div>`,'village-menu');
 }
-function leave(){graphicsUI.clear();inventoryHUD.clear();villageFinance.clear();defenseTroopWorld?.clear();world?.plots?.resetEffects?.();crateEquipmentWorld?.clear();crates.clear();cosmeticsWorld?.clear();swordTrails?.reset();gameAudio.reset();trading.clear();heldGather?.stop();progression.clear();requests.clear();guardOrders.clear?.();worldClock.reset();world?.resetResourceEffects?.();selected='';cameraLook.stop();settlement.clear();chat.reset();chat.setConnected(false);connection.close();joined=false;connecting=false;state=null;me=null;ownId=null;keys.clear();dialog.close();$('lobby').hidden=false;$('hud').hidden=true;$('join-button').disabled=false;for(const a of actors.values()){scene.remove(a.rig.group);a.rig.dispose();a.label?.remove();}actors.clear();poseTracks.clear();localActionId=0;lastToolUse=-Infinity;loadVillages();}
+function leave(){graphicsUI.clear();inventoryHUD.clear();environmentUI.clear();villageFinance.clear();defenseTroopWorld?.clear();world?.plots?.resetEffects?.();crateEquipmentWorld?.clear();crates.clear();cosmeticsWorld?.clear();swordTrails?.reset();gameAudio.reset();trading.clear();heldGather?.stop();progression.clear();requests.clear();guardOrders.clear?.();worldClock.reset();world?.resetResourceEffects?.();selected='';cameraLook.stop();settlement.clear();chat.reset();chat.setConnected(false);connection.close();joined=false;connecting=false;state=null;me=null;ownId=null;keys.clear();dialog.close();$('lobby').hidden=false;$('hud').hidden=true;$('join-button').disabled=false;for(const a of actors.values()){scene.remove(a.rig.group);a.rig.dispose();a.label?.remove();}actors.clear();poseTracks.clear();localActionId=0;lastToolUse=-Infinity;loadVillages();}
 document.querySelector('.close-dialog').onclick=()=>dialog.close();dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
 $('help-button').onclick=showHelp;$('menu-button').onclick=showMenu;$('inventory-button').onclick=showInventory;$('interaction').onclick=interact;$('new-run-button').onclick=leave;
 $('map-button').onclick=()=>settlement.show('atlas');$('requests-button').onclick=()=>requests.findBoard();$('orders-button').onclick=()=>guardOrders.show();
 $('respawn-button').onclick=()=>send({type:'action',kind:'respawn'});
 $('phoenix-button').onclick=()=>{if(me?.downed&&state?.crates?.run?.phoenixAvailable&&connection.status==='connected'){send({type:'action',kind:'phoenix_revive'});$('phoenix-button').disabled=true;}};
 $('tour-button').onclick=()=>{tour=!tour;$('welcome')?.classList.toggle('tour',tour);$('tour-button').textContent=tour?'Return to the village view ↙':'Explore the view ↗';};
-function updateHUD(){inventoryHUD.update(me);villageFinance.update();const night=state.phase==='night';$('day-label').textContent=(night?'NIGHT ':'DAY ')+state.day;$('phase-icon').textContent=night?'☾':'☀';$('phase-label').textContent=sampleSkyCycle(worldClock.sample(performance.now())?.cycle??(night?.75:.25)).label;const seconds=Math.max(0,Math.ceil(state.phaseRemaining));$('clock').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+function updateHUD(){inventoryHUD.update(me);environmentUI.update(joined?state.environment:null);villageFinance.update();const night=state.phase==='night';$('day-label').textContent=(night?'NIGHT ':'DAY ')+state.day;$('phase-icon').textContent=night?'☾':'☀';$('phase-label').textContent=sampleSkyCycle(worldClock.sample(performance.now())?.cycle??(night?.75:.25)).label;const seconds=Math.max(0,Math.ceil(state.phaseRemaining));$('clock').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
  $('objective-title').textContent=night?(state.siegeNight?'The siege is here':'Hold the gate together'):'Make ready for nightfall';$('objective-text').textContent=night?'Move out of red attack warnings. Keep the Hearthkeep standing and protect your allies.':'Gather supplies and check the noticeboard. Prepare the village for darkness.';$('threat-label').textContent=night?`${state.zombies.length} zombies on the road`:(state.day%5===0?'Siege night ahead · prepare for the Gravebreaker':'The graveyard stirs at dusk');
  const siege=state.zombies.find(z=>z.kind==='siege'&&z.hp>0);$('siege-health').hidden=!siege;if(siege){$('siege-hp').textContent=pretty(siege.hp)+' / '+pretty(siege.maxHp);$('siege-bar').style.width=Math.max(0,siege.hp/siege.maxHp*100)+'%';}
  $('orders-button').hidden=me.role!=='guard';const openRequests=state.requests?.items?.filter(r=>r.status==='open').length||0;$('requests-button').title='Find request board · '+openRequests+' open';
@@ -270,7 +283,7 @@ async function boot(){
  renderQuality.apply(renderer,{sun,fill,camera});
  const applyQuality=()=>{qualitySettings=renderQuality.getSettings();configureSurfaceTextures({anisotropy:Math.min(qualitySettings.anisotropy,renderer.capabilities.getMaxAnisotropy()),normalMaps:qualitySettings.effectivePreset!=='low'});pipeline.configure(qualitySettings);graphicsUI.update();};
  renderQuality.subscribe(applyQuality);
- world=createWorld(scene);const cave=createCaveWorld(scene),torches=createTorchSystem(scene,[...world.torchFixtures,...cave.torchFixtures]),caveFog=new THREE.Color('#20292d'),caveAmbient=new THREE.Color('#9dacae');const transportWorld=createTransportWorld(scene),sky=createSkyEnvironment(scene,{sun,skyLight,fill}),guardRallies=createGuardRallies(scene);createNoticeboard(scene);cosmeticsWorld=createCosmeticsWorld(scene);crateEquipmentWorld=createCrateEquipmentWorld();defenseTroopWorld=createDefenseTroopWorld();swordTrails=createSwordTrails(scene);gameAudio.setSurfaceResolver(createFootstepSurface(world.root.userData.lanes));
+ world=createWorld(scene);const environmentWorld=createEnvironmentWorld(scene,{sun,skyLight});const cave=createCaveWorld(scene),torches=createTorchSystem(scene,[...world.torchFixtures,...cave.torchFixtures]),caveFog=new THREE.Color('#20292d'),caveAmbient=new THREE.Color('#9dacae');const transportWorld=createTransportWorld(scene),sky=createSkyEnvironment(scene,{sun,skyLight,fill}),guardRallies=createGuardRallies(scene);createNoticeboard(scene);cosmeticsWorld=createCosmeticsWorld(scene);crateEquipmentWorld=createCrateEquipmentWorld();defenseTroopWorld=createDefenseTroopWorld(scene);swordTrails=createSwordTrails(scene);gameAudio.setSurfaceResolver(createFootstepSurface(world.root.userData.lanes));
  const menuActors=[];for(const [kind,x,z,yaw] of [['guard',-2,24,0],['guard',2,28,.15],['villager',-4,6,-.5],['priest',8,-7,-1]]){const rig=createCharacter(kind,menuActors.length+1);rig.group.position.set(x,0,z);rig.group.rotation.y=yaw;scene.add(rig.group);menuActors.push(rig);}
  const dustGeo=new THREE.BufferGeometry(),dustPositions=new Float32Array(80*3);for(let i=0;i<80;i++){dustPositions[i*3]=(Math.random()-.5)*70;dustPositions[i*3+1]=Math.random()*7+.8;dustPositions[i*3+2]=Math.random()*80-40;}dustGeo.setAttribute('position',new THREE.BufferAttribute(dustPositions,3));const dustMat=new THREE.PointsMaterial({color:'#ffe7ac',size:.075,transparent:true,opacity:.45,depthWrite:false});const dust=new THREE.Points(dustGeo,dustMat);scene.add(dust);
  const clock=new THREE.Clock(),camTarget=new THREE.Vector3(),camDesired=new THREE.Vector3(),camAnchor=new THREE.Vector3();let elapsed=0,netElapsed=0,interactionElapsed=0;
@@ -292,7 +305,7 @@ async function boot(){
        if(isMe)ownMotionSpeed=renderedSpeed;
        const motionSpeed=isMe?Math.min(speed,renderedSpeed):(pose?.speed??0),moving=motionSpeed>.12&&!entity.downed&&entity.hp>0&&!entity.mountedHorseId&&!entity.carriedBy&&!entity.bedPlotId;
        const remoteAnim=pose?.anim??entity.anim;
-       const motionOptions={moving,speed:motionSpeed,attack:isMe?localActionId:['attack','attacking','gather','repair'].includes(remoteAnim),channeling:isMe?(me.healRemaining??0)>0:remoteAnim==='heal',downed:entity.downed||entity.hp<=0||Boolean(entity.bedPlotId),mounted:!!entity.mountedHorseId,carrying:!!entity.carryingId,carriedBy:entity.carriedBy,turnRate:d*(1-Math.exp(-dt*14))/Math.max(dt,.001),backpackTier:entity.backpackTier??0,tier:{wood:1,stone:2,iron:3}[entity.tiers?.[isMe?selected:entity.tool]]||1,tool:isMe?(foodIds.includes(selected)?'food':selected):entity.tool??(entity.role==='zombie'?'':'sword')};
+       const motionOptions={moving,speed:motionSpeed,shot:isMe?null:entity.lastShot,attack:isMe?localActionId:['attack','attacking','gather','repair'].includes(remoteAnim),channeling:isMe?(me.healRemaining??0)>0:remoteAnim==='heal',downed:entity.downed||entity.hp<=0||Boolean(entity.bedPlotId),mounted:!!entity.mountedHorseId,carrying:!!entity.carryingId,carriedBy:entity.carriedBy,turnRate:d*(1-Math.exp(-dt*14))/Math.max(dt,.001),backpackTier:entity.backpackTier??0,tier:{wood:1,stone:2,iron:3}[entity.tiers?.[isMe?selected:entity.tool]]||1,tool:isMe?(foodIds.includes(selected)?'food':selected):entity.tool??(entity.role==='zombie'?'':'sword')};
        a.motionOptions=motionOptions;
        if(entity.role==='zombie')a.rig.updateFromState(entity,skyTime?.time??state.clock,dt,motionOptions);else a.rig.update(dt,elapsed,motionOptions);
 
@@ -303,12 +316,14 @@ async function boot(){
      for(let t=1;t>0.18;t-=.08){const p=camAnchor.clone().lerp(camDesired,t);if(cameraBlocked(p)){camDesired.copy(camAnchor.clone().lerp(camDesired,Math.max(.18,t-.1)));}}
      constrainCaveCamera(camAnchor,camDesired,camTarget);camera.position.lerp(camDesired,1-Math.exp(-dt*10));constrainCaveCamera(camAnchor,camera.position,camTarget);const localDwarf=actors.get(ownId)?.rig.group;if(localDwarf)localDwarf.visible=!localDwarfOccludesCamera(camera.position,{x:localDwarf.position.x,z:localDwarf.position.z});camera.lookAt(camTarget);camera.updateMatrixWorld();for(const entity of entities){const a=actors.get(entity.id);if(!a)continue;const v=a.rig.group.position.clone();v.y+=a.rig.labelHeight??2.8;const far=distance(entity,predicted)>20;v.project(camera);const bubble=chat.bubbleFor(entity.id),bubbleElement=a.label.querySelector('.speech-bubble');bubbleElement.hidden=!bubble;if(bubble){bubbleElement.textContent=bubble.typing?'…':bubble.text;bubbleElement.classList.toggle('typing',bubble.typing);}a.label.classList.toggle('self',entity.id===ownId);a.label.hidden=(entity.id===ownId&&!bubble)||far||v.z>1||v.z<0||Math.abs(v.x)>1||Math.abs(v.y)>1;if(!a.label.hidden){a.label.style.transform=`translate(${(v.x*.5+.5)*innerWidth}px,${(-v.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;a.label.querySelector('span').textContent=entity.name||a.rig.label||(entity.role==='zombie'?'Restless dead':'Village watch');a.label.querySelector('b').style.width=Math.max(0,entity.hp/entity.maxHp*100)+'%';}}if(connection.status==='connected'&&performance.now()-lastStateAt>2000)$('connection').textContent='WAITING FOR SERVER';
    }else{transportWorld.update(state||{},dt);const angle=Math.sin(elapsed*.025)*(tour?.35:.08),radius=tour?63:55;camDesired.set(Math.sin(.63+angle)*radius,tour?30:24,Math.cos(.63+angle)*radius);camera.position.lerp(camDesired,.012);camera.lookAt(0,3,-8);}
-   const shadowStep=(qualitySettings.shadowRadius*2)/Math.max(1,qualitySettings.shadowMapSize),focusX=joined&&me?predicted.x:0,focusZ=joined&&me?predicted.z:-12;
-   sun.target.position.set(Math.round(focusX/shadowStep)*shadowStep,groundHeight(focusX,focusZ)+2,Math.round(focusZ/shadowStep)*shadowStep);fill.target.position.copy(sun.target.position);
+   const focusX=joined&&me?predicted.x:0,focusZ=joined&&me?predicted.z:-12;
+   sun.target.position.set(focusX,groundHeight(focusX,focusZ)+2,focusZ);fill.target.position.copy(sun.target.position);
    const skySample=sky.update(skyTime?.cycle??.22,skyTime?.time??elapsed,camera);nightMix=skySample.nightMix;
+   stabilizeDirectionalShadow(sun);stabilizeDirectionalShadow(fill);
    const moonShadows=skySample.moonIntensity>skySample.sunIntensity;
    for(const light of [sun,fill]){const casts=Boolean(qualitySettings.shadows&&(light===fill?moonShadows:!moonShadows));if(light.castShadow&&!casts&&light.shadow.map){light.shadow.map.dispose();light.shadow.map=null;}light.castShadow=casts;}
    const caveSample=cave.update(joined&&me?predicted:null,camera,elapsed),caveMix=caveSample.caveMix;world.setCaveView(caveSample.inside);scene.background.lerp(caveFog,caveMix);scene.fog.color.lerp(caveFog,caveMix);scene.fog.density=THREE.MathUtils.lerp(scene.fog.density,.026,caveMix);skyLight.color.lerp(caveAmbient,caveMix);skyLight.intensity=THREE.MathUtils.lerp(skyLight.intensity,1.05,caveMix);sun.intensity*=1-caveMix*.98;fill.intensity=THREE.MathUtils.lerp(fill.intensity,.3,caveMix);sky.group.visible=caveMix<.98;dust.visible=caveMix<.5;
+   environmentWorld.update(joined?state?.environment:null,{position:{...predicted,y:groundHeight(predicted.x,predicted.z)},caveMix,dt,time:skyTime?.time??elapsed,quality:qualitySettings,daylight:skySample.daylight,reducedMotion:reducedMotionQuery.matches});
    renderer.toneMappingExposure=THREE.MathUtils.lerp(skySample.exposure??1.02,1.12,caveMix);reflection.update(skySample.daylight,caveMix);
    torches.update(elapsed,nightMix,camera,joined&&me?{...predicted,y:groundHeight(predicted.x,predicted.z)}:null,transportWorld.torchFixtures);
    dustMat.opacity=.22+nightMix*.4;dust.rotation.y=elapsed*.006;

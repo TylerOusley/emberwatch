@@ -21,6 +21,37 @@ function fixture() {
   return { sim, store, account, village, player, act };
 }
 
+test('real simulation fires trained barracks muskets, snapshots the shot and persists ammunition and troop type', () => {
+  const { sim, store, account, village, player, act } = fixture();
+  const plot = village.plots.find(p => p.id === 'outpost-1'), site = PLOTS.find(p => p.id === plot.id);
+  Object.assign(plot, { ownerId: player.id, building: 'barracks', level: 2, hp: 975, maxHp: 975, storage: { timber: 100, iron: 100, wheat: 10, musket_ammo: 2 } });
+  Object.assign(player, plotEntrance(site, plot)); player.wallet = 1000;
+  village.guards = [];
+  act({ kind: 'recruitGuard', plotId: plot.id, unitType: 'musketeer' });
+  const guard = village.guards[0];
+  act({ kind: 'upgradeTroop', plotId: plot.id, guardId: guard.id });
+  Object.assign(guard, { x: 0, z: 35, yaw: 0 });
+  const zombie = { id: 'ranged-target', x: 0, z: 49, hp: 1000, maxHp: 1000, speed: 0, cooldown: 100, roadIndex: 3 };
+  village.zombies = [zombie];
+  sim.tick(.05);
+  assert.equal(zombie.hp, 936); assert.equal(plot.storage.musket_ammo, 1);
+  const shot = sim.snapshot(village, player.id).guards.find(g => g.id === guard.id);
+  assert.equal(shot.unitType, 'musketeer'); assert.equal(shot.troopLevel, 2); assert.equal(shot.tool, 'musket'); assert.equal(shot.lastShot.kind, 'musket');
+  sim.saveAll();
+  const restored = new Simulation(store), recovered = restored.villages.get(village.id);
+  restored.join(village.id, account, 'guard');
+  const loaded = recovered.guards.find(g => g.id === guard.id);
+  assert.equal(loaded.troopLevel, 2); assert.equal(loaded.unitType, 'musketeer'); assert.equal(loaded.damage, 64);
+  assert.equal(recovered.plots.find(p => p.id === plot.id).storage.musket_ammo, 1);
+  restored.tick(.05); assert.equal(recovered.zombies[0].hp, 936, 'saved cooldown prevents a second immediate shot');
+  const restoredPlot = recovered.plots.find(p => p.id === plot.id);
+  restoredPlot.storage.musket_ammo = 0; restoredPlot.guardOrder = { ownerId: player.id, mode: 'follow' };
+  Object.assign(recovered.players[player.id], { x: 0, z: 42, yaw: 0 });
+  loaded.attackUntil = 0; const beforeZ = loaded.z;
+  restored.tick(.05);
+  assert.ok(loaded.z > beforeZ, 'an empty musket continues following orders despite a distant enemy');
+});
+
 test('new and saved empty archer towers fire without resupply and preserve stored arrows', () => {
   const { sim, store, village, player, act, account } = fixture();
   const site = PLOTS.find(p => p.id === 'outpost-1');

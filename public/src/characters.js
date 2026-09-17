@@ -3,6 +3,7 @@ import { buildBody } from './character-body.js';
 import { buildHead } from './character-head.js';
 import { buildClothing } from './character-clothing.js';
 import { sampleLegGait, runningBlend } from './locomotion.js';
+import { createMusketModel } from './musket-model.js';
 
 // Original sculpted characters: continuous skin, shaped faces and tailored
 // garments deform around the existing gameplay rig. Tools retain rigid batching.
@@ -20,7 +21,7 @@ const smooth = t => t * t * (3 - 2 * t);
 // eases from the current gait through anticipation, contact, and recovery.
 // Wrist rotation lets the working end of a tool travel forward at contact.
 const WORK_TOOLS = new Set(['axe','pickaxe','hammer','scythe']);
-const UPRIGHT_TOOLS = new Set([...WORK_TOOLS,'bow','staff','heal']);
+const UPRIGHT_TOOLS = new Set([...WORK_TOOLS,'bow','musket','staff','heal']);
 const REST_ACTION = new Array(12).fill(0);
 const ACTION_POSES = {
   axe: [
@@ -151,6 +152,7 @@ function mergeRigid(root, owned) {
 }
 
 function makeTool(id, tier=1) {
+  if(id==='musket')return createMusketModel();
   const g = new THREE.Group();
   const wood = material(0x946038), grain=material(0xc69459), grip=material(0x49372c);
   const head = tier >= 3 ? material(0xadc2c6,.7,.35) : tier === 2 ? material(0x8b9695,.08,.95) : material(0xc99963);
@@ -324,11 +326,42 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   const group = new THREE.Group();
   const visual = pivot(group);
   const owned = new Set();
-  let rig, clothing, clothingColor=null, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, disposed=false;
+  let rig, clothing, clothingColor=null, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, previousShot, disposed=false;
   let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0, turnAmount=0;
   const actionOffsets = new Float64Array(12);
   const leftStep=new Float64Array(3),rightStep=new Float64Array(3),stepScratch=new Float64Array(3);
   const soleMatrix=new THREE.Matrix4(),solePoint=new THREE.Vector3();
+  const armDirection=new THREE.Vector3(),elbowOffset=new THREE.Vector3(),elbowPoint=new THREE.Vector3(),foreDirection=new THREE.Vector3();
+  const downAxis=new THREE.Vector3(0,-1,0),foreTip=new THREE.Vector3(),armRotation=new THREE.Quaternion(),foreRotation=new THREE.Quaternion(),inverseRotation=new THREE.Quaternion();
+  const musketRotation=new THREE.Quaternion(),musketEuler=new THREE.Euler(),handTarget=new THREE.Vector3(),supportTarget=new THREE.Vector3();
+  const rightPole=new THREE.Vector3(-.65,-.16,.10),leftPole=new THREE.Vector3(.56,-.12,.25);
+
+  // Solve the two arm segments toward a fixed grip/support point. This keeps
+  // the off hand under the barrel while the body turns into a shouldered stance.
+  // All scratch vectors are reused; no per-frame geometry or materials are made.
+  function aimArm(upper,fore,target,pole,tip,amount) {
+    armDirection.copy(target).sub(upper.position);
+    const upperLength=fore.position.length(),foreLength=tip.length();
+    const distance=clamp(armDirection.length(),Math.abs(upperLength-foreLength)+.001,upperLength+foreLength-.001);
+    armDirection.normalize();
+    const along=(upperLength*upperLength+distance*distance-foreLength*foreLength)/(2*distance);
+    elbowOffset.copy(pole).sub(upper.position).addScaledVector(armDirection,-elbowOffset.dot(armDirection)).normalize();
+    elbowPoint.copy(upper.position).addScaledVector(armDirection,along).addScaledVector(elbowOffset,Math.sqrt(Math.max(0,upperLength*upperLength-along*along)));
+    foreDirection.copy(elbowPoint).sub(upper.position).normalize();
+    armRotation.setFromUnitVectors(downAxis,foreDirection);
+    inverseRotation.copy(armRotation).invert();
+    foreDirection.copy(target).sub(elbowPoint).normalize().applyQuaternion(inverseRotation);
+    foreTip.copy(tip).normalize();foreRotation.setFromUnitVectors(foreTip,foreDirection);
+    upper.quaternion.slerp(armRotation,amount);fore.quaternion.slerp(foreRotation,amount);
+  }
+
+  function removeHeldTool() {
+    if(!heldTool)return;
+    heldTool.removeFromParent();
+    if(heldTool.userData.dispose)heldTool.userData.dispose();
+    else heldTool.traverse(n=>{if(n.isMesh&&owned.delete(n.geometry))n.geometry.dispose();});
+    heldTool=null;
+  }
 
   function groundedHeight() {
     // Measure sole corners through the actual eased joints, so extra knee and
@@ -351,6 +384,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   const dark=material(0x302b29), brass=material(0xc9a25b,.55,.5), iron=material(0x809da2,.65,.45);
 
   function build() {
+    removeHeldTool();
     visual.clear();
     for (const resource of owned) resource.dispose(); owned.clear();
     const zombie=role === 'zombie';
@@ -366,7 +400,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     const leftFoot=bone(leftShin,0,-.25,.015),rightFoot=bone(rightShin,0,-.25,.015);
     rig={body,pelvis,head,leftArm,rightArm,leftFore,rightFore,hand,leftLeg,rightLeg,leftShin,rightShin,leftFoot,rightFoot,zombie};
     for(const [name,joint] of Object.entries(rig))if(joint?.isBone)joint.name=name;
-    attackClock=9; previousAttack=false; spellAmount=0;
+    attackClock=9; previousAttack=false; previousShot=undefined; spellAmount=0;
     const clothes=material(role==='guard'?0x364b5e:role==='priest'?0xb6ab91:role==='zombie'?0x50584f:0x4d6456);
     const actualSkin=zombie?material([0x87917b,0x7d8a79,0x93917a,0x738779][variation],0,.92):skin;
     const palette={skin:actualSkin,hair:beard,cloth:clothes,leather:material(0x66503a),iron,brass,dark};
@@ -381,6 +415,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     mergeRigid(visual,owned);
     if(role==='guard') {
       const shield=pivot(leftFore,.045,-.12,.20);
+      shield.name='guard-shield';
       mesh(shield,'shield',brass,0,0,0,.90,.94,1);
       mesh(shield,'shield',clothes,0,.018,.078,.78,.80,.38);
       mesh(shield,'box',brass,0,.02,.133,.045,.38,.022);
@@ -399,8 +434,10 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     const tier=typeof tool==='object'&&tool ? Number(tool.tier)||1 : 1;
     id=id||'';
     if(rig.zombie || (id===toolId && tier===toolTier)) return;
-    if(heldTool) { rig.hand.remove(heldTool); heldTool.traverse(n=>{if(n.isMesh && owned.has(n.geometry)){owned.delete(n.geometry);n.geometry.dispose();}}); }
+    removeHeldTool();
     toolId=id; toolTier=tier;
+    const shield=rig.leftFore.getObjectByName('guard-shield');
+    if(shield)shield.visible=id!=='bow'&&id!=='musket';
     heldTool=makeTool(id,tier);
     heldTool.name=`held-${id || 'empty'}`;
     if(id==='sword' || UPRIGHT_TOOLS.has(id)) {
@@ -415,7 +452,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
       heldTool.rotation.set(.65,0,id==='staff'||id==='heal'?.16:.28);
     }
     rig.hand.add(heldTool);
-    mergeRigid(heldTool,owned);
+    if(id!=='musket')mergeRigid(heldTool,owned);
   }
   function setRole(next) {
     if(!['villager','guard','priest','zombie'].includes(next) || next===role) return;
@@ -442,7 +479,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
 
   function update(dt,time, options={}) {
     if(disposed) return;
-    const {moving=false,speed=5.4,turnRate=0,attack=false,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,backpackTier:requestedBackpackTier}=options;
+    const {moving=false,speed=5.4,turnRate=0,attack=false,shot,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,backpackTier:requestedBackpackTier}=options;
     dt=clamp(Number(dt)||0,0,.1);
     idleTime+=dt;
     if(tool!==undefined) setTool(typeof tool==='object'?tool:{id:tool,tier});
@@ -450,9 +487,13 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     if(heldTool) heldTool.visible=!mounted&&!carrying;
     mountAmount+=((mounted&&!downed?1:0)-mountAmount)*(1-Math.exp(-dt*12));
     carryAmount+=((carrying&&!downed?1:0)-carryAmount)*(1-Math.exp(-dt*12));
-    const duration=rig.zombie?1.30:.54;
-    const newAttack=typeof attack==='number' ? attack>0 && attack!==previousAttack : attack && !previousAttack;
-    const repeatAttack=attack===true && attackClock>=duration+.06;
+    const musket=toolId==='musket',duration=rig.zombie?1.30:musket?.72:.54;
+    const shotAt=shot?.at??shot?.firedAt;
+    const shotKey=shot?.kind==='musket'&&shot.id!=null&&Number.isFinite(shotAt)?`${shot.id}/${shotAt}`:null;
+    const newShot=previousShot!==undefined&&shotKey!==null&&shotKey!==previousShot;
+    previousShot=shotKey;
+    const newAttack=typeof attack==='number' ? attack>0 && attack!==previousAttack : musket&&shot!==undefined?newShot:attack&&!previousAttack;
+    const repeatAttack=!musket&&attack===true && attackClock>=duration+.06;
     // Finish a strike before starting another; rapid clicks cannot snap the
     // shoulder back to its windup. Numbered events and held NPC attacks work.
     if(!downed && (newAttack || repeatAttack) && attackClock>=duration*.90) attackClock=0;
@@ -480,8 +521,8 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     spellAmount+=(spellTarget-spellAmount)*(1-Math.exp(-dt*(spellTarget?9:7)));
     const active=!casting && attackClock<duration && !downed;
     actionOffsets.fill(0);
-    if(active) actionPose(ACTION_POSES[rig.zombie?'zombie':toolId]||ACTION_POSES.sword,attackClock/duration,actionOffsets);
-    const a=actionOffsets, alive=1-downAmount;
+    if(active&&!musket) actionPose(ACTION_POSES[rig.zombie?'zombie':toolId]||ACTION_POSES.sword,attackClock/duration,actionOffsets);
+    const a=actionOffsets, alive=1-downAmount,musketReady=musket&&!downed&&!mounted&&!carrying;
     const attackWeight=active?Math.sin(Math.PI*clamp(attackClock/duration,0,1)):0;
     const armStride=stride*(1-attackWeight*.85)*(1-spellAmount*.85);
     const gaitStrength=stride*(1-mountAmount)*(1-downAmount);
@@ -520,9 +561,9 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
       rig.body.position.y=height+(breath*.009)*alive*(1-moveAmount);
     } else {
       const counter=s*stride, lean=turnAmount*stride*.025;
-      poseJoint(rig.body,(.055+.10*running)*stride+a[7],counter*.095+a[8],-counter*.025-lean+a[9],settle);
+      if(!musketReady)poseJoint(rig.body,(.055+.10*running)*stride+a[7],counter*.095+a[8],-counter*.025-lean+a[9],settle);
       poseJoint(rig.pelvis,-.035*stride,-counter*.17,counter*.04,settle);
-      poseJoint(rig.head,-.025+breath*.01-a[7]*.45-spellAmount*.08-.035*running*stride,-counter*.07-a[8]*.28+turnAmount*.035,downAmount*.20+lean*.6,settle);
+      if(!musketReady)poseJoint(rig.head,-.025+breath*.01-a[7]*.45-spellAmount*.08-.035*running*stride,-counter*.07-a[8]*.28+turnAmount*.035,downAmount*.20+lean*.6,settle);
       poseJoint(rig.leftLeg,leftStep[0]-1.10*mountAmount,0,.015*stride-.40*mountAmount,settle);
       poseJoint(rig.rightLeg,rightStep[0]-1.10*mountAmount,0,-.015*stride+.40*mountAmount,settle);
       poseJoint(rig.leftShin,leftStep[1]*(1-mountAmount)+.80*mountAmount,0,0,settle);
@@ -544,6 +585,22 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
       // use a bent elbow for an upright carry, sword keeps its low guard.
       const gripTwist=toolId==='sword'||uprightGrip?-Math.PI/2:0;
       poseJoint(rig.hand,(a[4]+spellAmount*.46)*alive,a[5]+gripTwist*alive*(1-mountAmount)*(1-carryAmount),a[6],settle);
+      if(musketReady) {
+        const recoil=active?Math.sin(Math.PI*clamp(attackClock/.18,0,1))*Math.exp(-attackClock*5):0;
+        // Turn the shoulders side-on so the stock reaches the right shoulder
+        // and the left arm can support the forestock without stretching.
+        poseJoint(rig.body,.04*stride-recoil*.045,-.90+counter*.025,-lean,settle);
+        poseJoint(rig.head,-.025+breath*.008,.90,0,settle);
+        musketEuler.set(0,.90-Math.PI/2,recoil*.07,'YXZ');musketRotation.setFromEuler(musketEuler);
+        handTarget.copy(heldTool.position).applyQuaternion(musketRotation).multiplyScalar(-1);
+        handTarget.x-=.10;handTarget.y+=.25;handTarget.z+=.20-recoil*.035;
+        aimArm(rig.rightArm,rig.rightFore,handTarget,rightPole,rig.hand.position,1);
+        // The left skin uses the forearm bone through its curled fingertips.
+        supportTarget.set(.198,.23,.436-recoil*.035);foreTip.set(0,-.424,.085);
+        aimArm(rig.leftArm,rig.leftFore,supportTarget,leftPole,foreTip,1);
+        inverseRotation.copy(rig.rightArm.quaternion).multiply(rig.rightFore.quaternion).invert();
+        rig.hand.quaternion.copy(inverseRotation.multiply(musketRotation));
+      }
       rig.body.position.x=counter*.020*alive;
       const groundBlend=moveAmount*(1-mountAmount)*(1-downAmount);
       rig.body.position.y=1.04+(groundedHeight()-1.04)*groundBlend+breath*.008*alive*(1-moveAmount)+stepRise*.028*running*stride;
@@ -551,6 +608,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   }
   function dispose() {
     if(disposed)return; disposed=true;
+    removeHeldTool();
     for(const g of owned)g.dispose(); owned.clear(); group.clear();
   }
   update(0,0);

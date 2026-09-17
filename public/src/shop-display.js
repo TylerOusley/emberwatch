@@ -47,6 +47,16 @@ function arrows() {
   const arrow=(x,angle)=>group(`rotate(${angle} ${x} 91)`,line(x,42,x,150,'#c9a671',4)+poly(`${x},25 ${x-7},46 ${x},42 ${x+7},46`,'#bed0d1')+poly(`${x},29 ${x},42 ${x+7},46`,'#6d8b99')+poly(`${x-1},129 ${x-11},139 ${x-11},154 ${x},145 ${x+10},153 ${x+10},138 ${x+2},130`,'#e4d6ac')+line(x,126,x,153,'#93764a',2));
   return arrow(93,-15)+arrow(116,1)+arrow(138,17)+path('M91 97Q116 108 144 94L146 112Q120 126 96 114Z','#86583a')+path('M94 101Q119 113 144 101L145 107Q120 119 96 110Z','#bc8950')+rivet(119,110);
 }
+function musket() {
+  return group('rotate(38 120 90)', path('M106 152L97 116L111 96L111 38L123 37L124 102L137 158Q119 167 106 160Z','#98653b') + path('M106 151L102 120L114 102L115 40L119 40L119 107L130 158Z','#bd8c55') + rect(116,14,9,96,'#64747a','rx="3"') + rect(118,15,3,89,'#b0bdbd') + [46,70,96].map(y=>rect(108,y,20,5,'#c6a460')).join('') + rect(127,85,8,17,'#7f8e91','rx="2"') + path('M130 86L139 78L142 82L135 91Z','#bcc5ba') + ellipse(129,119,8,11,'none','stroke="#b49454" stroke-width="4"') + rect(102,156,34,6,'#b99b5b','rx="2"') + ellipse(120,14,4,2,'#1c302c'));
+}
+function powder() {
+  return path('M81 62Q65 86 70 142Q117 164 166 141Q169 89 153 63Z','#846347') + path('M89 66Q80 102 87 143L103 148L98 66Z','#b58d5d') + ellipse(117,62,36,15,'#a88860') + ellipse(117,60,29,10,'#35413e') + [0,1,2,3,4,5,6,7,8].map(i=>ellipse(97+(i%4)*13,56+Math.floor(i/4)*5,4,2,'#66716a')).join('') + rect(73,79,90,9,'#554a3d','rx="4"') + rect(73,131,91,9,'#554a3d','rx="4"') + path('M120 88L112 107L120 107L113 126L133 101L124 101L132 88Z','#dac16c');
+}
+function musketShots() {
+  const ball=(x,y)=>ellipse(x,y,19,19,'#56676e')+ellipse(x-4,y-5,12,11,'#91a4a9')+ellipse(x-7,y-9,4,3,'#dce1cf');
+  return path('M64 102Q114 88 170 102L177 145Q121 163 59 145Z','#8e653f') + path('M62 132Q118 147 176 132L177 145Q121 163 59 145Z','#bc945d') + ball(89,104)+ball(144,111)+ball(117,91)+path('M64 101L85 133L118 126L107 91Z','#ddcc9c')+line(74,107,101,100,'#a38e60',2)+line(78,118,107,109,'#a38e60',2);
+}
 function cart() {
   const wheel=(x,y)=>ellipse(x,y,18,26,'#352d27')+ellipse(x,y,13,20,'#91613b')+line(x,y-16,x,y+16,'#48382b',3)+line(x-11,y-10,x+11,y+10,'#48382b',3)+line(x-11,y+10,x+11,y-10,'#48382b',3)+ellipse(x,y,4,6,'#c7aa76');
   return ellipse(116,155,73,9,'#182d29','opacity=".13"')+wheel(148,123)+poly('54,69 133,48 185,75 109,100','#cba16a')+poly('54,69 109,100 109,138 55,105','#9d683f')+poly('109,100 185,75 181,114 109,138','#765035')+poly('67,70 133,55 171,75 108,93','#5e482f')+[0,1,2].map(i=>line(56,78+i*12,109,108+i*12,'#513a28',2)+line(110,108+i*12,182,85+i*12,'#493629',2)).join('')+line(54,69,54,111,'#d6b078',5)+line(109,98,109,140,'#bd915a',5)+line(184,75,181,118,'#b58c55',5)+wheel(91,131)+line(162,108,203,141,'#a27b4a',6)+line(173,103,218,133,'#b88f58',6);
@@ -79,7 +89,7 @@ function timber() {
   return log(66,116)+log(99,123)+log(83,87);
 }
 function ore(kind) {
-  const palette=kind==='coal'?['#354246','#526066','#202d34','#738086']:kind==='iron'?['#687b7c','#9daba5','#485a61','#c39263']:['#7b8c88','#b0b9a5','#596e70','#ced0b5'];
+  const palette=kind==='sulfur'?['#c6ad3b','#efe08a','#81722b','#fff0a4']:kind==='coal'?['#354246','#526066','#202d34','#738086']:kind==='iron'?['#687b7c','#9daba5','#485a61','#c39263']:['#7b8c88','#b0b9a5','#596e70','#ced0b5'];
   return ellipse(120,147,69,8,'#213c34','opacity=".13"')+poly('51,119 75,78 122,62 166,76 190,117 174,145 81,149',palette[0])+poly('75,78 122,62 145,96 92,111 51,119',palette[1])+poly('145,96 166,76 190,117 174,145 137,140',palette[2])+poly('51,119 92,111 112,136 81,149',palette[2])+poly('92,111 145,96 137,140 112,136',palette[0])+line(79,85,116,73,palette[3],2)+(kind==='iron'?poly('91,91 103,85 115,94 110,109 98,112','#bb8b5b')+poly('91,91 102,91 104,104 98,112','#e0b781')+poly('149,116 163,108 172,119 163,128','#bb8b5b')+poly('148,80 157,83 156,93 151,98 145,94','#c39c69'):'')+poly('49,141 60,128 75,134 79,150 59,154',palette[1])+poly('173,150 187,136 201,145 195,155',palette[2]);
 }
 function gold() {
@@ -90,7 +100,7 @@ function gold() {
   art+=group('rotate(13 151 83)',ellipse(151,83,25,31,'#95703b')+ellipse(149,82,23,29,'#e4be61')+ellipse(149,82,18,24,'none','stroke="#ae873e" stroke-width="2"')+poly('149,65 159,71 157,85 149,96 141,86 139,71','#b38a3e')+path('M149 70L153 78L147 82L151 88L146 91L143 80Z','#f4d786'));
   return art;
 }
-const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','gold']);
+const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','sulfur','gold']);
 
 /** Decorative catalog illustration. Callers provide accessible item names outside the SVG. */
 export function itemArt(itemId, options = {}) {
@@ -101,7 +111,7 @@ export function itemArt(itemId, options = {}) {
   const tier = own(TIERS,safe.tier) ? safe.tier : 'wood', t=TIERS[tier];
   const rawLevel=typeof safe.level==='number'?safe.level:typeof safe.tier==='number'?safe.tier:0;
   const level=Number.isFinite(rawLevel)?Math.max(0,Math.min(3,Math.floor(rawLevel))):0;
-  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal'),gold})[id]();
+  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,musket,gunpowder:powder,musket_ammo:musketShots,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal'),sulfur:()=>ore('sulfur'),gold})[id]();
   return `<svg xmlns="http://www.w3.org/2000/svg" class="shop-item-illustration" viewBox="0 0 240 180" width="240" height="180" aria-hidden="true" focusable="false" data-item="${id}" data-tier="${id==='backpack'?level:tier}">${ellipse(120,157,55,6,'#1a302a','opacity=".10"')}${drawing}</svg>`;
 }
 

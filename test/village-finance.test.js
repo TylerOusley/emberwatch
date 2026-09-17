@@ -148,7 +148,7 @@ test('wallet-only amounts, ownership, location, integer limits and authenticated
   for (const amount of [-1, 0, .5, '10', Infinity, 1000001]) assert.throws(() => act({ kind: 'investment_deposit', amount }), /amount|wallet/);
   assert.throws(() => act({ kind: 'investment_deposit', amount: 10, requestId: '__proto__' }), /request ID/);
   near('merchant'); assert.throws(() => act({ kind: 'investment_deposit', amount: 10 }), /Treasury entrance/);
-  for (const bad of [{ stake: 1001 }, { stake: '10' }, { choice: '__proto__' }, { choice: 'number', number: -1 }, { choice: 'number', number: 37 }, { choice: 'number', number: '0' }]) assert.throws(() => act({ kind: 'tavern_bet', game: 'roulette', choice: 'red', stake: 10, ...bad }), /Choose/);
+  for (const bad of [{ stake: 10001 }, { stake: '10' }, { choice: '__proto__' }, { choice: 'number', number: -1 }, { choice: 'number', number: 37 }, { choice: 'number', number: '0' }]) assert.throws(() => act({ kind: 'tavern_bet', game: 'roulette', choice: 'red', stake: 10, ...bad }), /Choose/);
   near('bank'); assert.throws(() => act({ kind: 'tavern_bet', game: 'coinflip', choice: 'heads', stake: 10 }), /Wayfarer entrance/);
 });
 

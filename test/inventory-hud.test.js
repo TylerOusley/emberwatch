@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { inventoryHUDModel, createInventoryHUD } from '../public/src/inventory-hud.js';
 
 test('corner inventory counts private carried supplies once, including bound food and all owned tools', () => {
-  const player = { role:'villager', inventory:{timber:12,stone:17,iron:3,coal:9,wheat:21,food:2,good_food:4,best_food:1,arrows:24,cart:1}, boundInventory:{food:2}, durability:{axe:55,pickaxe:150,sword:0,bow:30}, tiers:{pickaxe:'stone'}, crateEquipment:{utility:'mining_pack'} };
+  const player = { role:'villager', inventory:{timber:12,stone:17,iron:3,coal:9,sulfur:4,gunpowder:7,musket_ammo:16,wheat:21,food:2,good_food:4,best_food:1,arrows:24,cart:1}, boundInventory:{food:2}, durability:{axe:55,pickaxe:150,sword:0,bow:30,musket:90}, tiers:{pickaxe:'stone'}, crateEquipment:{utility:'mining_pack'} };
   const model = inventoryHUDModel(player);
-  assert.equal(model.items.length,10);
+  assert.equal(model.items.length,13);
   for (const item of model.items) assert.equal(item.amount,player.inventory[item.id]);
-  assert.deepEqual(model.tools.map(item=>item.id),['axe','pickaxe','bow']);
+  assert.deepEqual(model.tools.map(item=>item.id),['axe','pickaxe','bow','musket']);
+  assert.equal(model.tools.find(item=>item.id==='musket').label,'Musket');
   assert.ok(model.tools.every(item=>item.amount===1));
   assert.equal(model.tools.find(item=>item.id==='pickaxe').uses,150);
   assert.deepEqual(model.gear,[{id:'mining_pack',label:'Mining Pack',amount:1}]);
@@ -17,7 +18,7 @@ test('corner inventory counts private carried supplies once, including bound foo
 test('inventory HUD keeps absent resource counts visible and never renders an unknown equipment asset', () => {
   assert.equal(inventoryHUDModel(null),null);
   const model=inventoryHUDModel({inventory:{stone:-3,coal:NaN,iron:Infinity},crateEquipment:{head:'../../bad'}});
-  assert.equal(model.items.length,9); assert.ok(model.items.every(item=>item.amount===0));
+  assert.equal(model.items.length,12); assert.ok(model.items.every(item=>item.amount===0));
   assert.deepEqual(model.gear,[]);
 });
 

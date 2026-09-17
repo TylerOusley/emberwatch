@@ -1,5 +1,6 @@
 import { GUARD_ORDERS, GUARD_ORDER_RULES } from '../shared/guard-orders.js';
 import { PLOTS, canStand, plotFront, plotSolids, plotAccessRoute } from '../shared/world.js';
+import { barracksCapacity, troopStats } from '../shared/troops.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const ownedBarracks = (village, id, ownerId) => (village.plots ?? []).find(plot =>
@@ -25,13 +26,15 @@ function readOrder(plot) {
 
 function homeFor(plot, slot = 1) {
   const site = PLOTS.find(p => p.id === plot.id), door = plotFront(site, 1), yaw = site.yaw ?? 0;
-  return { x: door.x + Math.cos(yaw) * (slot - 1) * 1.2, z: door.z - Math.sin(yaw) * (slot - 1) * 1.2 };
+  const offset = (slot % 3 - 1) * 1.2, row = Math.floor(slot / 3) * 1.4;
+  return { x: door.x + Math.cos(yaw) * offset + Math.sin(yaw) * row, z: door.z - Math.sin(yaw) * offset + Math.cos(yaw) * row };
 }
 
 function followPoint(village, owner, slot) {
   const yaw = Number.isFinite(owner.yaw) ? owner.yaw : 0;
-  const point = { x: owner.x - Math.sin(yaw) * 2.6 + Math.cos(yaw) * (slot - 1) * 1.3,
-    z: owner.z - Math.cos(yaw) * 2.6 - Math.sin(yaw) * (slot - 1) * 1.3 };
+  const offset = (slot % 3 - 1) * 1.3, behind = 2.6 + Math.floor(slot / 3) * 1.4;
+  const point = { x: owner.x - Math.sin(yaw) * behind + Math.cos(yaw) * offset,
+    z: owner.z - Math.cos(yaw) * behind - Math.sin(yaw) * offset };
   return canRallyAt(village, point) ? point : { x: owner.x, z: owner.z };
 }
 
@@ -88,7 +91,7 @@ export function guardDirective(village, guard) {
   const order = readOrder(plot), owner = village.players?.[guard.ownerId];
   if (order.mode === 'defend') return null;
   let mode = order.mode, fallback = null, anchor;
-  const slot = Number.isInteger(guard.slot) ? Math.max(0, Math.min(2, guard.slot)) : 1;
+  const slot = Number.isInteger(guard.slot) ? Math.max(0, Math.min(barracksCapacity(plot) - 1, guard.slot)) : 1;
   if (mode === 'hold') {
     if (canRallyAt(village, order)) anchor = { x: order.x, z: order.z };
     else { mode = 'retreat'; fallback = 'Rally point blocked'; }
@@ -107,8 +110,10 @@ export function guardDirective(village, guard) {
 
 export function guardOrderCanEngage(guard, target, directive) {
   if (!(target?.hp > 0) || ![target.x, target.z].every(Number.isFinite)) return false;
-  if (!directive) return distance(guard, target) < 12 && target.z < 55;
-  if (distance(guard, target) >= directive.acquireRange || distance(target, directive.anchor) > directive.leashRadius) return false;
+  const stats = troopStats(guard), range = stats.ammo ? stats.range : 12;
+  if (!directive) return distance(guard, target) < range && target.z < 55;
+  const acquireRange = directive.mode === 'retreat' ? directive.acquireRange : Math.max(directive.acquireRange, stats.ammo ? stats.range : 0);
+  if (distance(guard, target) >= acquireRange || distance(target, directive.anchor) > directive.leashRadius) return false;
   // A nearby enemy beyond a side wall is not a valid reason to abandon a rally.
   if ((guard.z < 18) !== (target.z < 18) && (Math.abs(guard.x) > 4 || Math.abs(target.x) > 4)) return false;
   return true;

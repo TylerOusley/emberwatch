@@ -174,3 +174,53 @@ test('caves use stone footsteps, stop outdoor ambience and resume it after a fre
   audio.update(frame(70, { position: { x: 0, z: -115 } }));assert.equal(audio.debug.events.bird, before.bird + 1);assert.equal(audio.debug.events.breeze, before.breeze + 1);
   audio.dispose();
 });
+
+test('musket shots use one finite cached report and do not duplicate local snapshot audio',async()=>{
+  const {audio,context}=fixture();await audio.unlock();update(audio,0);
+  assert.equal(audio.play('musket'),true);
+  const shotBuffer=context.sources.at(-1).buffer;
+  assert.equal(context.sources.at(-1).startAt,0,'gunpowder ignition starts immediately');
+  const data=shotBuffer.getChannelData(0);assert.ok(data.every(Number.isFinite));assert.ok(data.every(n=>Math.abs(n)<=.93));
+  assert.ok(data.some(n=>Math.abs(n)>.1));assert.ok(Math.abs(shotBuffer.duration-.68)<=1/context.sampleRate);
+  const shot={id:1,kind:'musket',at:.1,from:{x:0,z:4}};
+  update(audio,.1,{players:[{...frame().me,tool:'musket',anim:'attack',lastShot:shot}]});
+  assert.equal(audio.debug.events.musket,1,'local immediate cue owns the shot sound');
+  update(audio,.2);assert.equal(audio.play('musket'),true);assert.equal(context.sources.at(-1).buffer,shotBuffer);
+  assert.equal(audio.play('musket'),false,'same-frame duplicates still respect the voice cooldown');
+  audio.dispose();assert.ok(context.sources.every(source=>source.disconnected));
+});
+
+test('remote player and troop musket events play once per shot across render rates',async()=>{
+  for(const rate of [30,120]) {
+    const {audio}=fixture();await audio.unlock();
+    const remote={id:'shooter',x:0,z:5,hp:100,tool:'musket',anim:'idle'};
+    const guard={id:'musketeer',x:2,z:5,hp:100,unitType:'musketeer',tool:'musket',anim:'idle'};
+    update(audio,0,{players:[frame().me,remote],guards:[guard]});
+    let remoteShot=null,troopShot=null,current;
+    for(let tick=1;tick<=30;tick++) {
+      const time=tick/10;
+      if(tick===2||tick===14)remoteShot={id:`player-${tick}`,kind:'musket',at:time,from:remote};
+      if(tick===7||tick===23)troopShot={id:`troop-${tick}`,kind:'musket',firedAt:time,fromX:guard.x,fromZ:guard.z};
+      current=frame(time);current.state.players.push({...remote,anim:'attack',lastShot:remoteShot});current.state.guards=[{...guard,anim:'attack',lastShot:troopShot}];
+      audio.update(current);
+      for(let i=1;i<rate/10;i++)audio.update({...current,time:time+i/rate});
+    }
+    assert.equal(audio.debug.events.musket,4,`${rate} FPS plays one report for each server shot`);
+    assert.equal(audio.debug.events.swing,undefined,'rifle attack animations never produce sword sounds');
+    audio.dispose();
+  }
+});
+
+test('old, muted, faraway and reconnect musket shots do not replay',async()=>{
+  const {audio}=fixture();await audio.unlock();
+  const remote={id:'shooter',x:0,z:5,hp:100,tool:'musket',anim:'attack'};
+  const state=(at,id,x=0)=>({players:[frame().me,{...remote,x,lastShot:{id,kind:'musket',at,from:{x,z:5}}}]});
+  update(audio,10,state(3,'old'));update(audio,10.1,state(3,'old'));
+  assert.equal(audio.debug.events.musket,undefined,'joining an old shot is silent');
+  audio.setMuted(true);update(audio,10.2,state(10.2,'muted'));audio.setMuted(false);update(audio,10.3,state(10.2,'muted'));
+  assert.equal(audio.debug.events.musket,undefined,'unmuting cannot replay consumed events');
+  update(audio,10.4,state(10.4,'far',200));assert.equal(audio.debug.events.musket,undefined);
+  audio.reset();update(audio,11,state(10.9,'reconnect'));update(audio,11.1,state(10.9,'reconnect'));
+  assert.equal(audio.debug.events.musket,undefined,'reconnecting establishes a fresh baseline');
+  update(audio,11.2,state(11.2,'fresh'));assert.equal(audio.debug.events.musket,1);audio.dispose();
+});

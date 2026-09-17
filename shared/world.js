@@ -97,6 +97,12 @@ for(const resource of RESOURCES){
 // identity/type/appearance seed and all non-mineral positions remain intact.
 let caveIndex=0;
 for(const resource of RESOURCES)if(['stone','iron','coal'].includes(resource.type))Object.assign(resource,caveSlot(caveIndex++));
+// Dedicated sulfur veins append identities without moving or rerolling any
+// existing outcrop. Interleaved deep-chamber positions keep them accessible.
+for(let i=0;i<8;i++){
+ node('sulfur',i%2?11:-11,-210-Math.floor(i/2)*6);
+ Object.assign(RESOURCES.at(-1),{caveTier:'deep',depth:14});
+}
 export function resolveResource(resource,state){
  return resource?.caveTier?{...resource,type:state?.type??resource.type,roll:state?.roll??0}:resource;
 }

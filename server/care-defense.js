@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import * as world from '../shared/world.js';
 import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../shared/defense.js';
 import { TOOL_TIERS } from '../shared/content.js';
+import { TROOP_TYPES, barracksCapacity, troopType, troopStats } from '../shared/troops.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const siteFor = plot => world.PLOTS?.find(site => site.id === plot.id) ?? plot;
@@ -79,13 +80,21 @@ export function ensureCare(village) {
       const troops = village.guards.filter(g => g.plotId === plot.id);
       const slots = new Set();
       for (const guard of [...troops.filter(g => g.hp > 0), ...troops.filter(g => g.hp <= 0).reverse()]) {
-        const slot = Number.isInteger(guard.slot) ? guard.slot : [0, 1, 2].find(i => !slots.has(i));
-        if (slot === undefined || slots.has(slot) || slot < 0 || slot >= RECRUIT.capacity) continue;
+        const slot = Number.isInteger(guard.slot) ? guard.slot : Array.from({ length: barracksCapacity(plot) }, (_, i) => i).find(i => !slots.has(i));
+        if (slot === undefined || slots.has(slot) || slot < 0 || slot >= barracksCapacity(plot)) continue;
         guard.slot = slot; slots.add(slot); keep.add(guard);
       }
     }
     village.guards = village.guards.filter(g => keep.has(g));
     village.guardRosterVersion = 1;
+  }
+  for (const guard of village.guards) {
+    // Older saves tied veteran strength to the building. Preserve earned
+    // strength once, then track training on the soldier across replacements.
+    if (guard.troopLevel === undefined) guard.troopLevel = guard.plotId && (guard.maxHp >= 220 || village.plots?.some(p => p.id === guard.plotId && p.level >= 2)) ? 2 : 1;
+    guard.unitType = troopType(guard);
+    const stats = troopStats(guard);
+    guard.tool = stats.tool; guard.maxHp = stats.hp; guard.damage = stats.damage;
   }
   for (const plot of village.plots ?? []) {
     plot.storage ??= {};
@@ -158,13 +167,14 @@ function barracksStock(village, guard) {
 }
 
 function troopSpawn(village, guard) {
+  const stats = troopStats(guard);
   if (!guard.plotId) {
     const slot = guard.id === 'watch-1' ? 1 : 0;
     return { x: world.GUARD_ROAD[0].x, z: world.GUARD_ROAD[0].z + (slot - .5) * 1.4, yaw: Math.PI / 2, hp: 160, maxHp: 160, damage: 14 };
   }
   const plot = village.plots.find(p => p.id === guard.plotId), door = entrance(plot), yaw = siteFor(plot).yaw ?? 0;
-  const hp = plot.level >= 2 ? 220 : 160;
-  return { x: door.x + Math.cos(yaw) * (guard.slot - 1) * .9, z: door.z - Math.sin(yaw) * (guard.slot - 1) * .9, yaw, hp, maxHp: hp, damage: plot.level >= 2 ? 18 : 14 };
+  const offset = (guard.slot % 3 - 1) * .9, row = Math.floor(guard.slot / 3) * 1.2;
+  return { x: door.x + Math.cos(yaw) * offset + Math.sin(yaw) * row, z: door.z - Math.sin(yaw) * offset + Math.cos(yaw) * row, yaw, hp: stats.hp, maxHp: stats.hp, damage: stats.damage, tool: stats.tool };
 }
 
 function tickGuardReplacements(sim, village) {
@@ -180,7 +190,7 @@ function tickGuardReplacements(sim, village) {
     stock.wheat -= RECRUIT.respawnWheat;
     // Retain the paid slot and identity, but create a fresh entity so cached
     // navigation routes from the casualty cannot pull the replacement astray.
-    village.guards[i] = { ...guard, ...troopSpawn(village, guard), anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false, fedNight: village.day, respawnAt: null };
+    village.guards[i] = { ...guard, ...troopSpawn(village, guard), anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false, fedNight: village.day, respawnAt: null, attackUntil: null, lastShot: null };
     changed = true;
   }
   if (changed) sim.store?.saveVillage(village);
@@ -215,7 +225,7 @@ export function guardPathFor(village, guard) {
 }
 
 export function careAction(sim, village, player, action) {
-  const kinds = ['carryPlayer', 'dropPlayer', 'churchTreat', 'churchLeave', 'recruitGuard', 'upgradeDefense', 'repairPlot'];
+  const kinds = ['carryPlayer', 'dropPlayer', 'churchTreat', 'churchLeave', 'recruitGuard', 'upgradeTroop', 'upgradeDefense', 'repairPlot'];
   if (!kinds.includes(action.kind)) return null;
   ensureCare(village);
   if (!player.online || (player.downed && action.kind !== 'churchLeave')) throw new Error('A living dwarf must perform that action.');
@@ -270,18 +280,34 @@ export function careAction(sim, village, player, action) {
     const plot = getPlot(village, player, action.plotId, ['barracks'], true);
     if (player.role !== 'guard') throw new Error('Only guards may command barracks troops.');
     const roster = village.guards.filter(g => g.plotId === plot.id);
-    if (roster.length >= RECRUIT.capacity) throw new Error('This barracks already has three recruited troops, including replacements. Stock wheat to replace fallen guards.');
-    payBuildingCost(village, player, plot, RECRUIT);
-    const door = entrance(plot), hp = plot.level >= 2 ? 220 : 160;
-    const slot = [0, 1, 2].find(i => !roster.some(g => g.slot === i));
-    const yaw = siteFor(plot).yaw ?? 0;
+    const capacity = barracksCapacity(plot);
+    if (roster.length >= capacity) throw new Error(`This barracks already has ${capacity === 3 ? 'three' : 'six'} recruited troops, including replacements. Stock wheat to replace fallen guards.`);
+    const unitType = action.unitType ?? 'sword';
+    if (!Object.hasOwn(TROOP_TYPES, unitType)) throw new Error('Choose a swordsman, archer or musketeer.');
+    const definition = TROOP_TYPES[unitType];
+    payBuildingCost(village, player, plot, definition);
+    const slot = Array.from({ length: capacity }, (_, i) => i).find(i => !roster.some(g => g.slot === i));
     // Separate doorside spawns and defense posts prevent identical recruits
     // from remaining perfectly overlapped during their road-following march.
     const postAt = index => ({ x: (index % 6 - 2.5) * 1.2, z: 29 + Math.floor(index / 6) * 1.6 });
     const postIndex = Array.from({ length: 64 }, (_, i) => i).find(i => !village.guards.some(g => g.postIndex === i || distance(postAt(i), g.post ?? { x: g.id.endsWith('0') ? -2 : 2, z: 35 }) < 1.1)) ?? village.guards.length;
-    const guard = { id: `troop-${randomUUID()}`, ownerId: player.id, plotId: plot.id, slot, x: door.x + Math.cos(yaw) * (slot - 1) * .9, z: door.z - Math.sin(yaw) * (slot - 1) * .9, yaw, hp, maxHp: hp, damage: plot.level >= 2 ? 18 : 14, anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false, fedNight: null, postIndex, post: postAt(postIndex) };
+    const guard = { id: `troop-${randomUUID()}`, ownerId: player.id, plotId: plot.id, slot, unitType, troopLevel: 1, anim: 'idle', roadIndex: 0, cooldown: 0, hungry: false, fedNight: null, postIndex, post: postAt(postIndex) };
+    Object.assign(guard, troopSpawn(village, guard));
     village.guards.push(guard); feed(village, guard);
-    return 'A guard has been recruited and is following the road to the gate.';
+    return `${definition.name} recruited and following the barracks orders.${definition.ammo ? ` Stock ${definition.ammo === 'arrows' ? 'arrows' : 'musket ammunition'} in this barracks to fire.` : ''}`;
+  }
+  if (action.kind === 'upgradeTroop') {
+    const plot = getPlot(village, player, action.plotId, ['barracks'], true);
+    if (player.role !== 'guard') throw new Error('Only guards may train barracks troops.');
+    const guard = village.guards.find(g => g.id === action.guardId && g.plotId === plot.id && g.ownerId === player.id);
+    if (!guard || guard.hp <= 0) throw new Error('Choose a living troop from this barracks.');
+    if (guard.troopLevel >= 2) throw new Error('This troop is already fully trained.');
+    const before = troopStats(guard);
+    payBuildingCost(village, player, plot, before.upgrade);
+    guard.troopLevel = 2;
+    const after = troopStats(guard);
+    guard.hp += after.hp - before.hp; guard.maxHp = after.hp; guard.damage = after.damage;
+    return `${after.name} trained to level 2: ${after.hp} health and ${after.damage} damage.`;
   }
   if (action.kind === 'upgradeDefense') {
     const plot = getPlot(village, player, action.plotId, Object.keys(DEFENSE_UPGRADES), true);
@@ -290,10 +316,7 @@ export function careAction(sim, village, player, action) {
     plot.level = 2;
     const extra = Math.ceil(plot.maxHp * .5);
     plot.maxHp += extra; plot.hp += extra;
-    for (const guard of village.guards.filter(g => g.plotId === plot.id && g.hp > 0)) {
-      guard.hp += 60; guard.maxHp += 60; guard.damage = 18;
-    }
-    return plot.building === 'church' ? 'Church upgraded to four beds.' : 'Defense upgraded to level 2.';
+    return plot.building === 'church' ? 'Church upgraded to four beds.' : plot.building === 'barracks' ? 'Barracks upgraded to six troop slots. Train each soldier separately.' : 'Defense upgraded to level 2.';
   }
   const plot = getPlot(village, player, action.plotId, Object.keys(DEFENSE_UPGRADES).concat(['house', 'tool_shop', 'sword_shop', 'tinker_shop', 'mine', 'wheat_farm', 'tree_farm']), false, 'repair');
   if (player.tool !== 'hammer' || (player.durability?.hammer ?? 0) <= 0) throw new Error('Equip a working hammer first.');
@@ -391,7 +414,7 @@ export function tickDefenseAttack(sim, village, zombie, dt) {
 export function careSnapshot(village, _viewerId, sim = {}) {
   return {
     defenseStatus: (village.plots ?? []).filter(plot => isDefense(plot)).map(plot => towerStatus(sim, village, plot)),
-    guardReplacements: village.guards.filter(g => g.hp <= 0 && barracksStock(village, g)).map(g => ({ guardId: g.id, plotId: g.plotId ?? null, ownerId: g.ownerId ?? null, remaining: Math.max(0, Math.ceil((g.respawnAt ?? village.clock + RECRUIT.respawnSeconds) - village.clock)), waitingForWheat: (barracksStock(village, g)?.wheat ?? 0) < RECRUIT.respawnWheat })),
+    guardReplacements: village.guards.filter(g => g.hp <= 0 && barracksStock(village, g)).map(g => ({ guardId: g.id, plotId: g.plotId ?? null, ownerId: g.ownerId ?? null, slot: g.slot, unitType: troopType(g), troopLevel: g.troopLevel, remaining: Math.max(0, Math.ceil((g.respawnAt ?? village.clock + RECRUIT.respawnSeconds) - village.clock)), waitingForWheat: (barracksStock(village, g)?.wheat ?? 0) < RECRUIT.respawnWheat })),
     beds: (village.plots ?? []).filter(plot => usable(plot) && plot.building === 'church').map(plot => ({ plotId: plot.id, capacity: bedCapacity(plot), patients: (plot.patients ?? []).map(p => ({ playerId: p.playerId, remaining: Math.max(0, Math.ceil(p.until - village.clock)), revive: p.revive, bedIndex: p.bedIndex })) })),
     carrying: Object.values(village.players).filter(p => p.carryingId).map(p => ({ playerId: p.id, targetId: p.carryingId }))
   };

@@ -6,22 +6,23 @@ export const RESOURCE_MARKET = Object.freeze({
   timber: Object.freeze({ label: 'Timber' }),
   stone: Object.freeze({ label: 'Stone' }),
   iron: Object.freeze({ label: 'Iron' }),
-  coal: Object.freeze({ label: 'Coal' })
+  coal: Object.freeze({ label: 'Coal' }),
+  sulfur: Object.freeze({ label: 'Sulfur' })
 });
 
 // Resource purchases stop at this reserve; other village expenses still use it.
 export const TREASURY_RESERVE = 500;
 export const MAX_TRADE_AMOUNT = 10000;
 const PRICE_BANDS = [
-  { below: 25, wheat: 4, timber: 5, stone: 5, iron: 7, coal: 5 },
-  { below: 100, wheat: 3, timber: 4, stone: 4, iron: 6, coal: 4 },
-  { below: 300, wheat: 2, timber: 3, stone: 3, iron: 5, coal: 3 },
-  { below: 1000, wheat: 1, timber: 2, stone: 2, iron: 4, coal: 2 },
-  { below: Infinity, wheat: 1, timber: 1, stone: 1, iron: 3, coal: 2 }
+  { below: 25, wheat: 4, timber: 5, stone: 5, iron: 7, coal: 5, sulfur: 6 },
+  { below: 100, wheat: 3, timber: 4, stone: 4, iron: 6, coal: 4, sulfur: 5 },
+  { below: 300, wheat: 2, timber: 3, stone: 3, iron: 5, coal: 3, sulfur: 4 },
+  { below: 1000, wheat: 1, timber: 2, stone: 2, iron: 4, coal: 2, sulfur: 3 },
+  { below: Infinity, wheat: 1, timber: 1, stone: 1, iron: 3, coal: 2, sulfur: 2 }
 ];
 
 function validateStock(resource, stock) {
-  if (typeof resource !== 'string' || !Object.hasOwn(RESOURCE_MARKET, resource)) throw new Error('Choose wheat, timber, stone, iron or coal to trade.');
+  if (typeof resource !== 'string' || !Object.hasOwn(RESOURCE_MARKET, resource)) throw new Error('Choose wheat, timber, stone, iron, coal or sulfur to trade.');
   if (!Number.isSafeInteger(stock) || stock < 0) throw new Error('Village stock is unavailable.');
 }
 

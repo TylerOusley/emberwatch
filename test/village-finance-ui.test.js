@@ -31,6 +31,31 @@ test('quotes expose exact win chance, total return versus profit, and wallet/liq
   assert.equal(tavernQuote('coinflip','heads','10',{},200).valid,false,'missing authoritative liquidity never enables a bet');
 });
 
+test('10,000 gold is the tavern ceiling and all choices still honor wallet and treasury limits',()=>{
+  const tavern={maxStake:10000,coinflipMaximumStake:10000,rouletteNumberMaximumStake:10000,evenMoneyMaximumStake:10000};
+  for(const [game,choice,multiplier] of [['coinflip','heads',2],['roulette','red',2],['roulette','number',36]]){
+    const quote=tavernQuote(game,choice,'10000',tavern,10000);
+    assert.equal(quote.valid,true);assert.equal(quote.maximum,10000);assert.equal(quote.total,10000*multiplier);
+    assert.equal(tavernQuote(game,choice,'10001',tavern,20000).valid,false);
+    assert.equal(tavernQuote(game,choice,'10000',tavern,9999).valid,false);
+  }
+  assert.equal(tavernQuote('coinflip','heads','10000',{...tavern,coinflipMaximumStake:9999},20000).valid,false);
+  assert.equal(tavernQuote('roulette','number','10000',{...tavern,rouletteNumberMaximumStake:9999},20000).valid,false);
+  assert.equal(tavernQuote('roulette','red','10000',{...tavern,evenMoneyMaximumStake:9999},20000).valid,false);
+  const f=fixture();f.visit('merchant');f.me.wallet=20000;Object.assign(f.state.tavern,tavern);f.ui.showTavern();
+  assert.match(f.html,/BET LIMIT<\/span><strong>1–10,000g/);assert.match(f.html,/Allowed: 1–10,000g/);
+  f.type('stake','10001');assert.equal(f.button('Place bet').disabled,true);
+  f.click('Max');f.click('Place bet');assert.equal(f.sent[0].stake,10000);
+});
+
+test('tavern directions mark the inn entrance and explain its always-open games button',()=>{
+  const f=fixture();f.ui.showTavern();
+  assert.match(f.html,/Press E at the inn and choose Play tavern games/);
+  f.click('Mark The Wayfarer');
+  assert.deepEqual(f.marked[0],{...buildingEntrance(BUILDINGS.find(b=>b.id==='merchant')),id:'merchant',kind:'service',name:'The Wayfarer tavern'});
+  f.visit('merchant');f.ui.update();assert.equal(f.button('Place bet').disabled,false);
+});
+
 test('investment ledger shows real principal, funding limits and eligibility without invented history',()=>{
   const f=fixture();f.ui.showInvestments();
   assert.match(f.html,/2,000g/);assert.match(f.html,/40g/);assert.match(f.html,/1% per completed village day/);assert.match(f.html,/skip their first dawn/);assert.match(f.html,/eligible day 9/);assert.match(f.html,/No dividend has been recorded/);assert.match(f.html,/Funds left in a fallen village are lost/);

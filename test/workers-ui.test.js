@@ -144,10 +144,43 @@ test('worker hiring requires the player entrance while returning workers can wai
 test('illustrated worker training compares numeric next-rank effects while retaining five crew places', t => {
   const f = fixture(t); f.worker.attributes = { gathering: 2, speed: 1, carry: 0 }; f.worker.upgradePoints = 1; f.worker.level = 4;
   f.ui.show('workers');
-  assert.match(f.html, /data-worker-portrait=/); assert.match(f.html, /1 \/ 5 workers/);
+  assert.match(f.html, /data-worker-portrait=/); assert.match(f.html, /1 \/ 5 personal workers/);
   assert.match(f.html, /3.2 seconds \/ harvest/); assert.match(f.html, /2.8 seconds \/ harvest/);
   assert.match(f.html, /3.3 movement speed/); assert.match(f.html, /3.6 movement speed/);
   assert.match(f.html, /40 cargo capacity/); assert.match(f.html, /50 cargo capacity/);
   assert.match(f.html, /Rank 2 \/ 5/); f.click('+1 rank · 1 point');
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'gathering' });
+});
+
+test('plot staff are counted separately and never use a personal hiring place', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  for (let i = 1; i < 4; i++) f.state.workers.push({ ...f.worker, id: `personal-${i}` });
+  f.state.plots = [{ id, ownerId: 'alice', building: 'mine', hp: 300, level: 2 }];
+  for (let i = 0; i < 2; i++) f.state.workers.push({ ...f.worker, id: `plot-${i}`, staffPlotId: id, staffRole: 'gatherer', resource: 'stone', sourcePlotId: id, destinationPlotId: id, mode: 'store' });
+  f.ui.show('workers'); assert.match(f.html, /4 \/ 5 personal workers · 2 plot staff/);
+  assert.match(f.html, /arrive paused with no hiring fee/); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, false);
+  assert.equal(f.buttons.filter(button => button.text === 'Dismiss worker').length, 4, 'active staff cannot be dismissed and regenerated');
+});
+
+test('transporter form submits an owned storage source and percentage with its fixed destination', t => {
+  const f = fixture(t), destination = PLOTS[0].id, source = PLOTS[1].id, foreign = PLOTS[2].id;
+  Object.assign(f.worker, { staffPlotId: destination, staffRole: 'transporter', resource: null, sourcePlotId: null, mode: 'store', destinationPlotId: destination, targetPercent: 50 });
+  f.state.plots = [{ id: destination, ownerId: 'alice', building: 'tinker_shop', hp: 300 }, { id: source, ownerId: 'alice', building: 'house', hp: 300 }, { id: foreign, ownerId: 'bob', building: 'mine', hp: 300 }];
+  f.ui.show('workers'); assert.equal(f.button('Apply orders').disabled, true); assert.equal(f.button('Resume work').disabled, true);
+  assert.match(f.html, /Fetch from owned storage/); assert.doesNotMatch(f.html, new RegExp(`value="${foreign}"`));
+  assert.equal(f.fields.has('worker-0-mode'), false); assert.equal(f.fields.has('worker-0-destinationPlotId'), false);
+  f.select('worker-0-resource', 'arrows'); f.select('worker-0-sourcePlotId', source); f.select('worker-0-targetPercent', '35');
+  f.worker.status = 'Waiting'; f.ui.refresh(); assert.equal(f.fields.get('worker-0-targetPercent').value, '35');
+  f.click('Apply orders'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, sourcePlotId: source, destinationPlotId: destination, mode: 'store', resource: 'arrows', targetPercent: 35 });
+  for (const invalid of ['0', '101', '1.5']) { f.select('worker-0-targetPercent', invalid); assert.equal(f.button('Apply orders').disabled, true); }
+});
+
+test('inactive plot staff show retained cargo, disable work and allow nearby collection', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  Object.assign(f.worker, { staffPlotId: id, staffRole: 'gatherer', staffRetired: true, resource: 'stone', sourcePlotId: id, mode: 'store', destinationPlotId: id, cargo: { stone: 3 } });
+  Object.assign(f.player, { x: f.worker.x, z: f.worker.z });
+  f.state.plots = [{ id, ownerId: 'alice', building: null, hp: 0 }]; f.ui.show('workers');
+  assert.match(f.html, /Inactive plot staff/); assert.match(f.html, /Cargo stays safe/); assert.match(f.html, /0 plot staff/);
+  assert.equal(f.button('Apply orders').disabled, true); assert.equal(f.button('Resume work').disabled, true);
+  f.click('Collect carried supplies'); assert.equal(f.sent.at(-1).kind, 'worker_collect');
 });

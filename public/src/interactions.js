@@ -1,4 +1,4 @@
-const RESOURCE_TOOLS = { axe: ['timber'], pickaxe: ['stone', 'iron', 'coal'], scythe: ['wheat'] };
+const RESOURCE_TOOLS = { axe: ['timber'], pickaxe: ['stone', 'iron', 'coal', 'sulfur'], scythe: ['wheat'] };
 const SERVICES = new Set(['bank', 'market', 'shop', 'food', 'church', 'barracks', 'stable', 'merchant', 'keep']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 import { clearResourceSegment, resolveResource } from '../../shared/world.js';

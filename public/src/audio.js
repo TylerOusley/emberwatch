@@ -4,7 +4,7 @@ import { caveAreaAt } from '../../shared/caves.js';
 // oscillators: short cached buffers share one master bus and a bounded voice pool.
 const TAU = Math.PI * 2, clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const SOUND = Object.freeze({
-  swing: [.20, .17], tap: [.17, .19], wood: [.19, .19], stone: [.17, .18], gather: [.24, .13], repair: [.21, .17],
+  swing: [.20, .17], musket: [.68, .25], tap: [.17, .19], wood: [.19, .19], stone: [.17, .18], gather: [.24, .13], repair: [.21, .17],
   grass: [.20, .12], stepStone: [.13, .15], hoof: [.16, .15], hit: [.20, .15],
   gate: [.65, .33], bell: [2.8, .19], bird: [1.1, .075], cricket: [.85, .038],
   breeze: [2.7, .055], groan: [1.8, .14], emerge: [1.1, .13], split: [.55, .15], heal: [.65, .11]
@@ -21,6 +21,7 @@ const TASK_PROFILES = Object.freeze([
   {duration:1.07, tone:.94, overtone:1.34, decay:.91, noise:.85}
 ].map(Object.freeze));
 const VARIED_TASKS = new Set(['tap','wood','stone','gather','repair']);
+const musketShotKey=shot=>shot?.kind==='musket'&&shot.id!=null&&Number.isFinite(shot.at??shot.firedAt)?`${shot.id}/${shot.at??shot.firedAt}`:null;
 
 // Use the very same curved lanes as the rendered world. The spatial index is
 // built once, so footsteps do not search every road or allocate scene objects.
@@ -82,6 +83,12 @@ function makeBuffer(context, kind, variant=0) {
       case 'emerge': s=(smooth*1.8+n*.08)*Math.sin(Math.PI*u)**1.4;break;
       case 'split': s=(smooth*1.4+Math.sin(TAU*(110*t-40*t*t))*.24)*Math.exp(-t*6);break;
       case 'swing': s=(n*.28+smooth*.75)*Math.sin(Math.PI*u)**1.5;break;
+      case 'musket': {
+        // A dry ignition crack followed by a low powder report and fading air.
+        // One finite cached voice supplies the complete shot, including its tail.
+        const crack=n*.85*Math.exp(-t*95),report=(Math.sin(TAU*(90*t-28*t*t))*.50+smooth*1.1)*Math.exp(-t*15);
+        s=crack+report+smooth*.42*Math.exp(-t*6);break;
+      }
       case 'grass': s=(n*.32+smooth*.55)*Math.sin(Math.PI*u)**2;break;
       case 'stepStone': s=(Math.sin(TAU*117*t)*.4+smooth*.7+n*.15)*Math.exp(-t*32);break;
       case 'hoof': s=(Math.sin(TAU*330*t)*.36+Math.sin(TAU*163*t)*.25+n*.22)*Math.exp(-t*31);break;
@@ -172,7 +179,7 @@ export function createGameAudio(options = {}) {
   function baseline(state){
     return {id:state.id,day:state.day,phase:state.phase,remaining:state.phaseRemaining,clock:state.clock,gate:state.gate?.hp,
       zombies:new Map((state.zombies||[]).map(z=>[z.id,{anim:z.anim,hp:z.hp,lastSlamAt:z.lastSlamAt}])),
-      actors:new Map([...(state.players||[]),...(state.guards||[])].map(p=>[p.id,{anim:p.anim,hp:p.hp}]))};
+      actors:new Map([...(state.players||[]),...(state.guards||[])].map(p=>[p.id,{anim:p.anim,hp:p.hp,shot:musketShotKey(p.lastShot)}]))};
   }
   function update(frame={}){
     if(disposed)return;
@@ -224,8 +231,12 @@ export function createGameAudio(options = {}) {
           const prior=previous.actors.get(actor.id);
           if(prior&&actor.hp<prior.hp)play('hit',{position:actor,strength:.7});
           if(actor.id===me.id)continue;
+          const shot=actor.lastShot,shotKey=musketShotKey(shot),shotAt=shot?.at??shot?.firedAt;
+          const musket=(typeof actor.tool==='object'?actor.tool?.id:actor.tool)==='musket'||actor.unitType==='musketeer';
+          if(prior&&shotKey!==null&&shotKey!==prior.shot&&shotAt>=previous.clock-.001&&shotAt<=state.clock+.001)
+            play('musket',{position:shot.from||(Number.isFinite(shot.fromX)&&Number.isFinite(shot.fromZ)?{x:shot.fromX,z:shot.fromZ}:actor),strength:.9});
           if(prior&&actor.anim!==prior.anim){
-            const kind=actor.anim==='attack'?'swing':actor.anim==='heal'?'heal':actor.anim==='repair'?'repair':null;
+            const kind=actor.anim==='attack'&&!musket&&!(shotKey!==null&&shotAt>=previous.clock-.001)?'swing':actor.anim==='heal'?'heal':actor.anim==='repair'?'repair':null;
             if(kind)play(kind,{position:actor,strength:.7});
           }
         }

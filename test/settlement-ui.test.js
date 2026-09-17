@@ -43,6 +43,19 @@ function fixture(t, options = {}) {
   }, get html() { return html; }, get openCount() { return openCount; }, get buttons() { return buttons; }, get details() { return details; }, get summaries() { return summaries; }, click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); button.onclick(); } };
 }
 
+test('the Wayfarer entrance opens tavern games when the merchant is present or away, day and night', t => {
+  const opened = [], f = fixture(t, { showTavern: () => opened.push('tavern') });
+  for (const present of [true, false]) for (const phase of ['day', 'night']) {
+    f.state.merchant.present = present; f.state.phase = phase;
+    f.visit('merchant');
+    assert.match(f.html, /THE WAYFARER/); assert.match(f.html, /open day and night/);
+    f.click('Play tavern games'); assert.equal(opened.at(-1), 'tavern');
+    if (present) { f.click('Buy one · 9g'); assert.equal(f.sent.at(-1).kind, 'merchant_buy'); }
+    else assert.equal(f.buttons.some(b => b.text === 'Buy one · 9g'), false);
+  }
+  assert.equal(opened.length, 4, 'each real menu button invokes the tavern callback');
+});
+
 test('market buttons send the tax-inclusive quotes displayed to the player', t => {
   const f = fixture(t); f.visit('market');
   const sale = taxedSaleQuote('wheat', 100, 10, 10).total;
@@ -68,7 +81,7 @@ test('bank keeps personal gold separate from the illustrated resource market and
   f.click('Find resource market'); assert.equal(f.ui.getWaypoint().id, 'market');
   f.ui.show('market'); assert.match(f.html, /BUILDING ENTRANCE/); assert.equal(f.fields.has('trade-amount-wheat'), false);
   f.visit('market'); assert.match(f.html, /data-shop-theme="market"/);
-  assert.equal((f.html.match(/class="market-resource-card"/g) || []).length, 5);
+  assert.equal((f.html.match(/class="market-resource-card"/g) || []).length, 6);
   assert.doesNotMatch(f.html, /id="bank-amount"|id="loan-amount"|>Deposit</);
   f.click('Requested deliveries'); assert.deepEqual(delivered, ['bank'], 'saved request destination keys remain compatible');
   f.click('Donate carried resources'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'donate' });
@@ -142,7 +155,7 @@ test('food, stable and traveling wares use illustrated cards while preserving cu
   f.state.stable.stock = 0; f.ui.refresh(); assert.ok(f.buttons.find(b => b.text === 'Buy a horse · 100g').disabled);
   f.visit('merchant'); assert.match(f.html, /data-shop-theme="merchant"/); assert.match(f.html, /data-item="iron"/); f.click('Buy one · 9g'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'merchant_buy', resource: 'iron', amount: 1 });
   f.state.merchant.present = false; f.ui.refresh(); assert.doesNotMatch(f.html, /shop-interior-art|merchant_iron/);
-  f.ui.show('atlas'); f.click('Find mountain mine'); assert.deepEqual({ x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z }, { x: CAVE_ENTRANCE.x, z: CAVE_ENTRANCE.z }); assert.match(f.html, /stone on the upper level · mixed iron and coal below/);
+  f.ui.show('atlas'); f.click('Find mountain mine'); assert.deepEqual({ x: f.ui.getWaypoint().x, z: f.ui.getWaypoint().z }, { x: CAVE_ENTRANCE.x, z: CAVE_ENTRANCE.z }); assert.match(f.html, /stone above · iron and coal below · sulfur in the deepest chamber/);
 });
 
 test('market, public Watch and cannon entrances expose destination-specific requested delivery counters', t => {
@@ -206,7 +219,36 @@ test('crafting asks before destroying equipped durability and confirms the exact
   assert.equal(f.sent.length, 0);
   assert.match(f.html, /remaining durability will be lost/);
   f.click('Confirm change');
-  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'craft_buy', plotId: id, recipe: 'stone_axe', confirm: true });
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'craft_buy', plotId: id, recipe: 'stone_axe', price: 35, confirm: true });
+});
+
+test('tinker owners set individual bundle prices and craft supplies into storage while visitors see protected quotes', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  const plot = { id, ownerId: f.player.id, ownerName: 'Alice', building: 'tinker_shop', level: 1, hp: 350, maxHp: 350, storage: { sulfur: 20, coal: 10, gunpowder: 5, stone: 20, iron: 20, timber: 30 }, shopPrices: { gunpowder: 37, musket: 231 } };
+  f.state.plots = [plot]; f.visit('plot', id);
+  assert.equal(f.fields.get('shop-price-gunpowder').value, '37');
+  assert.equal(f.fields.get('shop-price-musket').value, '231');
+  assert.match(f.html, /Craft into storage/); assert.match(f.html, /64 base \/ shot/); assert.match(f.html, /5 ready in stock/);
+  const save = f.buttons.find(button => button.dataset.shopFocus === 'buy-gunpowder-1');
+  f.fields.get('shop-price-gunpowder').value = '43'; save.onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'shop_price', plotId: id, recipe: 'gunpowder', price: 43 });
+  f.fields.get('shop-batches-gunpowder').value = '3';
+  f.buttons.find(button => button.dataset.shopFocus === 'buy-gunpowder-2').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'craft_stock', plotId: id, recipe: 'gunpowder', batches: 3 });
+  plot.ownerId = 'bob'; f.ui.refresh();
+  assert.equal(f.fields.has('shop-price-gunpowder'), false); assert.doesNotMatch(f.html, /Craft into storage/);
+  f.click('Buy · 37g'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'craft_buy', plotId: id, recipe: 'gunpowder', price: 37 });
+});
+
+test('shop price drafts survive blur and snapshots and each price quote remains tied to its rendered item', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  const plot = { id, ownerId: f.player.id, building: 'tool_shop', hp: 350, maxHp: 350, storage: { stone: 50, timber: 50 }, shopPrices: {} };
+  f.state.plots = [plot]; f.visit('plot', id);
+  f.fields.get('shop-price-stone_axe').value = '77'; f.player.wallet++; f.ui.refresh();
+  assert.equal(f.fields.get('shop-price-stone_axe').value, '77');
+  const quote = f.buttons.find(button => button.dataset.shopFocus === 'buy-stone_axe-0');
+  plot.shopPrices.stone_axe = 99; quote.onclick(); f.click('Confirm change');
+  assert.equal(f.sent.at(-1).price, 35, 'a price change is left to server quote rejection rather than silently charging the new price');
 });
 
 test('permanent sanctuary offers guidance; player churches dispatch paid bed treatment', t => {
@@ -289,12 +331,28 @@ test('barracks preserve recruited slots while showing replacement wheat and coun
   f.visit('plot', id);
   assert.match(f.html, /Recruited slots<\/span><strong>3 \/ 3/);
   assert.match(f.html, /Waiting for 1 wheat in this barracks/);
-  assert.ok(f.buttons.find(b => b.text === 'Recruit a guard').disabled);
+  assert.ok(f.buttons.find(b => b.text === 'Recruit Swordsman · 35g').disabled);
   f.state.guardReplacements[0].waitingForWheat = false;
   f.state.guardReplacements[0].remaining = 8; f.ui.refresh();
   assert.match(f.html, /Returns in 8 seconds/);
   f.state.guardReplacements = [{ guardId: 'watch', plotId: null, ownerId: null, remaining: 0, waitingForWheat: true }];
   f.visit('barracks'); assert.match(f.html, /Waiting for 1 wheat in this barracks/);
+});
+
+test('owned barracks expose ranged recruitment, per-soldier training and ammunition status', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  f.state.plots = [{ id, ownerId: f.player.id, building: 'barracks', level: 2, hp: 975, maxHp: 975, storage: { wheat: 10, timber: 100, iron: 100, arrows: 0, musket_ammo: 10 } }];
+  f.state.guards = [{ id: 'archer-1', plotId: id, unitType: 'archer', troopLevel: 1, hp: 110, maxHp: 120 }];
+  f.visit('plot', id);
+  assert.match(f.html, /Recruited slots<\/span><strong>1 \/ 6/);
+  assert.match(f.html, /Archer · Level 1/); assert.match(f.html, /Out of ammunition · restock this barracks/);
+  assert.match(f.html, /Training: 55 gold · 10 timber · 3 iron → 160 health · 25 damage/);
+  f.click('Recruit Musketeer · 70g');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'recruitGuard', plotId: id, unitType: 'musketeer' });
+  f.click('Train Archer · 55g');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'upgradeTroop', plotId: id, guardId: 'archer-1' });
+  f.state.guards[0].troopLevel = 2; f.player.wallet -= 55; f.ui.refresh();
+  assert.match(f.html, /Archer · Level 2/); assert.equal(f.buttons.some(b => b.text === 'Train Archer · 55g'), false);
 });
 
 test('automatic defenses explain ammunition, server firing status, range, and repair needs', t => {
@@ -621,7 +679,7 @@ test('production upgrade cards compare current and next numeric benefits through
 
 test('defense upgrade cards show numeric health, beds, troop strength and tower damage with material costs', t => {
   const f = fixture(t), site = PLOTS[0];
-  for (const [building, hp, metric, current, next] of [['church', 650, 'Treatment beds', 2, 4], ['barracks', 650, 'Troop damage', 14, 18], ['archer_tower', 700, 'Damage per shot', 20, 30], ['cannon', 900, 'Damage per shot', 48, 72]]) {
+  for (const [building, hp, metric, current, next] of [['church', 650, 'Treatment beds', 2, 4], ['barracks', 650, 'Troop capacity', 3, 6], ['archer_tower', 700, 'Damage per shot', 20, 30], ['cannon', 900, 'Damage per shot', 48, 72]]) {
     f.state.plots = [{ id: site.id, ownerId: f.player.id, building, level: 1, hp, maxHp: hp, storage: { timber: 100, stone: 100, iron: 100 } }];
     f.visit('plot', site.id);
     assert.match(f.html, new RegExp(`${metric}</span><strong>${current}</strong><strong>${next}</strong>`));

@@ -126,7 +126,7 @@ test('torch holders and flame anchors avoid building doors, plots and harvesting
 
 test('Resource Exchange has a road-facing counter and connected clear approach without reducing the map',()=>{
   const b=BUILDINGS.find(b=>b.id==='market'),art=world.root.getObjectByName('building-market'),front=buildingEntrance(b);
-  assert.equal(PLOTS.length,48);assert.equal(RESOURCES.filter(n=>n.caveTier).length,44);assert.ok(art);assert.deepEqual({x:front.x,z:front.z},{x:9.45,z:-86});
+  assert.equal(PLOTS.length,48);assert.equal(RESOURCES.filter(n=>n.caveTier).length,52);assert.equal(RESOURCES.filter(n=>n.caveTier&&n.type==='sulfur').length,8);assert.ok(art);assert.deepEqual({x:front.x,z:front.z},{x:9.45,z:-86});
   assert.ok(art.userData.direction.x<-.99);assert.equal(art.userData.front.x,12);
   assert.ok(world.root.userData.lanes.some(l=>l.curve.getPoint(0).distanceTo(new THREE.Vector3(0,.014,-86))<.001&&l.curve.getPoint(1).distanceTo(new THREE.Vector3(9.45,.014,-86))<.001),'exchange spur terminates at the authoritative counter approach');
   world.root.updateMatrixWorld(true);

@@ -1,6 +1,6 @@
 export const STARTER_GOLD = 10;
 export const FOOD_IDS = ['food', 'good_food', 'best_food'];
-const TOOLS = new Set(['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow']);
+const TOOLS = new Set(['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow', 'musket']);
 
 // Empty hands are a real equipment state, shared by the client and server.
 export function canEquip(player, item) {

@@ -23,6 +23,9 @@ import { joinCrates, crateAction, crateSnapshot, forfeitCrates, refreshCrateMile
 import { ensureCrateEffects, crateProtectionActive, breakCrateProtection, crateEnemyDamage, crateAfterEnemyHit, crateRespawnEffects } from './crate-effects.js';
 import { TEST_GOLD } from './admin.js';
 import { ensureVillageFinance, villageFinanceAction, villageFinanceDawn, villageFinanceSnapshot } from './village-finance.js';
+import { MUSKET } from '../shared/firearms.js';
+import { ensureEnvironment, tickEnvironment, environmentSnapshot } from './environment.js';
+import { tickRangedTroop, troopCanEngage } from './troop-combat.js';
 const ROLES = new Set(['guard', 'priest', 'villager']);
 const FINANCE_ACTIONS = new Set(['investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 // Form transfers and release actions are immediately validated transactions;
@@ -30,8 +33,8 @@ const FINANCE_ACTIONS = new Set(['investment_deposit', 'investment_withdraw', 'i
 const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, cart: 0 });
-const durability = () => ({ sword: 0, axe: 0, pickaxe: 0, scythe: 0, hammer: 0, bow: 0 });
+const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, sulfur: 0, gunpowder: 0, musket_ammo: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, musket: 0, cart: 0 });
+const durability = () => ({ sword: 0, axe: 0, pickaxe: 0, scythe: 0, hammer: 0, bow: 0, musket: 0 });
 const makeResource = resource => ({ id: resource.id, available: true, remaining: resource.type === 'wheat' ? 1 : resource.type === 'timber' ? 5 : 8, regrowAt: 0 });
 const building = id => BUILDINGS.find(b => b.id === id);
 const nearStructure = (player, id, range = 3.5) => {
@@ -62,6 +65,7 @@ function ensureVillage(village) {
   ensureCaves(village);
   ensureTrading(village);
   ensureVillageFinance(village);
+  ensureEnvironment(village);
   for (const player of Object.values(village.players)) {
     ensureRoleStats(player, { clock: village.clock });
     ensureCrateEffects(village, player);
@@ -167,12 +171,15 @@ export class Simulation {
       gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
       ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId), ...crateSnapshot(this, village, viewerId), ...villageFinanceSnapshot(this, village, viewerId),
+      environment: environmentSnapshot(village),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
+        lastShot: p.lastShot,
+        ...(p.id === viewerId ? { environmentYieldRemainders: p.environmentYieldRemainders } : {}),
         tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
         ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
       siegeNight: village.siegeNight,
       zombies: village.zombies.filter(z => z.hp > 0).map(enemySnapshot),
-      guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId })),
+      guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId, unitType, troopLevel, tool, damage, lastShot }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId, unitType, troopLevel, tool, damage, lastShot })),
       resources: village.resources.map((state, index) => publicResourceSnapshot(state, RESOURCES[index])) };
   }
   notice(villageId, message) { this.notices.push({ villageId, message }); }
@@ -236,20 +243,25 @@ export class Simulation {
     };
     let message;
     if (kind === 'attack') {
-      const ranged = tool === 'bow';
+      const musket = tool === 'musket', ranged = tool === 'bow' || musket;
       if (ranged) {
-        if (!(player.durability.bow > 0)) throw new Error('Buy a bow at a tinker shop first.');
-        if (!(player.inventory.arrows > 0)) throw new Error('You need arrows to fire your bow.');
+        if (!(player.durability[tool] > 0)) throw new Error(`Buy a ${tool} at a tinker shop first.`);
+        if (!(player.inventory[musket ? MUSKET.ammo : 'arrows'] > 0)) throw new Error(musket ? 'You need musket shot to fire your musket.' : 'You need arrows to fire your bow.');
+        if (musket && village.clock < (player.musketReadyAt ?? 0)) throw new Error('Your musket is still reloading.');
       } else use('sword');
       breakCrateProtection(player);
-      const inReach = village.zombies.filter(z => z.hp > 0 && (ranged ? distance(player, z) <= 24 : inMeleeArc(player, z, MELEE.playerRange)) && this.clearAttack(village, player, z, ranged)).sort((a, b) => distance(player, a) - distance(player, b));
+      const inReach = village.zombies.filter(z => z.hp > 0 && (ranged ? distance(player, z) <= (musket ? MUSKET.range : 24) : inMeleeArc(player, z, MELEE.playerRange)) && this.clearAttack(village, player, z, ranged)).sort((a, b) => distance(player, a) - distance(player, b));
       const targets = ranged ? inReach.slice(0, 1) : inReach;
       player.anim = 'attack'; player.animationUntil = village.clock + .45;
-      if (ranged) player.inventory.arrows--;
-      player.durability[ranged ? 'bow' : 'sword']--;
-      const damage = ranged ? 22 : ({ wood: 10, stone: 15, iron: 20 }[player.tiers?.sword] ?? 10);
+      if (ranged) player.inventory[musket ? MUSKET.ammo : 'arrows']--;
+      player.durability[ranged ? tool : 'sword']--;
+      if (musket) {
+        player.musketReadyAt = village.clock + MUSKET.cooldown;
+        player.lastShot = { id: randomUUID(), at: village.clock, kind: 'musket', from: { x: player.x, z: player.z }, to: { x: targets[0]?.x ?? player.x + Math.sin(player.yaw) * MUSKET.range, z: targets[0]?.z ?? player.z + Math.cos(player.yaw) * MUSKET.range } };
+      }
+      const damage = musket ? MUSKET.damage : ranged ? 22 : ({ wood: 10, stone: 15, iron: 20 }[player.tiers?.sword] ?? 10);
       for (const target of targets) this.hitZombie(village, target, damage * (player.role === 'guard' ? 1.2 : 1), player);
-      if (targets.length) message = ranged ? 'Arrow landed.' : 'Strike landed.';
+      if (targets.length) message = musket ? 'Musket shot landed.' : ranged ? 'Arrow landed.' : 'Strike landed.';
     } else if (kind === 'repair') {
       use('hammer');
       const id = action.targetId === 'keep' ? 'keep' : action.targetId === 'gate' ? 'gate' : null;
@@ -436,6 +448,7 @@ export class Simulation {
     for (const village of this.villages.values()) {
       if (village.status !== 'active' || !Object.values(village.players).some(p => p.online)) continue;
       village.clock += dt; village.phaseRemaining -= dt;
+      for (const notice of tickEnvironment(village, dt, { active: true })) this.notice(village.id, notice.text);
       const solids = plotSolids(village.plots);
       ownershipTick(this, village, dt);
       for (const player of Object.values(village.players)) {
@@ -517,8 +530,9 @@ export class Simulation {
       const directive = guardDirective(village, guard);
       guard.cooldown = Math.max(0, guard.cooldown - dt);
       if (village.clock < (guard.attackUntil ?? -1)) { guard.anim = 'attack'; continue; }
-      const target = zombies.filter(z => z.hp > 0 && guardOrderCanEngage(guard, z, directive)).sort((a, b) => distance(guard, a) - distance(guard, b))[0];
+      const target = zombies.filter(z => z.hp > 0 && guardOrderCanEngage(guard, z, directive) && troopCanEngage(this, village, guard, z)).sort((a, b) => distance(guard, a) - distance(guard, b))[0];
       if (target) {
+        if (tickRangedTroop(this, village, guard, target, dt, guards)) continue;
         if (distance(guard, target) > 2.1 || !this.clearAttack(village, guard, target)) this.stepNpc(guard, target, 3.4, dt, guards);
         else {
           guard.anim = 'idle'; guard.yaw = Math.atan2(target.x - guard.x, target.z - guard.z);

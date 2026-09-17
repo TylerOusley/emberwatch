@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { WebGLProgram } from 'three/src/renderers/webgl/WebGLProgram.js';
 import { createHash } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -39,6 +39,69 @@ export function captureThreeProgram(name, shader, options = {}) {
   if (/#include\s+</.test(vertex + fragment)) throw new Error(`${name}: Three.js did not expand all shader chunks.`);
   program.destroy();
   return { name, vertex, fragment, hashes: { vertex: hash(vertex), fragment: hash(fragment) } };
+}
+
+// Load the browser's actual scene factories with only their import URLs adapted
+// for Node. This exercises the real season hook after the real PBR hook.
+function sceneModule(filename, overrides = {}) {
+  const url = new URL(`../public/src/${filename}`, import.meta.url);
+  const source = readFileSync(url, 'utf8').replace(/from\s+(['"])([^'"]+)\1/g, (all, quote, name) => {
+    const target = overrides[name] ?? (name === 'three' ? new URL('../node_modules/three/build/three.module.js', import.meta.url).href
+      : name.startsWith('/shared/') ? new URL(`..${name}`, import.meta.url).href
+      : name.startsWith('.') ? new URL(name, url).href : null);
+    return target ? `from ${JSON.stringify(target)}` : all;
+  });
+  return 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+}
+
+async function captureEnvironmentPrograms(lighting) {
+  const plots = sceneModule('plots-world.js');
+  const { createWorld } = await import(sceneModule('world.js', { './plots-world.js': plots }));
+  const { createEnvironmentWorld } = await import('../public/src/environment-world.js');
+  const scene = new THREE.Scene(), previousDocument = globalThis.document;
+  let environment;
+  try {
+    // Signs need a canvas while geometry is created; these four shader programs
+    // use no canvas pixels. No fake GL compilation or shader source is supplied.
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => new Proxy({}, { get: () => () => {}, set: () => true }) }) };
+    createWorld(scene);
+    globalThis.document = previousDocument;
+    environment = createEnvironmentWorld(scene);
+    environment.update({ season: 'winter', weather: 'snow' }, { dt: .1, time: 5 });
+    let foliage;
+    scene.traverse(object => {
+      if (!foliage && object.isInstancedMesh && object.geometry.userData.forest && object.material.vertexColors && object.material.side === THREE.DoubleSide) foliage = object;
+    });
+    const terrain = scene.getObjectByName('village-terrain');
+    if (!terrain || !foliage) throw new Error('Actual terrain and instanced forest foliage are required for season shader validation.');
+    const programs = [];
+    for (const [name, object] of [['weather-rain-snow-particles', environment.particles], ['weather-overcast-clouds', environment.clouds]]) {
+      const material = object.material;
+      programs.push(captureThreeProgram(name, material, { shaderType: 'ShaderMaterial', flipSided: material.side === THREE.BackSide,
+        toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }));
+    }
+    for (const [name, object] of [['season-world-terrain-pbr', terrain], ['season-world-instanced-foliage', foliage]]) {
+      const material = object.material, library = THREE.ShaderLib.standard;
+      const shader = { vertexShader: library.vertexShader, fragmentShader: library.fragmentShader, uniforms: THREE.UniformsUtils.clone(library.uniforms) };
+      material.onBeforeCompile(shader, {});
+      if (!shader.uniforms.environmentSeasonTint?.value?.isColor || !Number.isFinite(shader.uniforms.environmentSeasonAmount?.value)) throw new Error(`${name}: season hook did not bind real uniforms.`);
+      if (object === terrain && (!shader.uniforms.surfaceAlbedo?.value?.isTexture || !shader.fragmentShader.includes('surfaceGradient'))) throw new Error(`${name}: season hook lost the terrain's surface shader.`);
+      programs.push(captureThreeProgram(name, shader, { ...lighting, vertexColors: material.vertexColors, instancing: object.isInstancedMesh === true,
+        doubleSided: material.side === THREE.DoubleSide, toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }));
+    }
+    return programs;
+  } finally {
+    globalThis.document = previousDocument;
+    environment?.dispose();
+    const resources = new Set();
+    scene.traverse(object => {
+      if (object.geometry) resources.add(object.geometry);
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material) { resources.add(material); if (material.map) resources.add(material.map); }
+      if (object.isInstancedMesh) object.dispose();
+    });
+    for (const resource of resources) resource.dispose();
+    scene.clear();
+  }
 }
 
 export async function buildGraphicsShaderBundle() {
@@ -76,6 +139,7 @@ export async function buildGraphicsShaderBundle() {
     for (const toneMapping of [THREE.ACESFilmicToneMapping, THREE.NoToneMapping]) {
       programs.push(captureThreeProgram(`presentation-${toneMapping === THREE.NoToneMapping ? 'linear' : 'aces'}-srgb`, { vertexShader: presentationVertex, fragmentShader: presentationFragment }, { shaderType: 'ShaderMaterial', toneMapping, outputColorSpace: THREE.SRGBColorSpace }));
     }
+    programs.push(...await captureEnvironmentPrograms(lighting));
     return { threeRevision: THREE.REVISION, programs, runtimeHashes: { presentationVertex: hash(presentationVertex), presentationFragment: hash(presentationFragment) } };
   } finally { for (const material of materials) material.dispose(); }
 }

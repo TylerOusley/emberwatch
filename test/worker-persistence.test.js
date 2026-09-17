@@ -8,6 +8,9 @@ import { Store } from '../server/store.js';
 import { Simulation, createVillage } from '../server/simulation.js';
 import { BUILDINGS } from '../shared/world.js';
 import { WORKER_RULES } from '../shared/workers.js';
+import { ensureWorkers } from '../server/workers.js';
+import { ensureOwnership } from '../server/ownership.js';
+import { PLOTS, plotFront } from '../shared/world.js';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'emberwatch-worker-save-'));
@@ -34,6 +37,26 @@ function savedWork(w) {
     workXp: w.workXp, level: w.level, attributes: w.attributes, upgradePoints: w.upgradePoints, color: w.color
   });
 }
+
+test('plot staff and in-flight transporter supplies survive SQLite restart without duplicate grants or offline work', async t => {
+  const f = await fixture(t), { id } = f.sim.create('Supply Hearth', f.account);
+  const p = f.sim.join(id, f.account), village = f.sim.villages.get(id); p.wallet = 1000;
+  const source = village.plots[0], destination = village.plots[1];
+  Object.assign(source, { ownerId: p.id, building: 'house', level: 1, hp: 500, maxHp: 500, storage: { arrows: 40 } });
+  Object.assign(destination, { ownerId: p.id, building: 'tinker_shop', level: 2, hp: 500, maxHp: 500 });
+  ensureOwnership(village); ensureWorkers(village); assert.equal(village.workers.length, 2);
+  const w = village.workers[0];
+  f.sim.action(id, p.id, { kind: 'worker_assign', workerId: w.id, resource: 'arrows', sourcePlotId: source.id, mode: 'store', destinationPlotId: destination.id, targetPercent: 35 });
+  Object.assign(w, plotFront(PLOTS.find(anchor => anchor.id === source.id), 1));
+  f.sim.tick(.1); assert.equal(w.cargo.arrows, 40); assert.equal(source.storage.arrows, 0);
+  const wallet = p.wallet, saved = structuredClone({ id: w.id, staffPlotId: w.staffPlotId, staffSlot: w.staffSlot, staffRole: w.staffRole, cargo: w.cargo, paidWorkSeconds: w.paidWorkSeconds, targetPercent: w.targetPercent, paused: w.paused });
+  f.sim.saveAll(); f.restart(); const restored = f.sim.villages.get(id), worker = restored.workers.find(worker => worker.id === saved.id);
+  assert.equal(restored.workers.length, 2); assert.deepEqual({ id: worker.id, staffPlotId: worker.staffPlotId, staffSlot: worker.staffSlot, staffRole: worker.staffRole, cargo: worker.cargo, paidWorkSeconds: worker.paidWorkSeconds, targetPercent: worker.targetPercent, paused: worker.paused }, saved);
+  f.sim.tick(3600); assert.equal(worker.cargo.arrows, 40); assert.equal(restored.players[p.id].wallet, wallet);
+  const returning = f.sim.join(id, f.store.account(p.id)); assert.equal(returning.wallet, wallet);
+  Object.assign(worker, plotFront(PLOTS.find(anchor => anchor.id === destination.id), 1)); f.sim.tick(.1);
+  assert.equal(worker.cargo.arrows, 0); assert.equal(restored.plots[1].storage.arrows, 40); assert.equal(restored.workers.length, 2);
+});
 
 test('real worker progress survives SQLite restart and resumes without another hiring charge or offline work', async t => {
   const f = await fixture(t);

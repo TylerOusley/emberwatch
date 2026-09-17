@@ -12,6 +12,7 @@ const moduleURL=source=>'data:text/javascript;base64,'+Buffer.from(source).toStr
 const plots=readFileSync(new URL('../public/src/plots-world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href));
 const source=readFileSync(new URL('../public/src/world.js',import.meta.url),'utf8').replace("'three'",JSON.stringify(threeURL)).replace("'/shared/world.js'",JSON.stringify(sharedURL)).replace("'./plots-world.js'",JSON.stringify(moduleURL(plots))).replace("'./surface-materials.js'",JSON.stringify(new URL('../public/src/surface-materials.js',import.meta.url).href)).replace("'./environment-geometry.js'",JSON.stringify(new URL('../public/src/environment-geometry.js',import.meta.url).href));
 const {createWorld,createWorldDetailLayout,createWorldDetails,carveGroundForCave}=await import(moduleURL(source));
+const {createPlotsWorld}=await import(moduleURL(plots));
 const previousDocument=globalThis.document;
 globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({},{get:()=>()=>{},set:()=>true})})};
 let world;
@@ -147,7 +148,9 @@ test('complete village geometry stays within representative camera budgets',()=>
     });return {calls,triangles};
   }
   const all=cost();assert.ok(all.calls<1200,JSON.stringify(all));assert.ok(all.triangles<1_400_000,JSON.stringify(all));
-  for(const [eye,target,budget]of [[[0,6,8],[0,2,-6],650_000],[[0,8,-44],[0,2,-66],525_000],[[0,8,-97],[0,5,-135],450_000]]){
+  // Eight dedicated sulfur veins add 9,520 triangles to the north-facing street
+  // view. Other view budgets remain unchanged; slate fixes add no geometry.
+  for(const [eye,target,budget]of [[[0,6,8],[0,2,-6],650_000],[[0,8,-44],[0,2,-66],535_000],[[0,8,-97],[0,5,-135],450_000]]){
     const camera=new THREE.PerspectiveCamera(60,16/9,.1,540);camera.position.fromArray(eye);camera.lookAt(new THREE.Vector3(...target));camera.updateMatrixWorld();
     const visible=cost(camera);assert.ok(visible.triangles<budget,JSON.stringify({eye,...visible}));assert.ok(visible.calls<460,JSON.stringify({eye,...visible}));
   }
@@ -168,4 +171,55 @@ test('slate roofs have individual overlapping tiles and preserve hard normals at
     }
   });
   assert.ok(shells>=8);assert.ok(tiles>1200&&tiles<3000,'bounded thin tiles replace the broad alternating strips');
+});
+
+function roofFaces(root,plotTiles=false){
+  root.updateMatrixWorld(true);const faces=[],matrix=new THREE.Matrix4(),scale=new THREE.Vector3();
+  root.traverse(mesh=>{
+    if(!mesh.isInstancedMesh||!(plotTiles?mesh.name==='plot-box-roof':mesh.geometry.userData.roofTiles))return;
+    for(let i=0;i<mesh.count;i++){
+      mesh.getMatrixAt(i,matrix);scale.setFromMatrixScale(matrix);
+      if(plotTiles&&Math.abs(scale.y-.06)>1e-6)continue;
+      matrix.premultiply(mesh.matrixWorld);
+      const right=new THREE.Vector3().setFromMatrixColumn(matrix,0),up=new THREE.Vector3().setFromMatrixColumn(matrix,1),forward=new THREE.Vector3().setFromMatrixColumn(matrix,2);
+      // Plot blocks have bevels: test only the actual flat face, inside them.
+      const inset=plotTiles?.482:.5;
+      faces.push({center:new THREE.Vector3(0,.5,0).applyMatrix4(matrix),halfWidth:right.length()*inset,halfDepth:forward.length()*inset,right:right.normalize(),up:up.normalize(),forward:forward.normalize()});
+    }
+  });return faces;
+}
+function assertRoofLipsSeparated(faces){
+  let overlaps=0;const delta=new THREE.Vector3();
+  for(let i=0;i<faces.length;i++)for(let j=i+1;j<faces.length;j++){
+    const a=faces[i],b=faces[j];
+    if(a.up.distanceToSquared(b.up)>1e-10||a.right.distanceToSquared(b.right)>1e-10)continue;
+    delta.subVectors(b.center,a.center);const separation=Math.abs(delta.dot(a.up));
+    if(separation>.2||Math.abs(delta.dot(a.right))>=a.halfWidth+b.halfWidth-.003||Math.abs(delta.dot(a.forward))>=a.halfDepth+b.halfDepth-.003)continue;
+    overlaps++;assert.ok(separation>.012,`overlapping slate top faces compete for depth: ${separation}`);
+  }
+  assert.ok(overlaps>100,`checks actual overlapping tile lips (${overlaps})`);
+}
+
+test('village slate lips overlap with distinct depth instead of coplanar colored faces',()=>{
+  assertRoofLipsSeparated(roofFaces(world.root));
+});
+
+test('tower corner stones stand clear of the mortar shell on both side walls',()=>{
+  world.root.updateMatrixWorld(true);
+  for(const side of [-1,1]){
+    const shellX=-8+side*2.2,origin=new THREE.Vector3(shellX+side,4.25,20.18);
+    const hits=new THREE.Raycaster(origin,new THREE.Vector3(-side,0,0),.8,1.1).intersectObject(world.root,true).filter(hit=>hit.object.material?.userData.surface?.kind==='masonry');
+    assert.ok(hits.some(hit=>Math.abs(hit.distance-1)<1e-5),'ray crosses the original shell');
+    const nearest=Math.min(...hits.map(hit=>hit.distance));
+    assert.ok(nearest>.97&&nearest<.985,`corner stones need physical separation from the shell (${nearest})`);
+  }
+});
+
+test('player building slate lips retain separated depth on rotated plots',()=>{
+  const before=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({},{get:()=>()=>{},set:()=>true})})};
+  const plotsWorld=createPlotsWorld(new THREE.Scene());
+  try{
+    plotsWorld.update({id:'slate-depth',clock:0,plots:PLOTS.slice(0,4).map((plot,i)=>({id:plot.id,ownerId:'owner',building:['house','tool_shop','church','barracks'][i],level:3,hp:100}))});
+    assertRoofLipsSeparated(roofFaces(plotsWorld.root,true));
+  }finally{plotsWorld.dispose();globalThis.document=before;}
 });

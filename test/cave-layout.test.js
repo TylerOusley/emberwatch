@@ -9,14 +9,14 @@ import { buildingEntrance } from '../shared/access.js';
 import { nearestGatherable } from '../public/src/interactions.js';
 import { stepNpcNavigation } from '../server/navigation.js';
 
-const minerals = RESOURCES.filter(node => ['stone', 'iron', 'coal', 'gold'].includes(node.type));
+const minerals = RESOURCES.filter(node => ['stone', 'iron', 'coal', 'sulfur', 'gold'].includes(node.type));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 // Captured from the original, pre-cave map. Saved node depletion and plot
 // ownership key off these identities; moving ore must not reroll the forest.
 test('the cave relocation preserves all saved resource identities and all 48 deeds', () => {
-  assert.equal(digest(RESOURCES.map(({ id, type, seed }) => [id, type, seed])),
+  assert.equal(digest(RESOURCES.filter(node => node.type !== 'sulfur').map(({ id, type, seed }) => [id, type, seed])),
     '8c840d31642d36ac1981201cd410a1048afa6ac34d5254ca345bba4757119d1b');
   assert.equal(digest(RESOURCES.filter(node => !minerals.includes(node)).map(({ id, type, x, z, seed }) => [id, type, x, z, seed])),
     '29208596cebfca96d308d7214d7c67531b29d705a55cb1c36cda1f635c790911');
@@ -26,7 +26,8 @@ test('the cave relocation preserves all saved resource identities and all 48 dee
 
 test('every public mineral has a reachable cave approach and can be selected without gathering through rock', () => {
   const available = RESOURCES.map(node => ({ id: node.id, available: true }));
-  assert.equal(minerals.length, 44);
+  assert.equal(minerals.filter(node => node.type !== 'sulfur').length, 44);
+  assert.equal(minerals.filter(node => node.type === 'sulfur').length, 8);
   for (const node of minerals) {
     assert.ok(caveAreaAt(node.x, node.z), `${node.id} is inside the cave`);
     assert.ok(caveTierAt(node.x, node.z), `${node.id} has a depth tier`);
