@@ -33,12 +33,13 @@ const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow', 'musket
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
-export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null, showAcademy = null, showCivic = null }) {
+export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null, showAcademy = null, showCivic = null, schedule = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
   let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
+  let councilPress = null, councilPressTimer = null;
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const transferDrafts = new Map();
   let renderedDraftKey = null;
-  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount', ...Object.keys(RECIPES).flatMap(id => [`shop-price-${id}`, `shop-batches-${id}`])];
+  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount', 'export-priority', ...Object.keys(RECIPES).flatMap(id => [`shop-price-${id}`, `shop-batches-${id}`])];
   const draftKey = () => `${current?.kind}:${current?.id || ''}`;
   const transferDraft = () => { const key = draftKey(); if (!transferDrafts.has(key)) transferDrafts.set(key, {}); return transferDrafts.get(key); };
   function captureTransferDrafts() {
@@ -121,12 +122,36 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   const value = id => document.getElementById(id)?.value;
   const amount = id => Number(value(id));
+  function clearCouncilPress() { cancel(councilPressTimer); councilPressTimer = null; councilPress = null; }
+  function beginCouncilPress(node) { clearCouncilPress(); if (!node.disabled) councilPress = node; }
+  function endCouncilPress(node, defer = false) {
+    if (councilPress !== node) return;
+    cancel(councilPressTimer); councilPressTimer = null;
+    // Keep the native target through pointerup/keyup until its click has run.
+    // The deferred fallback also releases a press abandoned outside the button.
+    if (defer) { councilPressTimer = schedule(() => endCouncilPress(node), 0); return; }
+    clearCouncilPress(); refresh();
+  }
   function wire() {
-    for (const b of content().querySelectorAll('[data-settlement-button]')) b.onclick = () => {
-      if (b.disabled) return;
-      if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
-      handlers[Number(b.dataset.settlementButton)]?.();
-    };
+    for (const b of content().querySelectorAll('[data-settlement-button]')) {
+      const council = current?.kind === 'policies', handler = handlers[Number(b.dataset.settlementButton)];
+      if (council) {
+        b.onpointerdown = event => { if (event.button === 0) beginCouncilPress(b); };
+        b.onpointerup = () => endCouncilPress(b, true);
+        b.onpointercancel = () => endCouncilPress(b);
+        b.onpointerleave = () => endCouncilPress(b, true);
+        b.onblur = () => endCouncilPress(b);
+        b.onkeydown = event => { if ([' ', 'Enter'].includes(event.key)) beginCouncilPress(b); };
+        b.onkeyup = event => { if ([' ', 'Enter'].includes(event.key)) endCouncilPress(b, true); };
+      }
+      b.onclick = () => {
+        try {
+          if (b.disabled || council && (current?.kind !== 'policies' || !content().contains(b))) return;
+          if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
+          handler?.();
+        } finally { if (council) endCouncilPress(b); }
+      };
+    }
     const policyInput=document.getElementById('policy-name');
     if(policyInput)policyInput.onchange=()=>{const info=POLICIES[policyInput.value],field=document.getElementById('policy-value');field.min=info.min;field.max=info.max;field.step=info.step;field.value=state().policies?.[policyInput.value]??info.initial;};
     for (const select of content().querySelectorAll('[data-hotbar-slot]')) select.onchange = () => setHotbar(Number(select.dataset.hotbarSlot), select.value);
@@ -136,7 +161,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     buildCarousel.bind(content());
     for (const id of transferFields) {
       const field = document.getElementById(id);
-      if (field) field[id === 'storage-resource' ? 'onchange' : 'oninput'] = () => { transferDraft()[id] = field.value; updateTransfers(); };
+      if (field) field[field.tagName === 'SELECT' ? 'onchange' : 'oninput'] = () => { transferDraft()[id] = field.value; updateTransfers(); };
     }
     updateTransfers();
     for (const resource of Object.keys(RESOURCE_MARKET)) {
@@ -190,6 +215,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function render() {
     if (!current || !me() || !state()) return;
+    clearCouncilPress();
     captureTransferDrafts();
     handlers = [];
     const builders = { inventory: pack, bank, market, food, tools, workers, barracks: watch, church, stable, merchant, policies, roles, plot, cart, horse, atlas, confirm: confirmation };
@@ -209,6 +235,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (!current || getActivePanel() !== 'settlement' || !document.getElementById('panel-dialog').open) return;
     // Leaving an entrance must invalidate service controls even while editing a quantity.
     if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
+    if (current.kind === 'policies' && councilPress && atCouncil()) return;
     // Network snapshots must not reset a quantity or selection while it is being edited.
     if (content().contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
       updateTransfers();
@@ -783,5 +810,5 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     return waypoint;
   }
-  return { show, refresh, getWaypoint, getCurrent: () => current ? { ...current } : null, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
+  return { show, refresh, getWaypoint, getCurrent: () => current ? { ...current } : null, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { clearCouncilPress(); current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
 }

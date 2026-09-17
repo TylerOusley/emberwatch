@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 28 hotfix: surplus proposals
+
+Validated September 17, 2026: **68/68 focused settlement UI and economy tests pass**, runtime syntax and `git diff --check` pass, and **93 browser modules** link with the real imports/exports.
+
+Reproduced two client failures before the fix: a surplus selection returned to the current policy after blur plus a live balance update, and a snapshot replaced the pressed proposal button before its native click. The export selector now uses the existing saved form drafts. Council buttons defer replacement until pointer/keyboard activation completes, with cancellation, blur, entrance-loss and menu-clear cleanup. Three UI regressions cover increasing/decreasing exports, pointer/Space/Enter activation, and stale-control cleanup. A server regression verifies all six directional policy changes through majority approval, next-dawn application and merchant export calculations.
+
+Server economy rules are unchanged: propose at the Treasury or Hearthkeep entrance, then observe the existing vote, steward review and next-dawn timing. This hotfix does not claim a new full-suite run or interactive browser playtest.
+
 ## Build 28: Wizard staff repair
 
 Validated September 17, 2026: **836/836 tests pass** with `npm test`, with no failures, cancellations or skips. All **120 runtime JavaScript modules** pass syntax checks and **93 browser modules** link using the real imports/exports. `git diff --check` passes.

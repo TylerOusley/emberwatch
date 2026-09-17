@@ -12,14 +12,14 @@ import { ownershipSnapshot } from '../server/ownership.js';
 function fixture(t, options = {}) {
   const prior = globalThis.document;
   let html = '', openCount = 0, nodes = [], buttons = [], details = [], summaries = [], activePanel = null;
-  const fields = new Map(), sent = [];
+  const fields = new Map(), sent = [], timers = new Map(); let nextTimer = 0;
   const player = { id: 'alice', name: 'Alice', role: 'guard', x: 0, z: 0, wallet: 2000, bank: 80, hp: 70, maxHp: 100, hunger: 50, inventory: { wheat: 10, timber: 0, stone: 0, iron: 0, coal: 0 }, durability: { sword: 100, axe: 75, pickaxe: 100, scythe: 100, hammer: 100 }, tiers: { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' } };
   const state = { players: [player], plots: [], guards: [], beds: [], stock: { wheat: 100, timber: 100, stone: 100, iron: 100, coal: 100 }, treasury: 2500, policies: { guardWage: 25, priestWage: 25, tradeTax: 10, landTax: 2, exportPriority: 'balanced' }, proposals: [], merchant: { present: true, stock: { iron: 5 }, prices: { iron: 9 } }, stable: { stock: 3 }, loan: { debt: 0, credit: 0, availablePool: 500 }, foodQuotes: Object.fromEntries(['food', 'good_food', 'best_food'].map(id => [id, foodQuote(100, id)])) };
   const content = { contains: e => nodes.includes(e), querySelectorAll: query => query === '[data-settlement-button]' ? buttons : query === '[data-shop-inspect]' ? details : [], querySelector: query => nodes.find(node => node.dataset?.shopFocus && query === `[data-shop-focus="${node.dataset.shopFocus}"]`) };
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = prior; });
-  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, showInvestments: options.showInvestments, showTavern: options.showTavern, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
+  const ui = createSettlementUI({ schedule: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, cancel: id => timers.delete(id), getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, showInvestments: options.showInvestments, showTavern: options.showTavern, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
     html = next; activePanel = panel; openCount++; fields.clear();
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
       const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[1].match(/aria-label="([^"]*)"/)?.[1] || match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
@@ -37,7 +37,7 @@ function fixture(t, options = {}) {
     summaries = [...html.matchAll(/<summary\b([^>]*)>/g)].map(match => ({ tagName: 'SUMMARY', dataset: { shopFocus: match[1].match(/data-shop-focus="([^"]+)"/)[1] }, focus() { document.activeElement = this; } }));
     nodes = [...buttons, ...fields.values(), ...details, ...summaries];
   } });
-  return { ui, player, state, sent, fields, visit(kind, id = null) {
+  return { ui, player, state, sent, fields, timers, visit(kind, id = null) {
     const point = kind === 'plot' || kind === 'church' && id && id !== 'church' ? plotEntrance(PLOTS.find(p => p.id === id), state.plots.find(p => p.id === id)) : buildingEntrance(BUILDINGS.find(b => b.id === kind));
     if (point) Object.assign(player, point);
     ui.show(kind, id);
@@ -573,6 +573,62 @@ test('council and merchant show percentage exports and submit the saved policy c
   assert.match(f.html, /current council policy sells 100%/);
   f.state.policies.exportPriority = 'conserve'; f.ui.refresh();
   assert.match(f.html, /current council policy sells 25%/);
+});
+
+test('surplus proposal selection survives blur and live balances for increases and decreases', t => {
+  const f = fixture(t);
+  Object.assign(f.player, buildingEntrance(BUILDINGS.find(b => b.id === 'bank')));
+  for (const priority of ['trade', 'conserve']) {
+    f.ui.clear(); f.ui.show('policies');
+    const select = f.fields.get('export-priority');
+    document.activeElement = select; select.value = priority; select.onchange?.();
+    document.activeElement = f.buttons.find(b => b.text === 'Propose resource priority');
+    f.player.wallet++; f.state.treasury++; f.ui.refresh();
+    assert.equal(f.fields.get('export-priority').value, priority);
+    f.click('Propose resource priority');
+    assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: priority });
+  }
+  f.ui.clear(); f.ui.show('policies');
+  assert.equal(f.fields.get('export-priority').value, 'balanced', 'new village/menu lifecycle clears the draft');
+});
+
+test('surplus proposal clicks survive live updates through pointer and keyboard release', t => {
+  const f = fixture(t);
+  Object.assign(f.player, buildingEntrance(BUILDINGS.find(b => b.id === 'keep')));
+  for (const key of [null, ' ', 'Enter']) {
+    f.ui.show('policies');
+    const select = f.fields.get('export-priority'); select.value = 'trade'; select.onchange?.();
+    const button = f.buttons.find(b => b.text === 'Propose resource priority');
+    document.activeElement = button;
+    if (key) button.onkeydown?.({ key }); else button.onpointerdown?.({ button: 0 });
+    f.player.wallet++; f.ui.refresh();
+    assert.ok(f.buttons.includes(button), 'the pressed button remains attached for its native click');
+    if (key) button.onkeyup?.({ key }); else button.onpointerup?.();
+    f.state.treasury++; f.ui.refresh();
+    assert.ok(f.buttons.includes(button), 'release waits for the following native click');
+    const before = f.sent.length; button.onclick();
+    assert.equal(f.sent.length, before + 1);
+    assert.equal(f.sent.at(-1).value, 'trade');
+    for (const [id, timer] of [...f.timers]) { f.timers.delete(id); timer.fn(); }
+    assert.equal(f.sent.length, before + 1, 'cleanup cannot replay the proposal');
+  }
+});
+
+test('council press cancellation, leaving the entrance and closing the menu release pending controls safely', t => {
+  const f = fixture(t), entrance = buildingEntrance(BUILDINGS.find(b => b.id === 'bank'));
+  Object.assign(f.player, entrance); f.ui.show('policies');
+  let button = f.buttons.find(b => b.text === 'Propose resource priority');
+  document.activeElement = button; button.onpointerdown?.({ button: 0 });
+  f.player.wallet++; f.ui.refresh(); button.onpointercancel?.(); f.ui.refresh();
+  assert.equal(f.sent.length, 0); assert.ok(!f.buttons.includes(button));
+  button = f.buttons.find(b => b.text === 'Propose resource priority');
+  button.onpointerdown?.({ button: 0 }); f.player.x += 100; f.ui.refresh(); button.onclick();
+  assert.equal(f.sent.length, 0, 'walking away blocks a stale proposal');
+  assert.equal(f.buttons.find(b => b.text === 'Propose resource priority').disabled, true);
+  Object.assign(f.player, entrance); f.ui.show('policies');
+  button = f.buttons.find(b => b.text === 'Propose resource priority');
+  button.onpointerdown?.({ button: 0 }); button.onpointerup?.(); f.ui.clear();
+  assert.equal(f.timers.size, 0, 'leaving the UI cancels pending press cleanup');
 });
 
 test('storage preserves typed 10 and its selected resource after focus moves to a button and a snapshot rerenders', t => {

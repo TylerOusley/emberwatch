@@ -232,6 +232,31 @@ test('an approved export policy applies before that dawn’s percentage sale', (
   assert.match(v.merchant.summary, /Exported 100% of surplus:/);
 });
 
+test('council can increase or decrease every export percentage through a majority vote at dawn', () => {
+  const priorities = ['conserve', 'balanced', 'trade'];
+  for (const current of priorities) for (const proposed of priorities) {
+    if (current === proposed) continue;
+    const { v, p, sim } = fixture(['villager', 'wizard', 'guard']);
+    v.day = 2; v.stable.stock = 1; v.policies.exportPriority = current;
+    Object.assign(v.stock, { wheat: 1000, timber: 1000, stone: 1000 });
+    economyAction(sim, v, p, { kind: 'propose_policy', policy: 'exportPriority', value: proposed });
+    const proposal = v.proposals.at(-1);
+    assert.equal(proposal.required, 2);
+    assert.equal(proposal.status, 'voting', `${current} → ${proposed} awaits a majority`);
+    assert.equal(v.policies.exportPriority, current);
+    economyAction(sim, v, v.players.p1, { kind: 'vote_policy', proposalId: proposal.id, approve: true });
+    assert.equal(proposal.status, 'approved');
+    assert.equal(v.policies.exportPriority, current, 'approved changes wait for dawn');
+    v.day = 3; economyDawn(sim, v);
+    assert.equal(proposal.status, 'applied');
+    assert.equal(v.policies.exportPriority, proposed, `${current} → ${proposed} takes effect`);
+    const reserves = exportReserves(v), percent = merchantExportPercent(proposed);
+    for (const [resource, reserve] of Object.entries(reserves)) {
+      assert.equal(v.stock[resource], 1000 - Math.floor((1000 - reserve) * percent / 100), 'merchant uses the newly approved percentage and reserve');
+    }
+  }
+});
+
 test('uncapped exports retain the entire shipment when its gold cannot fit safely', () => {
   for (const excessivePayment of [false, true]) {
     const { v, sim } = fixture();
