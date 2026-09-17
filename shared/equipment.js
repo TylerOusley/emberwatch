@@ -7,6 +7,7 @@ export function canEquip(player, item) {
   if (item === '') return true;
   if (!player) return false;
   if (item === 'heal') return player.role === 'priest';
+  if (item === 'staff') return player.role === 'wizard' && (player.durability?.staff ?? 0) > 0;
   if (FOOD_IDS.includes(item)) return (player.inventory?.[item] ?? 0) > 0;
   return TOOLS.has(item) && (player.durability?.[item] ?? 0) > 0;
 }

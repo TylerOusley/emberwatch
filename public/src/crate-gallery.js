@@ -31,7 +31,7 @@ function tileList(){
   const list=$('item-list');list.replaceChildren();tiles.clear();
   const items=CRATE_ITEMS.filter(item=>ui.filter==='all'||item.tier===ui.filter);$('collection-count').textContent=`${items.length} ${items.length===1?'design':'designs'}`;
   for(const item of items){const button=document.createElement('button');button.type='button';button.className='item-tile';button.dataset.item=item.id;button.style.setProperty('--tier',CRATE_TIERS[item.tier].color);button.setAttribute('aria-label',item.name);button.setAttribute('aria-pressed',String(item.id===ui.item));
-    const img=new Image();img.alt='';img.src=`/assets/crate-items/${item.id}.png`;img.loading='lazy';button.append(img);
+    const img=new Image();img.alt='';img.src=item.image;img.loading='lazy';button.append(img);
     const title=document.createElement('strong');title.textContent=item.name;const tier=document.createElement('small');tier.textContent=CRATE_TIERS[item.tier].label.toUpperCase();button.append(title,tier);button.addEventListener('click',()=>selectItem(item.id));list.append(button);tiles.set(item.id,button);
   }
 }

@@ -24,7 +24,7 @@ test('mixed barracks recruitment shares slots, charges distinct costs and reject
   const f = fixture(), initial = f.owner.wallet;
   for (const type of Object.keys(TROOP_TYPES)) { const guard = f.recruit(type); assert.equal(guard.unitType, type); assert.equal(guard.tool, TROOP_TYPES[type].tool); }
   assert.equal(f.owner.wallet, initial - 35 - 45 - 70);
-  assert.throws(() => f.recruit('archer'), /three recruited/);
+  assert.throws(() => f.recruit('archer'), /3 recruited/);
   const other = fixture(), before = structuredClone(other.plot.storage);
   assert.throws(() => other.recruit('__proto__'), /Choose a swordsman/);
   assert.deepEqual(other.plot.storage, before); assert.equal(other.owner.wallet, 10000);
@@ -37,7 +37,7 @@ test('barracks upgrades add six combined slots while each soldier trains separat
   for (let i = 1; i < 6; i++) f.recruit(i % 2 ? 'archer' : 'musketeer');
   assert.equal(new Set(f.village.guards.map(g => g.slot)).size, 6);
   assert.equal(new Set(f.village.guards.map(g => `${g.x},${g.z}`)).size, 6);
-  assert.throws(() => f.recruit('sword'), /six recruited/);
+  assert.throws(() => f.recruit('sword'), /6 recruited/);
   swordsman.hp = 90;
   careAction(f.sim, f.village, f.owner, { kind: 'upgradeTroop', plotId: f.plot.id, guardId: swordsman.id });
   assert.equal(swordsman.hp, 150); assert.equal(swordsman.maxHp, 220); assert.equal(swordsman.damage, 18);

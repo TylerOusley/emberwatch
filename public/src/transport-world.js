@@ -10,7 +10,7 @@ export function createTransportWorld(scene) {
   const horseResources = createHorseResources();
   const box = new THREE.BoxGeometry(1, 1, 1), round = new THREE.CylinderGeometry(1, 1, 1, 10), soft = new THREE.IcosahedronGeometry(1, 1);
   const material = color => new THREE.MeshStandardMaterial({ color, roughness: .92, flatShading: true });
-  const m = { coat: material('#8b5b3e'), dark: material('#342d26'), white: material('#d7c7a5'), leather: material('#6b382b'), wood: material('#987144'), iron: material('#404c4b'), cargo: material('#a99567') };
+  const m = { coat: material('#8b5b3e'), dark: material('#342d26'), white: material('#d7c7a5'), leather: material('#6b382b'), wood: material('#987144'), iron: material('#404c4b'), cargo: material('#a99567'), canvas: material('#729d99') };
   const merchantStall = BUILDINGS.find(building => building.id === 'merchant');
   let time = 0, merchantVisit = null, disposed = false;
   function part(parent, geometry, mat, position, scale) {
@@ -40,6 +40,17 @@ export function createTransportWorld(scene) {
     }
     const cargo = new THREE.Group(); group.add(cargo);
     for (const side of [-1, 1]) part(cargo, soft, m.cargo, [side * .39, 1, 0], [.4, .46, .7]);
+    const reinforcement = new THREE.Group(); group.add(reinforcement);
+    for (const side of [-1, 1]) for (const z of [-.76, .76]) part(reinforcement, box, m.iron, [side * 1, 1.16, z], [.08, 1.03, .13]);
+    for (const z of [-.76, .76]) part(reinforcement, box, m.iron, [0, .61, z], [2, .11, .16]);
+    const stretchers = [];
+    for (const side of [-1, 1]) {
+      const stretcher = new THREE.Group(); group.add(stretcher);
+      part(stretcher, box, m.canvas, [side * .46, 1.04, 0], [.75, .09, 1.9]);
+      for (const rail of [-1, 1]) part(stretcher, box, m.wood, [side * .46 + rail * .4, 1.08, 0], [.06, .07, 2.2]);
+      part(stretcher, box, m.white, [side * .46, 1.12, -.68], [.55, .14, .35]);
+      stretchers.push(stretcher);
+    }
     // A real rear storage chest replaces the old floating-cargo impression.
     const chest = new THREE.Group(); chest.position.set(0, .86, -1.18); group.add(chest);
     part(chest, box, m.dark, [0, .25, 0], [1.25, .48, .62]);
@@ -47,7 +58,7 @@ export function createTransportWorld(scene) {
     const lidPivot = new THREE.Group(); lidPivot.position.set(0, .52, -.28); chest.add(lidPivot);
     part(lidPivot, box, m.wood, [0, .06, .28], [1.16, .12, .62]);
     part(lidPivot, box, m.iron, [0, .08, .28], [.12, .15, .66]);
-    group.userData = { wheels, cargo, chest, lidPivot, lidOpen: 0 }; root.add(group); return group;
+    group.userData = { wheels, cargo, chest, lidPivot, lidOpen: 0, reinforcement, stretchers }; root.add(group); return group;
   }
   function sync(map, entities, make, dt, animate, renderedRiders) {
     const ids = new Set();
@@ -100,7 +111,9 @@ export function createTransportWorld(scene) {
       }, renderedRiders);
       sync(carts, state.carts, cartMesh, dt, (mesh, cart, distance) => {
         mesh.userData.wheels.forEach(wheel => { wheel.rotation.x += distance * .32; });
-        mesh.userData.cargo.visible = (cart.weight ?? 0) > 0;
+        mesh.userData.cargo.visible = (cart.weight ?? 0) > 0 && !(cart.rescuePlayerIds?.length > 0);
+        mesh.userData.reinforcement.visible = (cart.upgradeLevel ?? 0) >= 1;
+        mesh.userData.stretchers.forEach((stretcher, slot) => { stretcher.visible = (cart.rescuePlayerIds?.length ?? 0) > slot; });
         const target = cart.id === openCartId ? -1.15 : 0;
         mesh.userData.lidOpen += (target - mesh.userData.lidOpen) * (1 - Math.exp(-10 * dt));
         mesh.userData.lidPivot.rotation.x = mesh.userData.lidOpen;

@@ -19,7 +19,47 @@ export function ensureCrateEffects(village, player) {
   }
   const protection = player.phoenixProtectedUntil;
   if (!Number.isFinite(protection) || protection <= now || protection > now + CRATE_RULES.phoenixProtectionSeconds + EPSILON) player.phoenixProtectedUntil = 0;
+  if (typeof player.emberWardUsedVillage !== 'string') player.emberWardUsedVillage = '';
+  if (!Number.isSafeInteger(player.emberWardUsedDay) || player.emberWardUsedDay < 0) player.emberWardUsedDay = 0;
+  if (!Number.isFinite(player.emberWard) || player.emberWard < 0) player.emberWard = 0;
+  player.emberWard = Math.min(CRATE_RULES.emberWard, player.emberWard);
+  if (!Number.isFinite(player.emberWardUntil) || player.emberWardUntil <= now || player.emberWardUntil > now + CRATE_RULES.emberWardSeconds + EPSILON || player.emberWardVillage !== villageIdOf(village)) {
+    player.emberWard = 0; player.emberWardUntil = 0;
+  }
   return player;
+}
+
+export function emberWardStatus(village, player) {
+  const now = clockOf(village), day = dayOf(village), villageId = villageIdOf(village);
+  const equipped = equippedItem(player, 'utility')?.emberWard === true;
+  const used = player?.emberWardUsedVillage === villageId && player?.emberWardUsedDay >= day;
+  const active = player?.emberWardVillage === villageId && Number.isFinite(player?.emberWardUntil) && player.emberWardUntil > now && player.emberWardUntil <= now + CRATE_RULES.emberWardSeconds + EPSILON;
+  return { equipped, available: equipped && !used && !active && !!day && !!villageId && village?.phase === 'night' && village?.status === 'active' && player?.online === true && !player?.downed && player?.hp > 0,
+    used, remaining: active ? Math.max(0, Math.min(CRATE_RULES.emberWard, Number(player.emberWard) || 0)) : 0, until: active ? player.emberWardUntil : 0 };
+}
+
+export function activateEmberWard(village, player) {
+  ensureCrateEffects(village, player);
+  if (!equippedItem(player, 'utility')?.emberWard) throw new Error('Equip the Heart of Emberwatch in your utility slot for this village.');
+  if (!player.online || player.downed || !(player.hp > 0) || village.status !== 'active' || village.phase !== 'night') throw new Error('Use Ember Ward while alive during an active village night.');
+  if (!Number.isFinite(player.x) || !Number.isFinite(player.z)) throw new Error('Your position must be available before activating Ember Ward.');
+  const now = clockOf(village), day = dayOf(village), villageId = villageIdOf(village);
+  if (!day || !villageId || player.emberWardUsedVillage === villageId && player.emberWardUsedDay >= day) throw new Error('Your Heart has already protected this village tonight.');
+  if (player.emberWardUntil > now) throw new Error('An Ember Ward already protects you. Wait for it to expire.');
+  let protectedResidents = 0;
+  for (const ally of Object.values(village.players ?? {})) {
+    if (!ally.online || ally.downed || !(ally.hp > 0) || !Number.isFinite(ally.x) || !Number.isFinite(ally.z) || Math.hypot(ally.x - player.x, ally.z - player.z) > CRATE_RULES.emberWardRadius) continue;
+    ensureCrateEffects(village, ally);
+    // A depleted ward still occupies its full ten-second window: another
+    // Heart cannot refill it, increase it or extend its expiry.
+    if (ally.emberWardUntil > now) continue;
+    ally.emberWard = CRATE_RULES.emberWard;
+    ally.emberWardUntil = now + CRATE_RULES.emberWardSeconds;
+    ally.emberWardVillage = villageId;
+    protectedResidents++;
+  }
+  player.emberWardUsedVillage = villageId; player.emberWardUsedDay = day;
+  return protectedResidents;
 }
 
 // The caller checks this BEFORE absorbDamage so an Ember's brief protection
@@ -40,9 +80,12 @@ export function crateEnemyDamage(village, player, damageAfterShield) {
   if (!Number.isFinite(damageAfterShield) || damageAfterShield <= 0 || crateProtectionActive(village, player)) return 0;
   const armor = ['head', 'body', 'feet'].reduce((sum, slot) => sum + (equippedItem(player, slot)?.reduction || 0), 0);
   const reduced = damageAfterShield * (1 - Math.min(CRATE_RULES.armorCap, Math.max(0, armor)));
-  const absorbed = Math.min(reduced, player.lastStandWard);
+  const emberAbsorbed = Math.min(reduced, player.emberWard);
+  player.emberWard = Math.max(0, player.emberWard - emberAbsorbed);
+  const remaining = reduced - emberAbsorbed;
+  const absorbed = Math.min(remaining, player.lastStandWard);
   player.lastStandWard = Math.max(0, player.lastStandWard - absorbed);
-  return Math.max(0, reduced - absorbed);
+  return Math.max(0, remaining - absorbed);
 }
 
 // Call only after subtracting enemy damage from HP. The ward never reverses
@@ -67,5 +110,6 @@ export function crateRespawnEffects(player) {
   // so granting a new role or reconnecting cannot reset Last Stand's use.
   player.crateEquipment = { head: '', body: '', feet: '', utility: '' };
   player.lastStandWard = 0; player.lastStandWardUntil = 0;
+  player.emberWard = 0; player.emberWardUntil = 0;
   breakCrateProtection(player);
 }

@@ -23,11 +23,13 @@ export class PoseBuffer {
     if (previous && receivedAtMs < previous.time) return;
     const frame = {
       x: entity.x, z: entity.z,
+      ...(Number.isFinite(entity.y) ? { y: entity.y } : {}),
+      ...(typeof entity.grounded === 'boolean' ? { grounded: entity.grounded } : {}),
       yaw: Number.isFinite(entity.yaw) ? angle(entity.yaw) : previous?.yaw ?? 0,
       anim: typeof entity.anim === 'string' ? entity.anim : 'idle',
       time: receivedAtMs,
     };
-    if (previous && (receivedAtMs - previous.time > RESET_GAP_MS || distance(previous, frame) > TELEPORT_DISTANCE)) this.clear();
+    if (previous && (receivedAtMs - previous.time > RESET_GAP_MS || distance(previous, frame) > TELEPORT_DISTANCE || Number.isFinite(previous.y) && Number.isFinite(frame.y) && Math.abs(frame.y - previous.y) > TELEPORT_DISTANCE)) this.clear();
     if (this.frames.at(-1)?.time === receivedAtMs) this.frames.pop();
     this.frames.push(frame);
     if (this.frames.length > MAX_SNAPSHOTS) this.frames.shift();
@@ -55,6 +57,8 @@ export class PoseBuffer {
     return {
       x: a.x + (b.x - a.x) * t,
       z: a.z + (b.z - a.z) * t,
+      ...(Number.isFinite(a.y) && Number.isFinite(b.y) ? { y: a.y + (b.y - a.y) * t } : Number.isFinite(b.y ?? a.y) ? { y: b.y ?? a.y } : {}),
+      ...(typeof a.grounded === 'boolean' || typeof b.grounded === 'boolean' ? { grounded: a.grounded === true && b.grounded === true } : {}),
       yaw: angle(a.yaw + angle(b.yaw - a.yaw) * t),
       anim: speed === 0 && locomotion.has(a.anim) ? 'idle' : a.anim,
       speed,
@@ -69,6 +73,6 @@ export class PoseBuffer {
   }
 
   hold(frame) {
-    return { x: frame.x, z: frame.z, yaw: frame.yaw, anim: locomotion.has(frame.anim) ? 'idle' : frame.anim, speed: 0 };
+    return { x: frame.x, z: frame.z, ...(Number.isFinite(frame.y) ? { y: frame.y } : {}), ...(typeof frame.grounded === 'boolean' ? { grounded: frame.grounded } : {}), yaw: frame.yaw, anim: locomotion.has(frame.anim) ? 'idle' : frame.anim, speed: 0 };
   }
 }

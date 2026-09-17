@@ -8,7 +8,7 @@ import { createOrganicTreeGeometry, createWheatGeometry, createMountainGeometry,
 // material relief are visual only; the shared playable map remains authoritative.
 export function createWorld(scene) {
   const root = new THREE.Group(); root.name = 'Emberwatch • world'; scene.add(root);
-  const resources = new Map(), wind = [], torchFixtures = [];
+  const resources = new Map(), wind = [], torchFixtures = [], civicRoofs = [];
   const resourceEffects=createResourceEffects(root);
   const rng = seeded(9153);
   const color = (c) => new THREE.Color(c);
@@ -174,8 +174,9 @@ export function createWorld(scene) {
     for(const dx of [-1,1])for(const dz of [-1,1])box(M.stoneLight,x+dx*(w/2-.22),h/2,z+dz*(d/2-.20),.48,h,.45);
     for(let k=0;k<3;k++){const a=x-w/2+.5+k*(w-1)/2;box(M.stoneLight,a,h+.7,z+d/2,.75,.85,.75);box(M.stoneLight,a,h+.7,z-d/2,.75,.85,.75);}
     if(roof){
-      const rg=new THREE.ConeGeometry(w*.86,3,4);rg.rotateY(Math.PI/4);mesh(rg,M.roof,root,x,h+2.1,z,1,1,d/w);
-      cylinder(M.woodDark,x,h+4.1,z,.065,1.4);banner(x+.45,h+4.0,z,1,.72,M.fabric);
+      const roofGroup=new THREE.Group();roofGroup.name=`civic-roof-${x<0?'ballista':'trebuchet'}`;root.add(roofGroup);civicRoofs.push({group:roofGroup,projectId:x<0?'ballista':'trebuchet'});
+      const rg=new THREE.ConeGeometry(w*.86,3,4);rg.rotateY(Math.PI/4);mesh(rg,M.roof,roofGroup,x,h+2.1,z,1,1,d/w);
+      mesh(cylinderG,M.woodDark,roofGroup,x,h+4.1,z,.065,1.4,.065);roofGroup.add(banner(x+.45,h+4.0,z,1,.72,M.fabric));
     }
     for(const dz of [-1,1]){box(M.woodDark,x,h*.55,z+dz*(d/2+.09),.45,1.45,.09);box(M.glass,x,h*.55,z+dz*(d/2+.15),.14,1.12,.05);}
   }
@@ -540,6 +541,7 @@ export function createWorld(scene) {
   let previousNight=-1;
   function update(time,nightAmount=0,state={}){
     plotsWorld.update(state,time);details.update(time);
+    for(const {group,projectId} of civicRoofs)group.visible=!(state.civic?.completed??[]).includes(projectId);
     const t=time,night=THREE.MathUtils.clamp(nightAmount,0,1);
     for(const item of wind){if(item.o.visible)item.o.rotation.z=Math.sin(t*1.4+item.phase)*item.amount;}
     if(Math.abs(night-previousNight)>.025){M.glass.emissiveIntensity=.35+night*1.3;previousNight=night;}

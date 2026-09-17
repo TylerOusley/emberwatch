@@ -67,6 +67,20 @@ test('a player can walk continuously down the complete mine route and back to th
   assert.equal(groundHeight(player.x, player.z), 0);
 });
 
+test('the irregular side workings enlarge saved chamber floors and remain connected to the main route', () => {
+  const original=CAVE_AREAS.filter(area=>area.kind!=='alcove'),branches=CAVE_AREAS.filter(area=>area.kind==='alcove');
+  assert.equal(branches.length,10);
+  for(const area of original)for(let x=area.x-area.w/2+.6;x<area.x+area.w/2-.5;x+=1.5)for(let z=area.z-area.d/2+.6;z<area.z+area.d/2-.5;z+=1.5){
+    assert.ok(caveAreaAt(x,z),'a saved miner never loses their existing floor');
+    assert.ok(canStand(x,z),'expansion introduces no blockers on an old chamber floor');
+  }
+  const miner={id:'branch-surveyor',x:0,z:-151,hp:100,anim:'idle'};
+  for(const area of branches){
+    for(let tick=0;tick<3600&&distance(miner,area)>.2;tick++)stepNpcNavigation(miner,area,3,.05,[miner]);
+    assert.ok(distance(miner,area)<.3,`connected floor reaches ${area.id}`);
+  }
+});
+
 test('the cave has descending depth bands and keeps normal surface ground level outside its footprint', () => {
   const centers = [{ x: 0, z: -151, height: -3, tier: 'upper' }, { x: 16, z: -182, height: -8, tier: 'middle' }, { x: 0, z: -217, height: -14, tier: 'deep' }];
   for (const point of centers) {

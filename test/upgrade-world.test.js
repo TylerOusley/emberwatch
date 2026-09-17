@@ -38,6 +38,24 @@ test('mineral faces retain deterministic embedded ore seams with continuous shar
  same.dispose();
 });
 
+test('Arcane Academy and elemental tower models stay bounded, preserve entrances and show actual upgrade changes',()=>canvasDocument(()=>{
+ const scene=new THREE.Scene(),world=createPlotsWorld(scene),rows=[{id:PLOTS[0].id,ownerId:'wizard',building:'arcane_academy',level:1,hp:700},{id:PLOTS[1].id,ownerId:'wizard',building:'wizard_tower',level:1,hp:800}],state={id:'wizard-models',clock:0,plots:rows};
+ world.update(state,0);scene.updateMatrixWorld(true);
+ for(const row of rows){
+  const model=scene.getObjectByName(`plot-${row.id}`),stats=meshStats(model);assert.ok(stats.meshes<25);assert.ok(stats.instances>50);
+  const local=model.clone();local.position.set(0,0,0);local.rotation.set(0,0,0);const bounds=new THREE.Box3().setFromObject(local),site=PLOTS.find(p=>p.id===row.id),quarter=Math.abs(Math.sin(site.yaw??0))>.5;
+  assert.ok(bounds.min.x>=-(quarter?site.d:site.w)/2-.15&&bounds.max.x<=(quarter?site.d:site.w)/2+.15);
+  assert.ok(bounds.min.z>=-(quarter?site.w:site.d)/2-.15&&bounds.max.z<=(quarter?site.w:site.d)/2+.15);
+  const origin=model.localToWorld(new THREE.Vector3(0,1.3,6.1)),direction=new THREE.Vector3(0,0,-1).transformDirection(model.matrixWorld);
+  assert.equal(new THREE.Raycaster(origin,direction,0,1.5).intersectObject(model,true).length,0,'front gate lane stays open');
+ }
+ const first=scene.getObjectByName(`plot-${rows[1].id}`);assert.ok(first.getObjectByName('plot-sphere-ember'));
+ rows[1].level=2;world.update(state,1);const upgraded=scene.getObjectByName(`plot-${rows[1].id}`);
+ assert.notEqual(first,upgraded);assert.ok(upgraded.getObjectByName('plot-sphere-storm'));assert.ok(upgraded.getObjectByName('plot-ring-gold'));
+ world.update(state,2);assert.equal(scene.getObjectByName(`plot-${rows[1].id}`),upgraded,'steady snapshots reuse the static meshes');
+ world.dispose();assert.equal(scene.children.length,0);
+}));
+
 test('upgraded defenses and production tiers develop distinct geometry without changing plot footprints or entry lanes',()=>canvasDocument(()=>{
  const scene=new THREE.Scene(),world=createPlotsWorld(scene),types=['barracks','church','archer_tower','cannon','mine','tree_farm','wheat_farm'];
  const rows=types.map((building,i)=>({id:PLOTS[i].id,ownerId:'owner',building,level:1,hp:100,maxHp:100})),state={id:'visual-upgrades',clock:0,plots:rows};

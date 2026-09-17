@@ -1,5 +1,25 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 27 implemented expansion
+
+Six role trees: Villager packing/provisions; Guard health/shield/command; Priest healing/revival; Manager logistics/staffing; Tinker efficiency/repair; Wizard focus/frost/lightning. Lessons are resident-per-village and remain learned when inactive; only the current role grants bonuses. Academy commission is 25g per lesson. All material costs round up, so batch crafting realizes fractional Tinker savings without free core ingredients. Wizards receive one starter staff per resident; role cycling cannot refill it.
+
+Manager personal cap8→10, wage1g/60 worked seconds. Other roles remain5 and1g/30 seconds. Paid wage buckets survive role changes; surplus workers pause while retaining equipment/cargo. Stone/iron worker tool yield multipliers are1.25/1.5 with deterministic fractional remainder, one durability per completed harvest. Maintenance requires a chosen owned store and a capped wallet budget.
+
+Wizard tower level1:34 damage,24m,3s,1sulfur. Level2 lightning:42 base, at most3 targets,5m between targets,0.65 damage falloff, same sulfur/cooldown. Cannon and archers retain their distinct roles. Guard command gives up to2 additional barracks slots beyond3/6.
+
+Carriage base1,000, upgraded2,000; upgrade750g+40timber+15iron. Loaded road speed12.6m/s versus10.5 normal horse speed. Two separate rescue seats preserve a single downed player identity, inventory, revival and respawn choices. Church handoff uses ordinary paid treatment and bed capacity. Freight withdrawals retain shortage-request provenance.
+
+Village projects: reinforcement300timber+500stone+5,000g grants+1,200 gate/+1,000keep health; mason400timber+600stone+100iron+10,000g; ballista1,000timber+500stone+300iron+15,000g; trebuchet1,500timber+2,000stone+500iron+30,000g. One active project; every contribution is committed, progress/contributors saved. Shared depot separately supplies mason wages1g/60seconds and timber/stone repairs; ballista65damage/5s/40m/1arrow; trebuchet100damage/12s/52m/5m burst/5stone+1coal. Existing static wall colliders remain intact; projects strengthen the gate/keep and add real gatehouse weapons.
+
+Ruins retain plot identity, ownership, levels, goods and paid troops. Any dwarf uses one timber+stone per hammer swing from transferable pack supplies or shared stock. Reopening requires35% structural health; no repeated starter stock. Intentional owner demolition still clears the building.
+
+Jump physics are authoritative and shared with prediction (7m/s impulse,20m/s² gravity), with matching low-log and stepped-rock collision. Saved mineral identities/positions and original cave heights remain compatible with expanded side workings and vaulted geometry.
+
+Crate upgrade odds:95/5 Basic/Rare;90/10 Rare/Epic;80/20 Epic/Legendary;99/1 Legendary/Godly. One roll, one item, no cascading. Heart of Emberwatch is permanent utility gear, only actual Legendary crates award it. Once per village night it grants50 damage absorption for10seconds to wearer and living allies within8m. Active wards cannot stack/refill/extend. Use persists through reconnect, equipment changes and role switches. No healing, revival or building protection.
+
+Tavern releases all four new games together. Blackjack dealer stands on all17s, including soft17, natural pays3:2 with whole-gold rounding; poker ante+matching play total<=10,000. Saved decks/hole cards are private. Winnings are escrowed, moves have durable UUID receipts, abandoned hands auto-stand/fold at120 village seconds. Displayed rules/tables are authoritative shared definitions.
+
 ## Build 26: workers continue with an offline owner
 
 Tyler requested that leaving a village should not stop the owner's workers when other players remain active there. All unpaused personal hires, plot gatherers and transporters therefore work while at least one resident is online in the same active village. Work and market queue eligibility do not depend on owner presence. Orders, identity, progress and cargo remain intact when the owner disconnects.

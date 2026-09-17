@@ -151,7 +151,7 @@ function mergeRigid(root, owned) {
   }
 }
 
-function makeTool(id, tier=1) {
+function makeTool(id, tier=1, element='fire') {
   if(id==='musket')return createMusketModel();
   const g = new THREE.Group();
   const wood = material(0x946038), grain=material(0xc69459), grip=material(0x49372c);
@@ -199,7 +199,8 @@ function makeTool(id, tier=1) {
     mesh(g,'round',material(0xc6863f),0,.08,.03,.17,.1,.32);
     for(let i=0;i<3;i++) mesh(g,'box',material(0xf1c580),0,.17,-.10+i*.11,.19,.018,.02,0,.3,0);
   } else if (id === 'heal' || id === 'staff') {
-    const brass=material(0xc3a360,.45,.5), glow=material(0x97eac6,.1,.4,0x438d6b);
+    const tint=element==='lightning'?[0xc4aeff,0x7753ce]:element==='frost'?[0x9de8ff,0x3b8bae]:[0xffb064,0xd85c20];
+    const brass=material(0xc3a360,.45,.5), glow=id==='staff'?material(tint[0],.1,.4,tint[1]):material(0x97eac6,.1,.4,0x438d6b);
     mesh(g,'cylinder',wood,0,.26,0,.031,1.48,.031);
     mesh(g,'cylinder',brass,0,.81,0,.045,.14,.045);
     mesh(g,'ring',brass,0,1.02,0,.16,.2,.16);
@@ -326,7 +327,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   const group = new THREE.Group();
   const visual = pivot(group);
   const owned = new Set();
-  let rig, clothing, clothingColor=null, role=kind, toolId='', toolTier=1, heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, previousShot, disposed=false;
+  let rig, clothing, clothingColor=null, role=kind, toolId='', toolTier=1, toolElement='fire', heldTool, backpackTier=0, backpack=null, attackClock=9, previousAttack=false, previousShot, disposed=false;
   let walkPhase=(Number(seed)||1)*1.173, idleTime=0, downAmount=0, moveAmount=0, motionSpeed=0, spellAmount=0, mountAmount=0, carryAmount=0, turnAmount=0;
   const actionOffsets = new Float64Array(12);
   const leftStep=new Float64Array(3),rightStep=new Float64Array(3),stepScratch=new Float64Array(3);
@@ -401,7 +402,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     rig={body,pelvis,head,leftArm,rightArm,leftFore,rightFore,hand,leftLeg,rightLeg,leftShin,rightShin,leftFoot,rightFoot,zombie};
     for(const [name,joint] of Object.entries(rig))if(joint?.isBone)joint.name=name;
     attackClock=9; previousAttack=false; previousShot=undefined; spellAmount=0;
-    const clothes=material(role==='guard'?0x364b5e:role==='priest'?0xb6ab91:role==='zombie'?0x50584f:0x4d6456);
+    const clothes=material(role==='guard'?0x364b5e:role==='priest'?0xb6ab91:role==='wizard'?0x705281:role==='manager'?0x44667a:role==='tinker'?0x88633e:role==='zombie'?0x50584f:0x4d6456);
     const actualSkin=zombie?material([0x87917b,0x7d8a79,0x93917a,0x738779][variation],0,.92):skin;
     const palette={skin:actualSkin,hair:beard,cloth:clothes,leather:material(0x66503a),iron,brass,dark};
     buildBody(visual,rig,{skin:actualSkin,own:owned});
@@ -424,7 +425,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
       mergeRigid(shield,owned);
     }
     toolId=''; heldTool=null;
-    if(!zombie) setTool(role==='priest'?'heal':'sword');
+    if(!zombie) setTool(role==='priest'?'heal':role==='wizard'?'staff':'sword');
     backpack=null;
     if(backpackTier>0&&!zombie){backpack=makeBackpack(backpackTier,role==='guard');rig.body.add(backpack);}
   }
@@ -432,13 +433,14 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
   function setTool(tool) {
     let id=typeof tool==='object'&&tool ? tool.id : tool;
     const tier=typeof tool==='object'&&tool ? Number(tool.tier)||1 : 1;
+    const element=typeof tool==='object'&&['fire','frost','lightning'].includes(tool?.element)?tool.element:'fire';
     id=id||'';
-    if(rig.zombie || (id===toolId && tier===toolTier)) return;
+    if(rig.zombie || (id===toolId && tier===toolTier && (id!=='staff'||element===toolElement))) return;
     removeHeldTool();
-    toolId=id; toolTier=tier;
+    toolId=id; toolTier=tier; toolElement=element;
     const shield=rig.leftFore.getObjectByName('guard-shield');
     if(shield)shield.visible=id!=='bow'&&id!=='musket';
-    heldTool=makeTool(id,tier);
+    heldTool=makeTool(id,tier,element);
     heldTool.name=`held-${id || 'empty'}`;
     if(id==='sword' || UPRIGHT_TOOLS.has(id)) {
       // Align every shaft with the finger curl, then offset the actual grip
@@ -455,7 +457,7 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
     if(id!=='musket')mergeRigid(heldTool,owned);
   }
   function setRole(next) {
-    if(!['villager','guard','priest','zombie'].includes(next) || next===role) return;
+    if(!['villager','guard','priest','manager','tinker','wizard','zombie'].includes(next) || next===role) return;
     const previousTool=toolId, previousTier=toolTier;
     role=next; build();
     if(previousTool && next!=='zombie') setTool({id:previousTool,tier:previousTier});
@@ -479,10 +481,10 @@ export function createCharacter(kind='villager', seed=1, { equipmentPreview=fals
 
   function update(dt,time, options={}) {
     if(disposed) return;
-    const {moving=false,speed=5.4,turnRate=0,attack=false,shot,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,backpackTier:requestedBackpackTier}=options;
+    const {moving=false,speed=5.4,turnRate=0,attack=false,shot,downed=false,tool,channeling=false,mounted=false,carrying=false,tier=1,staffElement='fire',backpackTier:requestedBackpackTier}=options;
     dt=clamp(Number(dt)||0,0,.1);
     idleTime+=dt;
-    if(tool!==undefined) setTool(typeof tool==='object'?tool:{id:tool,tier});
+    if(tool!==undefined) setTool(typeof tool==='object'?tool:{id:tool,tier,element:staffElement});
     if(requestedBackpackTier!==undefined)setBackpackTier(requestedBackpackTier);
     if(heldTool) heldTool.visible=!mounted&&!carrying;
     mountAmount+=((mounted&&!downed?1:0)-mountAmount)*(1-Math.exp(-dt*12));

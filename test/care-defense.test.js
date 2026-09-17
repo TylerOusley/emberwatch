@@ -115,7 +115,7 @@ test('barracks recruitment is finite, limited to three, and removed with the bui
   for (let i = 0; i < 3; i++) careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id });
   assert.equal(owner.wallet, 500 - RECRUIT.gold * 3);
   assert.equal(plot.storage.iron, 100 - RECRUIT.resources.iron * 3);
-  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /three recruited/);
+  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /3 recruited/);
   for (const guard of village.guards) {
     assert.ok(canStand(guard.x, guard.z, .4, plotSolids(village.plots)), 'recruits start outside the building');
     assert.ok(guardPathFor(village, guard).some(p => p.x === 0 && p.z === 25), 'marching route passes through the gate');
@@ -211,7 +211,7 @@ test('fallen recruits retain their paid slots, wait for wheat, and respawn witho
   const troop = village.guards[0], paidWallet = owner.wallet;
   troop.hp = 0;
   careTick(sim, village, .05);
-  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /three recruited/);
+  assert.throws(() => careAction(sim, village, owner, { kind: 'recruitGuard', plotId: plot.id }), /3 recruited/);
   assert.equal(owner.wallet, paidWallet);
   let waiting = careSnapshot(village).guardReplacements[0];
   assert.equal(waiting.remaining, 30); assert.equal(waiting.waitingForWheat, true);
@@ -232,7 +232,7 @@ test('fallen recruits retain their paid slots, wait for wheat, and respawn witho
   assert.equal(careSnapshot(village).guardReplacements.length, 0);
 });
 
-test('barracks never fill unpaid slots and destroyed or converted barracks cancel replacements', () => {
+test('barracks never fill unpaid slots; ruins pause replacements and conversion ends them', () => {
   for (const removal of ['destroy', 'convert']) {
     const { sim, village, plot, owner } = fixture('barracks');
     owner.role = 'guard'; plot.storage.wheat = 30;
@@ -243,7 +243,8 @@ test('barracks never fill unpaid slots and destroyed or converted barracks cance
     if (removal === 'destroy') plot.hp = 0;
     else plot.building = 'house';
     village.clock += 31; careTick(sim, village, .05);
-    assert.equal(village.guards.length, 0); assert.equal(plot.storage.wheat, 30);
+    assert.equal(village.guards.length, removal === 'destroy' ? 1 : 0); assert.equal(plot.storage.wheat, 30);
+    if (removal === 'destroy') assert.equal(village.guards[0].hp, 0, 'a ruin preserves the paid casualty without replacing it yet');
     assert.equal(careSnapshot(village).guardReplacements.length, 0);
   }
 });

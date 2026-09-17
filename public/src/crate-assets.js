@@ -13,7 +13,7 @@ export function createCrateAsset(id,{tool='pickaxe',backpackTier=0}={}) {
   const item=crateItem(id);if(!item)throw new Error('Choose an item from the artwork catalogue.');
   if(!['axe','pickaxe','scythe'].includes(tool))throw new Error('Choose an axe, pickaxe or scythe.');
   if(!Number.isInteger(backpackTier)||backpackTier<0||backpackTier>3)throw new Error('Choose a backpack tier from 0 to 3.');
-  const model=item.slot==='head'?createHeadwear(id):['body','feet'].includes(item.slot)?createArmor(id):item.slot==='utility'?createUtility(id):createKit(id,{tool});
+  const model=item.slot==='head'?createHeadwear(id):['body','feet'].includes(item.slot)?createArmor(id):item.slot==='utility'?createUtility(id):createKit(id==='steadfast_crew_kit'?'prospectors_kit':id,{tool});
   const root=new THREE.Group();root.name=`crate-art-${id}`;root.userData.itemId=id;root.userData.artworkOnly=true;
   const mounts=[],hidden=[];let fitted=null,disposed=false;
   for(const part of model.parts){

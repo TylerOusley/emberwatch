@@ -104,6 +104,33 @@ async function captureEnvironmentPrograms(lighting) {
   }
 }
 
+async function captureUpdatePrograms(lighting){
+  const {createCivicWorld}=await import('../public/src/civic-world.js'),{createMagicWorld}=await import('../public/src/magic-world.js'),{createPlotsWorld}=await import(sceneModule('plots-world.js')),{PLOTS}=await import('../shared/world.js');
+  const scene=new THREE.Scene(),previousDocument=globalThis.document;let civic,magic,plots;
+  try{
+    globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({},{get:()=>()=>{},set:()=>true})})};
+    civic=createCivicWorld(scene);plots=createPlotsWorld(scene);plots.update({id:'shader-review',clock:1,plots:[{id:PLOTS[0].id,ownerId:'review',building:'arcane_academy',hp:700,level:1},{id:PLOTS[1].id,ownerId:'review',building:'wizard_tower',hp:700,level:1},{id:PLOTS[2].id,ownerId:'review',building:'wizard_tower',hp:700,level:2}]},1);
+    globalThis.document=previousDocument;
+    magic=createMagicWorld(scene);magic.update({players:['fire','lightning'].map((element,index)=>({id:element,lastShot:{kind:'magic',id:`${element}:1`,at:1,element,segments:[{from:{x:index*2,z:0},to:{x:index*2,z:6}}]}}))},1);
+    const effects=scene.getObjectByName('arcane-projectiles');
+    const samples=[
+      ['civic-shared-obstacle-pbr',civic.obstacles.get('quarry-step-a')?.children.find(object=>object.isMesh)],
+      ['civic-contributions-canvas',civic.board.children.find(object=>object.material?.map)],
+      ['arcane-ember-instanced',scene.getObjectByName('plot-sphere-ember')],
+      ['arcane-storm-instanced',scene.getObjectByName('plot-sphere-storm')],
+      ['magic-fire-projectile',effects?.children.find(object=>object.isMesh)],
+      ['magic-lightning-chain',effects?.children.find(object=>object.isLine)]
+    ];
+    return samples.map(([name,object])=>{
+      if(!object?.material)throw new Error(`${name}: actual scene material missing.`);
+      const mat=object.material,library=mat.isMeshStandardMaterial?THREE.ShaderLib.standard:THREE.ShaderLib.basic,shader={vertexShader:library.vertexShader,fragmentShader:library.fragmentShader,uniforms:THREE.UniformsUtils.clone(library.uniforms)};
+      mat.onBeforeCompile(shader,{});
+      if(mat.userData.surface&&!shader.uniforms.surfaceAlbedo?.value?.isTexture)throw new Error(`${name}: actual PBR hook lost its texture.`);
+      return captureThreeProgram(name,shader,{...lighting,shaderType:mat.type,instancing:object.isInstancedMesh===true,instancingColor:Boolean(object.instanceColor),vertexColors:mat.vertexColors,vertexUvs:Boolean(mat.map),map:Boolean(mat.map),mapUv:'uv',doubleSided:mat.side===THREE.DoubleSide,flatShading:mat.flatShading===true,toneMapping:THREE.ACESFilmicToneMapping,outputColorSpace:THREE.SRGBColorSpace});
+    });
+  }finally{globalThis.document=previousDocument;magic?.dispose();civic?.dispose();plots?.dispose();scene.clear();}
+}
+
 export async function buildGraphicsShaderBundle() {
   const { createSurfaceMaterial, applySurface } = await import('../public/src/surface-materials.js');
   const { presentationVertex, presentationFragment } = await import('../public/src/render-pipeline.js');
@@ -140,6 +167,7 @@ export async function buildGraphicsShaderBundle() {
       programs.push(captureThreeProgram(`presentation-${toneMapping === THREE.NoToneMapping ? 'linear' : 'aces'}-srgb`, { vertexShader: presentationVertex, fragmentShader: presentationFragment }, { shaderType: 'ShaderMaterial', toneMapping, outputColorSpace: THREE.SRGBColorSpace }));
     }
     programs.push(...await captureEnvironmentPrograms(lighting));
+    programs.push(...await captureUpdatePrograms(lighting));
     return { threeRevision: THREE.REVISION, programs, runtimeHashes: { presentationVertex: hash(presentationVertex), presentationFragment: hash(presentationFragment) } };
   } finally { for (const material of materials) material.dispose(); }
 }

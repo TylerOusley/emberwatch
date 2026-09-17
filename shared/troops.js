@@ -5,7 +5,7 @@ export const TROOP_TYPES = Object.freeze({
   archer: Object.freeze({ name: 'Archer', tool: 'bow', gold: 45, resources: Object.freeze({ timber: 8, iron: 2 }), hp: 120, veteranHp: 160, damage: 18, veteranDamage: 25, range: 22, cooldown: 1.8, ammo: 'arrows', upgrade: Object.freeze({ gold: 55, resources: Object.freeze({ timber: 10, iron: 3 }) }) }),
   musketeer: Object.freeze({ name: 'Musketeer', tool: 'musket', gold: 70, resources: Object.freeze({ timber: 8, iron: 6 }), hp: 130, veteranHp: 180, damage: 48, veteranDamage: 64, range: 30, cooldown: 3.3, ammo: 'musket_ammo', upgrade: Object.freeze({ gold: 75, resources: Object.freeze({ timber: 6, iron: 8 }) }) })
 });
-export const barracksCapacity = plot => (plot?.level ?? 1) >= 2 ? 6 : 3;
+export const barracksCapacity = plot => ((plot?.level ?? 1) >= 2 ? 6 : 3) + Math.max(0, Math.min(2, Math.floor(plot?.troopCapacityBonus ?? 0)));
 export const troopType = guard => Object.hasOwn(TROOP_TYPES, guard?.unitType) ? guard.unitType : 'sword';
 export function troopStats(guard) {
   const definition = TROOP_TYPES[troopType(guard)], level = guard?.troopLevel >= 2 ? 2 : 1;

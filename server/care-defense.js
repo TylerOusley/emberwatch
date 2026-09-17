@@ -1,8 +1,9 @@
 import { canUsePlot, canUseChurchBed } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import * as world from '../shared/world.js';
-import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../shared/defense.js';
-import { TOOL_TIERS } from '../shared/content.js';
+import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, towerStats, bedCapacity } from '../shared/defense.js';
+import { roleSkills } from '../shared/skills.js';
+import { TOOL_TIERS, BUILDING_TYPES, transferableCount } from '../shared/content.js';
 import { TROOP_TYPES, barracksCapacity, troopType, troopStats } from '../shared/troops.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -69,6 +70,7 @@ function towerStatus(sim, village, plot) {
 
 export function ensureCare(village) {
   village.guards ??= [];
+  for (const plot of village.plots ?? []) if (plot.building === 'barracks') plot.troopCapacityBonus = roleSkills(village.players[plot.ownerId]).troopCapacityBonus;
   village.barracks ??= { wheat: 0 };
   // Earlier saves could contain several dead recruits in the same paid slot.
   // Keep living troops first, then the newest casualty per slot. Migration is
@@ -144,7 +146,7 @@ export function cancelTreatment(village, player) {
 
 function getPlot(village, player, id, allowed, ownerOnly = false, access = 'entrance') {
   const plot = (village.plots ?? []).find(item => item.id === id);
-  if (!usable(plot) || !allowed.includes(plot.building)) throw new Error('Choose a standing building of the right type.');
+  if (!(usable(plot) || access === 'repair' && plot?.ownerId && plot.building) || !allowed.includes(plot.building)) throw new Error('Choose a standing building of the right type.');
   const site = siteFor(plot);
   const reachable = access === 'bed' ? canUseChurchBed(player, site, plot) : access === 'repair' ? near(player, site) : canUsePlot(player, site, plot);
   if (!reachable) throw new Error(access === 'bed' ? 'Stand beside a church bed to begin treatment.' : access === 'repair' ? 'Move closer to that building.' : 'Visit this building’s entrance to use it.');
@@ -179,7 +181,8 @@ function troopSpawn(village, guard) {
 
 function tickGuardReplacements(sim, village) {
   const before = village.guards.length;
-  village.guards = village.guards.filter(guard => !guard.plotId || Boolean(barracksStock(village, guard)));
+  // A ruined barracks retains its paid roster and training until rebuilt.
+  village.guards = village.guards.filter(guard => !guard.plotId || village.plots.some(p => p.id === guard.plotId && p.building === 'barracks' && p.ownerId === guard.ownerId));
   let changed = before !== village.guards.length;
   for (let i = 0; i < village.guards.length; i++) {
     const guard = village.guards[i];
@@ -241,7 +244,7 @@ export function careAction(sim, village, player, action) {
   if (player.carryingId && !['dropPlayer', 'churchTreat'].includes(action.kind)) throw new Error('Put your companion down before doing that.');
   if (action.kind === 'carryPlayer') {
     const target = village.players[action.targetId];
-    if (!target?.online || !target.downed || target.id === player.id || target.carriedBy || target.bedPlotId || distance(player, target) > 3) throw new Error('Stand beside an uncarried downed dwarf.');
+    if (!target?.online || !target.downed || target.id === player.id || target.carriedBy || target.bedPlotId || target.rescueCartId || distance(player, target) > 3) throw new Error('Stand beside an uncarried downed dwarf.');
     player.carryingId = target.id; target.carriedBy = player.id;
     player.healing = null; target.healing = null;
     sim.inputs?.delete(target.id);
@@ -255,7 +258,7 @@ export function careAction(sim, village, player, action) {
   if (action.kind === 'churchTreat') {
     const plot = getPlot(village, player, action.plotId, ['church'], false, 'bed');
     const target = village.players[action.targetId ?? player.id];
-    if (!target?.online || target.bedPlotId) throw new Error('That dwarf is unavailable for treatment.');
+    if (!target?.online || target.bedPlotId || target.rescueCartId) throw new Error('That dwarf is unavailable for treatment.');
     if (target.id !== player.id && (player.carryingId !== target.id || !target.downed)) throw new Error('Carry the downed dwarf to the church first.');
     if (target.id === player.id && player.carryingId) throw new Error('Place your carried companion in a bed first.');
     if (!target.downed && target.hp >= target.maxHp) throw new Error('You are already healthy.');
@@ -281,7 +284,7 @@ export function careAction(sim, village, player, action) {
     if (player.role !== 'guard') throw new Error('Only guards may command barracks troops.');
     const roster = village.guards.filter(g => g.plotId === plot.id);
     const capacity = barracksCapacity(plot);
-    if (roster.length >= capacity) throw new Error(`This barracks already has ${capacity === 3 ? 'three' : 'six'} recruited troops, including replacements. Stock wheat to replace fallen guards.`);
+    if (roster.length >= capacity) throw new Error(`This barracks already has ${capacity} recruited troops, including replacements. Stock wheat to replace fallen guards.`);
     const unitType = action.unitType ?? 'sword';
     if (!Object.hasOwn(TROOP_TYPES, unitType)) throw new Error('Choose a swordsman, archer or musketeer.');
     const definition = TROOP_TYPES[unitType];
@@ -316,14 +319,30 @@ export function careAction(sim, village, player, action) {
     plot.level = 2;
     const extra = Math.ceil(plot.maxHp * .5);
     plot.maxHp += extra; plot.hp += extra;
-    return plot.building === 'church' ? 'Church upgraded to four beds.' : plot.building === 'barracks' ? 'Barracks upgraded to six troop slots. Train each soldier separately.' : 'Defense upgraded to level 2.';
+    return plot.building === 'church' ? 'Church upgraded to four beds.' : plot.building === 'barracks' ? `Barracks upgraded to ${barracksCapacity(plot)} troop slots. Train each soldier separately.` : 'Defense upgraded to level 2.';
   }
-  const plot = getPlot(village, player, action.plotId, Object.keys(DEFENSE_UPGRADES).concat(['house', 'tool_shop', 'sword_shop', 'tinker_shop', 'mine', 'wheat_farm', 'tree_farm']), false, 'repair');
+  const plot = getPlot(village, player, action.plotId, Object.keys(BUILDING_TYPES), false, 'repair');
   if (player.tool !== 'hammer' || (player.durability?.hammer ?? 0) <= 0) throw new Error('Equip a working hammer first.');
   if (plot.hp >= plot.maxHp) throw new Error('This building is already fully repaired.');
+  if (plot.hp <= 0) {
+    const carried = transferableCount(player, 'timber') >= 1 && transferableCount(player, 'stone') >= 1;
+    const materials = carried ? player.inventory : village.stock;
+    if ((materials.timber ?? 0) < 1 || (materials.stone ?? 0) < 1) throw new Error('Rebuilding needs one timber and one stone per hammer swing, from your pack or village supplies.');
+    const restore = Math.round((TOOL_TIERS[player.tiers?.hammer ?? 'wood']?.repair ?? TOOL_TIERS.wood.repair) * roleSkills(player).repairMultiplier);
+    materials.timber--; materials.stone--; player.durability.hammer--;
+    plot.rebuildProgress = Math.min(plot.maxHp, (plot.rebuildProgress ?? 0) + restore);
+    const threshold = Math.ceil(plot.maxHp * .35);
+    player.anim = 'repair'; player.animationUntil = village.clock + .5;
+    if (plot.rebuildProgress >= threshold) {
+      plot.hp = plot.rebuildProgress; plot.rebuildProgress = 0;
+      sim.relocateBlocked?.(village);
+      return 'Building rebuilt! Ownership, stored goods and upgrades retained. Keep hammering to restore full health.';
+    }
+    return `Rebuilding: ${plot.rebuildProgress}/${threshold} structural health. Services reopen at 35% health.`;
+  }
   if ((village.stock.timber ?? 0) < 1 || (village.stock.stone ?? 0) < 1) throw new Error('The village needs timber and stone for this repair.');
   if ((player.repairBonus ?? 0) < world.CONFIG.repairCap && village.treasury < 1) throw new Error('The treasury cannot currently fund repair work.');
-  const restore = TOOL_TIERS[player.tiers?.hammer ?? 'wood']?.repair ?? TOOL_TIERS.wood.repair;
+  const restore = Math.round((TOOL_TIERS[player.tiers?.hammer ?? 'wood']?.repair ?? TOOL_TIERS.wood.repair) * roleSkills(player).repairMultiplier);
   village.stock.timber--; village.stock.stone--; player.durability.hammer--;
   plot.hp = Math.min(plot.maxHp, plot.hp + restore);
   if ((player.repairBonus ?? 0) < world.CONFIG.repairCap) { player.repairBonus = (player.repairBonus ?? 0) + 1; village.treasury--; }
@@ -370,7 +389,7 @@ export function careTick(sim, village, dt) {
     }
     if (!usable(plot) || !isDefense(plot)) continue;
     plot.shotCooldown = Math.max(0, (plot.shotCooldown ?? 0) - dt);
-    const stats = TOWER_STATS[plot.building];
+    const stats = towerStats(plot);
     if (plot.shotCooldown > 0 || !hasStock(plot.storage, stats.ammo)) continue;
     const { target } = towerTargets(sim, village, plot);
     if (!target) continue;
@@ -381,8 +400,18 @@ export function careTick(sim, village, dt) {
     // Clients animate the existing flight and this cosmetic burst once per id.
     plot.lastShot = { id: `${plot.id}:${plot.shotSequence}`, targetId: target.id, x: target.x, y: world.groundHeight(target.x,target.z)+.9, z: target.z, firedAt: village.clock, until: village.clock + .35 };
     const owner = village.players[plot.ownerId];
-    const damage = stats.damage * ((plot.level ?? 1) >= 2 ? 1.5 : 1);
-    for (const zombie of village.zombies.filter(z => z.hp > 0 && (z === target || (stats.splash && distance(z, target) <= stats.splash && towerCanHit(sim, village, plot, z))))) sim.hitZombie(village, zombie, damage, owner);
+    const damage = stats.damage;
+    if (plot.building === 'wizard_tower') {
+      const targets = [target];
+      while (targets.length < stats.chain) {
+        const previous = targets.at(-1);
+        const next = village.zombies.filter(z => z.hp > 0 && !targets.includes(z) && distance(previous, z) <= 5 && towerCanHit(sim, village, plot, z) && (!sim.clearAttack || sim.clearAttack(village, previous, z, false))).sort((a, b) => distance(previous, a) - distance(previous, b))[0];
+        if (!next) break; targets.push(next);
+      }
+      plot.lastShot.element = stats.element;
+      plot.lastShot.segments = targets.map((z, index) => ({ from: index ? { x: targets[index - 1].x, z: targets[index - 1].z } : { x: siteFor(plot).x, z: siteFor(plot).z }, to: { x: z.x, z: z.z } }));
+      for (const [index, zombie] of targets.entries()) sim.hitZombie(village, zombie, damage * .65 ** index, owner);
+    } else for (const zombie of village.zombies.filter(z => z.hp > 0 && (z === target || (stats.splash && distance(z, target) <= stats.splash && towerCanHit(sim, village, plot, z))))) sim.hitZombie(village, zombie, damage, owner);
   }
 }
 
@@ -403,7 +432,8 @@ export function tickDefenseAttack(sim, village, zombie, dt) {
       if (!sim.attackZombieStructure) { plot.hp = Math.max(0, plot.hp - (zombie.elite ? 18 : 10)); zombie.cooldown = 1.5; }
       if (plot.hp <= 0) {
         plot.lastShot = null;
-        sim.notice?.(village.id, 'A defensive building has been destroyed. Its owner can rebuild on the plot.');
+        plot.rebuildProgress = 0;
+        sim.notice?.(village.id, 'A defensive building has been destroyed. Any dwarf can rebuild the ruin with a hammer, timber and stone.');
         sim.store?.saveVillage(village);
       }
     }

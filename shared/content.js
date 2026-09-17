@@ -1,6 +1,7 @@
 // Shared, inspectable balance values. Prices and recipes are validated again by the server.
 import { ROLE_STATS } from './roles.js';
 import { equippedItem, GATHERING_TOOLS } from './crates.js';
+import { roleSkills } from './skills.js';
 export const MAX_PLOTS = 8;
 export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800, 1100, 1450, 1850]);
 export const CARRY_CAPACITY = 100;
@@ -13,7 +14,7 @@ export const BACKPACKS = Object.freeze([
 // Equipped capacity comes from the saved tier, never a capacity sent by a client.
 export function carryCapacity(player = {}) {
   const equipmentCapacity = (Number.isInteger(player.backpackTier) ? BACKPACKS[player.backpackTier] : null)?.capacity ?? CARRY_CAPACITY;
-  return equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0) + (equippedItem(player, 'utility')?.capacity ?? 0);
+  return equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0) + roleSkills(player).extraCapacity + (equippedItem(player, 'utility')?.capacity ?? 0);
 }
 export const STORAGE_CAPACITY = 1500;
 export const TOOL_TIERS = Object.freeze({
@@ -29,10 +30,12 @@ export const BUILDING_TYPES = Object.freeze({
   wheat_farm: { name: 'Wheat farm', cost: { gold: 20, timber: 10 }, maxHp: 250 },
   house: { name: 'House', cost: { gold: 40, timber: 25, stone: 15 }, maxHp: 500 },
   barracks: { name: 'Barracks', cost: { gold: 100, timber: 35, stone: 25 }, role: 'guard', maxHp: 650, limit: 2 },
-  sword_shop: { name: 'Sword shop', cost: { gold: 60, timber: 20, stone: 25 }, role: 'guard', maxHp: 400 },
+  sword_shop: { name: 'Sword shop', cost: { gold: 60, timber: 20, stone: 25 }, role: 'guard', roles: ['guard', 'tinker'], maxHp: 400 },
   church: { name: 'Church', cost: { gold: 100, timber: 30, stone: 40 }, role: 'priest', maxHp: 650 },
   archer_tower: { name: 'Archer tower', cost: { gold: 200, timber: 60, stone: 40 }, maxHp: 700 },
-  cannon: { name: 'Cannon defense', cost: { gold: 500, timber: 40, stone: 100, iron: 20 }, maxHp: 900 }
+  cannon: { name: 'Cannon defense', cost: { gold: 500, timber: 40, stone: 100, iron: 20 }, maxHp: 900 },
+  arcane_academy: { name: 'Arcane Academy', cost: { gold: 350, timber: 70, stone: 100, iron: 20 }, role: 'wizard', maxHp: 700 },
+  wizard_tower: { name: 'Wizard tower', cost: { gold: 600, timber: 50, stone: 120, iron: 25, sulfur: 20 }, role: 'wizard', maxHp: 800 }
 });
 
 const recipes = {};
@@ -58,6 +61,7 @@ recipes.gunpowder = { name: '5 gunpowder', shop: 'tinker_shop', item: 'gunpowder
 recipes.musket = { name: 'Musket', shop: 'tinker_shop', tool: 'musket', tier: 'wood', cost: { iron: 14, timber: 16 }, price: 180 };
 recipes.musket_ammo = { name: '8 musket shots', shop: 'tinker_shop', item: 'musket_ammo', amount: 8, cost: { stone: 4, gunpowder: 2 }, price: 24, stockable: true };
 recipes.cart = { name: 'Cargo cart', shop: 'tinker_shop', item: 'cart', amount: 1, cost: { timber: 35, iron: 8 }, price: 100 };
+recipes.staff = { name: 'Fire staff', shop: 'tinker_shop', tool: 'staff', tier: 'wood', cost: { timber: 12, iron: 3, sulfur: 4 }, price: 60 };
 export const RECIPES = Object.freeze(recipes);
 export const SHOP_PRICE_LIMIT = 10000;
 export const SHOP_CRAFT_BATCH_LIMIT = 100;
@@ -68,7 +72,7 @@ export function shopPrice(plot, recipeId) {
   return Number.isSafeInteger(saved) && saved >= 1 && saved <= SHOP_PRICE_LIMIT ? saved : recipe.price;
 }
 export const RESOURCE_WEIGHTS = Object.freeze({ timber: 2, stone: 3, wheat: 1, iron: 3, coal: 2, sulfur: 2, gunpowder: .2, musket_ammo: .2, food: 1, good_food: 1, best_food: 1, arrows: .1, cart: 12 });
-export const TOOL_WEIGHTS = Object.freeze({ sword: 2, axe: 3, pickaxe: 3, scythe: 2, hammer: 2, bow: 2, musket: 5 });
+export const TOOL_WEIGHTS = Object.freeze({ sword: 2, axe: 3, pickaxe: 3, scythe: 2, hammer: 2, bow: 2, musket: 5, staff: 3 });
 export function resourceWeight(player, id) {
   return (RESOURCE_WEIGHTS[id] ?? 1) * (equippedItem(player, 'utility')?.weights?.[id] ?? 1);
 }

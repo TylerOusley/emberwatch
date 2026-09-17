@@ -1,5 +1,6 @@
 // The same geometry, resource locations and collision bounds are used by client and server.
 import { CAVE_SOLIDS, caveSlot } from './caves.js';
+import { LOW_OBSTACLES } from './elevation.js';
 export { CAVE_AREAS, CAVE_HEIGHTS, CAVE_ROUTE, CAVE_ENTRANCE, CAVE_SOLIDS, caveAreaAt, caveTierAt, caveDepthAt, groundHeight, caveSlot, caveResourceType, caveTravelWaypoint } from './caves.js';
 export const CONFIG = Object.freeze({ daySeconds:480, nightSeconds:240, maxResidents:8, speed:5.4, sprintSpeed:8, playerRadius:.48, gateMax:1200, keepMax:2000, repairCap:10 });
 export const ROAD = [{x:20,z:103},{x:12,z:84},{x:0,z:65},{x:0,z:38},{x:0,z:18},{x:0,z:-35}];
@@ -43,7 +44,7 @@ export function plotFront(plot,inset=0){
 }
 export function plotSolid(plot,building){
  const footprint={house:[7,6],tool_shop:[7,6],tinker_shop:[7,6],sword_shop:[7,6],
-  barracks:[8,6],church:[7,6],archer_tower:[4,4],cannon:[3.8,3.8]}[building];
+  barracks:[8,6],church:[7,6],archer_tower:[4,4],cannon:[3.8,3.8],arcane_academy:[7,6],wizard_tower:[4,4]}[building];
  if(!footprint)return null;
  const quarter=Math.abs(Math.sin(plot.yaw??0))>.5;
  return {x:plot.x,z:plot.z,w:quarter?footprint[1]:footprint[0],d:quarter?footprint[0]:footprint[1]};
@@ -126,12 +127,12 @@ export const TOOLS = [
  {id:'food',name:'Bread',key:'6',tier:1},
  {id:'heal',name:'Priest blessing',key:'7',tier:1}
 ];
-export function canStand(x,z,r=.48,extraSolids=[]){
+export function canStand(x,z,r=.48,extraSolids=[],feetY=0){
  if(!Number.isFinite(x)||!Number.isFinite(z)||x < WORLD_BOUNDS.minX+r||x > WORLD_BOUNDS.maxX-r||z < WORLD_BOUNDS.minZ+r||z > WORLD_BOUNDS.maxZ-r)return false;
- return ![...SOLIDS,...extraSolids].some(s=>Math.abs(x-s.x)<s.w/2+r&&Math.abs(z-s.z)<s.d/2+r);
+ return ![...SOLIDS,...extraSolids,...LOW_OBSTACLES.filter(s=>feetY<s.height-.04)].some(s=>Math.abs(x-s.x)<s.w/2+r&&Math.abs(z-s.z)<s.d/2+r);
 }
-export function moveWithCollision(p,dx,dz,r=.48,extraSolids=[]){
+export function moveWithCollision(p,dx,dz,r=.48,extraSolids=[],feetY=0){
  const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.3));
- for(let i=0;i<steps;i++){if(canStand(p.x+dx/steps,p.z,r,extraSolids))p.x+=dx/steps;if(canStand(p.x,p.z+dz/steps,r,extraSolids))p.z+=dz/steps;}
+ for(let i=0;i<steps;i++){if(canStand(p.x+dx/steps,p.z,r,extraSolids,feetY))p.x+=dx/steps;if(canStand(p.x,p.z+dz/steps,r,extraSolids,feetY))p.z+=dz/steps;}
  return p;
 }

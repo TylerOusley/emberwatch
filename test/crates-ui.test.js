@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createCratesUI, crateOdds, crateReel, crateResultText } from '../public/src/crates-ui.js';
-import { CRATE_POOLS, CRATE_PRICES, LOADOUT_SLOTS, emptyLoadout } from '../shared/crates.js';
+import { createCratesUI, crateOdds, crateReel, crateResultText, crateReceiptOdds } from '../public/src/crates-ui.js';
+import { CRATE_POOLS, CRATE_PRICES, LOADOUT_SLOTS, emptyLoadout, crateRewardOdds } from '../shared/crates.js';
 import { CRATE_TIERS, crateItem } from '../public/src/crate-catalog.js';
 
 const clone = value => structuredClone(value);
@@ -14,12 +14,13 @@ function elementsWithClass(html, className) {
 function assertRealItemImage(html, expectedId) {
   const images = [...html.matchAll(/<img\b([^>]*)>/g)];
   assert.ok(images.length, 'Artwork must use an image');
-  const image = expectedId ? images.find(match => match[1].includes(`src="/assets/crate-items/${expectedId}.png"`)) : images[0];
+  const image = expectedId ? images.find(match => match[1].includes(`src="${crateItem(expectedId).image}"`)) : images[0];
   assert.ok(image, `Missing artwork for ${expectedId || 'item'}`);
   const source = image[1].match(/\bsrc="([^"]+)"/)?.[1];
-  assert.match(source, /^\/assets\/crate-items\/[a-z0-9_]+\.png$/);
+  assert.match(source, /^\/assets\/crate-items\/[a-z0-9_]+\.(?:png|svg)$/);
   assert.match(image[1], /\balt="[^"]*"/);
   const png = readFileSync(new URL(`../public${source}`, import.meta.url));
+  if (source.endsWith('.svg')) { assert.match(png.toString(), /<svg[^>]+width="400"[^>]+height="360"/); assert.doesNotMatch(png.toString(), /<script|href="https?:/); return; }
   assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `Invalid PNG: ${source}`);
   assert.ok(png.readUInt32BE(16) > 32 && png.readUInt32BE(20) > 32, `Artwork is too small: ${source}`);
 }
@@ -65,20 +66,26 @@ function fixture(options = {}) {
   return { ui, data, me, storage, requests, accountUpdates, timers, fields, doc, get account() { return account; }, get html() { return html; }, get buttons() { return buttons; }, get renders() { return renders; }, setAccount(value) { account = value; me.id = value; }, close() { panel = null; }, async click(text) { const button = buttons.find(b => b.text === text); assert.ok(button, `Missing button: ${text}`); assert.equal(button.disabled, false, `Disabled button: ${text}`); return button.onclick(); }, field(id, value) { const field = fields.get(id); assert.ok(field, `Missing field ${id}`); if (typeof value === 'boolean') field.checked = value; else field.value = value; return field.onchange(); } };
 }
 
-test('tier pools are transparent 4/6/4/5 and the reel stop is exactly the committed result', () => {
-  assert.equal(crateOdds('basic'), '1 in 4 · 25% each'); assert.equal(crateOdds('rare'), '1 in 6 · 16.67% each'); assert.equal(crateOdds('legendary'), '1 in 5 · 20% each');
-  assert.equal(Object.values(CRATE_POOLS).flat().length, 19);
+test('tier pools expose one-step rarity chances and the reel stop is exactly the committed result', () => {
+  assert.equal(crateOdds('basic'), '95% Basic · 5% Rare'); assert.equal(crateOdds('rare'), '90% Rare · 10% Epic'); assert.equal(crateOdds('legendary'), '99% Legendary · 1% Godly');
+  assert.equal(Object.values(CRATE_POOLS).flat().length, 26);
   for (const [tier, items] of Object.entries(CRATE_POOLS)) for (const itemId of items) { const reel = crateReel({ tier, itemId }); assert.equal(reel.items[reel.stop], itemId); assert.ok(reel.items.every(id => items.includes(id))); }
   assert.match(crateResultText({ chargeGranted: true, duplicate: true, refund: { amount: 70000, currency: 'bank' } }), /no duplicate refund/);
+});
+
+test('historical opening receipts keep the odds from their own catalog version', () => {
+  assert.equal(crateReceiptOdds({ catalogVersion:1, tier:'epic', itemId:'runed_helm' }), '25% at the time of opening');
+  assert.equal(crateReceiptOdds({ catalogVersion:2, tier:'legendary', itemId:'heart_of_emberwatch' }), '1% per opening');
+  assert.equal(crateReceiptOdds({ catalogVersion:2, tier:'epic', itemId:'heart_of_emberwatch' }), '');
 });
 
 test('purchase view exposes currency-specific duplicate refunds and expanded item odds before purchase', async () => {
   const f = fixture(); await f.ui.show();
   assert.match(f.html, /700 bank gold \(70%\)/); assert.match(f.html, /Wallet gold, village funds, and loan credit are never charged/);
-  await f.click('Rare'); assert.equal((f.html.match(/class="crate-item /g) || []).length, 6); assert.match(f.html, /16\.67% each/);
+  await f.click('Rare'); assert.equal((f.html.match(/class="crate-item /g) || []).length, 13); assert.match(f.html, /90% Rare · 10% Epic/);
   f.field('crate-funding', 'credits'); assert.match(f.html, /700 crate credits \(70%\)/);
   await f.click('Legendary'); assert.match(f.html, /Every Phoenix Ember grants one charge, including repeats, with no refund/);
-  assert.equal((f.html.match(/class="crate-item /g) || []).length, 5);
+  assert.equal((f.html.match(/class="crate-item /g) || []).length, 8);
 });
 
 test('receipt is saved before the request; double click and Skip reveal one saved outcome', async () => {
@@ -158,11 +165,12 @@ test('all four rarity choices and every pool reward use real illustrated assets 
   const tiers = elementsWithClass(f.html, 'crate-tier-card');
   assert.equal(tiers.length, 4);
   for (const card of tiers) { assertRealItemImage(card); assert.match(card, /aria-label="(?:Basic|Rare|Epic|Legendary)"/); assert.match(card, /aria-pressed="(?:true|false)"/); }
-  for (const [tier, pool] of Object.entries(CRATE_POOLS)) {
+  for (const tier of Object.keys(CRATE_PRICES)) {
+    const pool = crateRewardOdds(tier).map(row => row.itemId);
     await f.click(CRATE_TIERS[tier].label);
     const cards = elementsWithClass(f.html, 'crate-item'); assert.equal(cards.length, pool.length);
-    for (const id of pool) assertRealItemImage(cards.find(card => card.includes(`src="/assets/crate-items/${id}.png"`)), id);
-    assert.match(f.html, new RegExp(`${pool.length} listed items are equally likely`));
+    for (const id of pool) assertRealItemImage(cards.find(card => card.includes(`src="${crateItem(id).image}"`)), id);
+    assert.match(f.html, /One rarity roll, then equal odds within that rarity/);
     assert.match(f.html, /class="crate-purchase-controls"/); assert.match(f.html, /Available/);
     assert.ok(f.buttons.some(button => button.text === `Open ${CRATE_TIERS[tier].label} · ${CRATE_PRICES[tier].bank.toLocaleString('en-US')} bank gold`));
   }
@@ -184,7 +192,7 @@ test('future loadout renders selected gear next to its control and current equip
 test('saved results show the actual reward, payment and odds; unrecognized result text cannot create an asset request', async () => {
   const f = fixture({ reducedMotion: true, resultId: 'runed_helm' }); await f.ui.show(); await f.click('Epic'); await f.click('Open Epic · 50,000 bank gold');
   const result = elementsWithClass(f.html, 'crate-result')[0]; assertRealItemImage(result, 'runed_helm');
-  assert.match(result, /data-reward-id="runed_helm"/); assert.match(result, /Paid 50,000 bank gold/); assert.match(result, /1 in 4 · 25% each/);
+  assert.match(result, /data-reward-id="runed_helm"/); assert.match(result, /Paid 50,000 bank gold/); assert.match(result, /13\.3333% per opening/);
   assert.match(f.html, /class="crate-result-stage"/); assert.match(f.html, /class="crate-result-receipt"/);
   const unsafe = fixture({ reducedMotion: true, resultId: '"><img src=x onerror=alert(1)>' }); await unsafe.ui.show(); await unsafe.click('Open Basic · 1,000 bank gold');
   assert.doesNotMatch(unsafe.html, /<img src=x|src="\/assets\/crate-items\/&quot;/);

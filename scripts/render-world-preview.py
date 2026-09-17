@@ -196,7 +196,7 @@ def main():
  width,height=data['width'],data['height'];gap=24;header=100;caption=44
  sheet=Image.new('RGB',(width*2+gap*3,(height+caption)*2+gap*3+header),'#132128');draw=ImageDraw.Draw(sheet)
  font=lambda size:ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',size)
- draw.text((gap,20),'EMBERWATCH / WORLD ART • BUILD 18',font=font(32),fill='#f6e4bf')
+ draw.text((gap,20),data.get('heading','EMBERWATCH / WORLD ART'),font=font(32),fill='#f6e4bf')
  draw.text((gap,65),'Actual game geometry and local CC0 materials • offline studio lighting • not a gameplay screenshot',font=font(20),fill='#b6c9c9')
  for i,frame in enumerate(data['frames']):
   image=r.render(frame,draws,data['materials'],data,canvases);x=gap+(i%2)*(width+gap);y=header+gap+(i//2)*(height+caption+gap);sheet.paste(image,(x,y))

@@ -11,7 +11,20 @@ export const CAVE_AREAS = Object.freeze([
   { id: 'middle-ramp', tier: 'middle', kind: 'ramp', x: 9, z: -167, w: 10, d: 16 },
   { id: 'middle', tier: 'middle', kind: 'chamber', x: 16, z: -182, w: 34, d: 22 },
   { id: 'deep-ramp', tier: 'deep', kind: 'ramp', x: 4, z: -198, w: 10, d: 16 },
-  { id: 'deep', tier: 'deep', kind: 'chamber', x: 0, z: -217, w: 38, d: 26 }
+  { id: 'deep', tier: 'deep', kind: 'chamber', x: 0, z: -217, w: 38, d: 26 },
+  // Uneven shoulders and short side workings break the rectangular silhouette.
+  // These only enlarge the old footprint: saved miners, depleted veins and
+  // the established freight route remain valid after a village is upgraded.
+  { id: 'upper-west-shoulder', tier: 'upper', kind: 'alcove', x: -16, z: -150, w: 10, d: 10 },
+  { id: 'upper-west-neck', tier: 'upper', kind: 'alcove', x: -22, z: -152, w: 6, d: 7 },
+  { id: 'upper-west-working', tier: 'upper', kind: 'alcove', x: -26, z: -154, w: 10, d: 11 },
+  { id: 'upper-east-pocket', tier: 'upper', kind: 'alcove', x: 17, z: -147, w: 10, d: 8 },
+  { id: 'upper-rear-shoulder', tier: 'upper', kind: 'alcove', x: -8, z: -159, w: 15, d: 8 },
+  { id: 'middle-west-pocket', tier: 'middle', kind: 'alcove', x: -3, z: -178, w: 10, d: 8 },
+  { id: 'middle-east-shoulder', tier: 'middle', kind: 'alcove', x: 35, z: -181, w: 10, d: 12 },
+  { id: 'middle-east-working', tier: 'middle', kind: 'alcove', x: 40, z: -184, w: 8, d: 7 },
+  { id: 'deep-west-shoulder', tier: 'deep', kind: 'alcove', x: -20, z: -216, w: 10, d: 14 },
+  { id: 'deep-east-working', tier: 'deep', kind: 'alcove', x: 21, z: -223, w: 10, d: 10 }
 ].map(Object.freeze));
 export const CAVE_ROUTE = Object.freeze([
   { x: 0, z: -115 }, { x: 0, z: -130 }, { x: 0, z: -146 },

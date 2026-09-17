@@ -1,4 +1,5 @@
 import { SOLIDS, WORLD_BOUNDS, moveWithCollision } from '../shared/world.js';
+import { LOW_OBSTACLES } from '../shared/elevation.js';
 
 const RADIUS = .4, GRID = 1.5, MAX_EXPANDED = 3500;
 const routes = new WeakMap();
@@ -125,7 +126,7 @@ function findRoute(start, target, allSolids, margin) {
 
 export function stepNpcNavigation(entity, target, speed, dt, neighbors = [], extraSolids = [], elapsedDt = dt) {
   if (![entity.x, entity.z, target?.x, target?.z, speed, dt, elapsedDt].every(Number.isFinite) || dt <= 0 || elapsedDt <= 0 || speed <= 0) return;
-  const solids = [...SOLIDS, ...extraSolids];
+  const solids = [...SOLIDS, ...extraSolids, ...LOW_OBSTACLES];
   let state = routes.get(entity);
   if (!state) { state = { target: { ...target }, blocked: 0, time: 0, retryAt: 0, failures: 0, path: null, index: 0 }; routes.set(entity, state); }
   // A worker may have only a fraction of a prepaid tick left to travel.

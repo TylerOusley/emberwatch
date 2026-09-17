@@ -1,15 +1,15 @@
 import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
-import { RESOURCE_WEIGHTS, inventoryWeight, carryCapacity, resourceWeight } from '../shared/content.js';
+import { RESOURCE_WEIGHTS, TOOL_WEIGHTS, TOOL_TIERS, inventoryWeight, carryCapacity, resourceWeight, transferableCount } from '../shared/content.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
-import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, PLOT_STAFF, plotStaffCount, transporterTarget, workerStats } from '../shared/workers.js';
+import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_TOOLS, WORKER_EQUIPMENT, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, PLOT_STAFF, plotStaffCount, transporterTarget, workerStats, workerEmployment, workerTool } from '../shared/workers.js';
 import { plotStorageCapacity, productionRegrowSeconds, productionHarvest } from '../shared/production.js';
 import { resetNpcNavigation, stepNpcNavigation } from './navigation.js';
 
-const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss', 'worker_upgrade', 'worker_color']);
-const tools = { wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', sulfur: 'pickaxe' };
+const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss', 'worker_upgrade', 'worker_color', 'worker_equip', 'worker_unequip', 'worker_repair', 'worker_maintenance']);
+const tools = WORKER_TOOLS;
 const production = { wheat: 'wheat_farm', timber: 'tree_farm', stone: 'mine', iron: 'mine', coal: 'mine', sulfur: 'mine' };
 const cargoResources = Object.keys(RESOURCE_WEIGHTS);
 const publicNodes = new Map(RESOURCES.map(node => [node.id, node]));
@@ -31,16 +31,19 @@ const homeFor = (v, w) => {
     }
   }
   const slot = Math.max(0, v.workers.filter(worker => !worker.staffPlotId || worker.staffRetired).indexOf(w));
-  // Twenty wait at each side of the treasury. The extra clearance accounts
-  // for the navigation arrival tolerance, keeping all forty in dismissal range.
-  const side = slot < 20 ? 1 : -1, local = slot % 20;
-  return { x: bank.x + side * (bank.w / 2 + .9 + local % 2 * 1.2), z: bank.z + (Math.floor(local / 2) - 4.5) };
+  // Manager crews can reach eighty personal hires in a full village. Park
+  // twenty on each face instead of stacking the extra hires on old positions.
+  // The clearance includes navigation's arrival tolerance for dismissal range.
+  const face = Math.floor(slot / 20) % 4, side = face % 2 ? -1 : 1, local = slot % 20;
+  return face < 2
+    ? { x: bank.x + side * (bank.w / 2 + .9 + local % 2 * 1.2), z: bank.z + (Math.floor(local / 2) - 4.5) }
+    : { x: bank.x + (Math.floor(local / 2) - 4.5), z: bank.z + side * (bank.d / 2 + .9 + local % 2 * 1.2) };
 };
 const marketFor = (v, w) => {
   // First arrivals occupy the counter; the remaining queue extends into the
   // open forecourt and advances as deliveries finish. Owners need not be online;
   // paused, retired or unfunded workers cannot hold a working crew's position.
-  const queue = v.workers.filter(worker => !worker.paused && !worker.staffRetired && v.players?.[worker.ownerId] && allowance(worker, v.players[worker.ownerId], 1) > 0 && worker.mode === 'sell' && worker.delivering && hasCargo(worker));
+  const queue = v.workers.filter(worker => !worker.paused && !worker.roleLimitPaused && !worker.staffRetired && v.players?.[worker.ownerId] && allowance(worker, v.players[worker.ownerId], 1) > 0 && worker.mode === 'sell' && worker.delivering && hasCargo(worker));
   const slot = Math.max(0, queue.indexOf(w)), row = Math.floor(slot / 4);
   return { x: marketDoor.x - (row < 4 ? row * .6 : 1.8 + (row - 3) * .9), z: marketDoor.z + (slot % 4 - 1.5) * .9 };
 };
@@ -61,6 +64,7 @@ function ensureWorkerProgress(w) {
 export function ensureWorkers(v) {
   if (!Array.isArray(v.workers)) v.workers = [];
   reconcilePlotStaff(v);
+  const personalCounts = new Map();
   for (const w of v.workers) {
     ensureWorkerProgress(w);
     w.cargo ??= {};
@@ -69,7 +73,24 @@ export function ensureWorkers(v) {
     if (!Number.isFinite(w.x) || !Number.isFinite(w.z)) { w.x = home.x; w.z = home.z; }
     if (!Number.isFinite(w.yaw)) w.yaw = Math.PI / 2;
     if (!Number.isFinite(w.paidWorkSeconds) || w.paidWorkSeconds < 0) w.paidWorkSeconds = 0;
-    w.paidWorkSeconds = Math.min(RULES.wageSeconds, w.paidWorkSeconds);
+    // Preserve the duration of already purchased work through role switches,
+    // reconnects and save migration. New wages use the owner's current role.
+    w.paidWageSeconds = [30, 60].includes(w.paidWageSeconds) ? w.paidWageSeconds : w.paidWorkSeconds > 30 ? 60 : 30;
+    w.paidWorkSeconds = Math.min(w.paidWageSeconds, w.paidWorkSeconds);
+    const count = personalCounts.get(w.ownerId) ?? 0;
+    w.roleLimitPaused = !w.staffPlotId && count >= workerEmployment(v.players?.[w.ownerId]).limit;
+    if (!w.staffPlotId) personalCounts.set(w.ownerId, count + 1);
+    const equipment = {};
+    for (const tool of ['axe', 'pickaxe', 'scythe']) {
+      const item = w.equipment?.[tool];
+      if (!item || !['stone', 'iron'].includes(item.tier)) continue;
+      const maxDurability = whole(item.maxDurability) && item.maxDurability > 0 ? Math.min(10000, item.maxDurability) : TOOL_TIERS[item.tier].durability;
+      equipment[tool] = { tier: item.tier, maxDurability, durability: whole(item.durability) ? Math.min(maxDurability, item.durability) : 0 };
+    }
+    w.equipment = equipment;
+    w.maintenanceEnabled = w.maintenanceEnabled === true;
+    w.maintenanceBudgetGold = whole(w.maintenanceBudgetGold) ? w.maintenanceBudgetGold : 0;
+    w.maintenancePlotId = typeof w.maintenancePlotId === 'string' ? w.maintenancePlotId : null;
     if (!Number.isFinite(w.gatherProgress) || w.gatherProgress < 0) w.gatherProgress = 0;
     w.gatherProgress = Math.min(workerStats(w).gatherSeconds, w.gatherProgress);
     if (typeof w.paused !== 'boolean') w.paused = true;
@@ -132,13 +153,69 @@ function storageSource(v, w) {
   return v.plots?.find(p => p.id === w.sourcePlotId && p.ownerId === w.ownerId && p.hp > 0 && p.building && PLOTS.some(m => m.id === p.id));
 }
 
+function repairEquipment(v, w, p, tool, source, automatic = false) {
+  const item = w.equipment[tool], rule = WORKER_EQUIPMENT[item?.tier];
+  if (!item || !rule?.repair) throw new Error('This worker has no supplied tool to repair.');
+  if (item.durability >= item.maxDurability) throw new Error('This tool is already fully repaired.');
+  const dueWage = automatic && w.paidWorkSeconds <= 1e-7 ? RULES.wageGold : 0;
+  if (!whole(p.wallet) || p.wallet < rule.repairGold + dueWage) throw new Error(`Repair needs ${rule.repairGold} wallet gold${dueWage ? ' after the next work wage' : ''}.`);
+  if (!whole(v.treasury) || !whole(v.treasury + rule.repairGold)) throw new Error('The treasury cannot accept this repair payment.');
+  if (automatic && w.maintenanceBudgetGold < rule.repairGold) throw new Error('The worker maintenance budget is exhausted.');
+  const inventory = source.inventory ?? source;
+  for (const [id, quantity] of Object.entries(rule.repair)) {
+    const available = source === p ? transferableCount(p, id) : inventory[id] ?? 0;
+    if (!whole(available) || available < quantity) throw new Error(`Repair needs ${quantity} unbound ${id}.`);
+  }
+  for (const [id, quantity] of Object.entries(rule.repair)) inventory[id] -= quantity;
+  p.wallet -= rule.repairGold; v.treasury += rule.repairGold;
+  if (automatic) w.maintenanceBudgetGold -= rule.repairGold;
+  item.durability = item.maxDurability;
+  return `${TOOL_TIERS[item.tier].name} ${tool} repaired for ${rule.repairGold} gold and workshop materials.`;
+}
+
+function equipmentAction(v, w, p, action) {
+  if (action.kind === 'worker_maintenance') {
+    if (typeof action.enabled !== 'boolean') throw new Error('Choose whether automatic maintenance is enabled.');
+    if (!action.enabled) { w.maintenanceEnabled = false; return 'Automatic worker maintenance disabled.'; }
+    if (!whole(action.budgetGold) || action.budgetGold < 10 || action.budgetGold > 10000) throw new Error('Choose a maintenance budget from 10 to 10,000 gold.');
+    const source = v.plots?.find(plot => plot.id === action.plotId && plot.ownerId === p.id && plot.building && plot.hp > 0);
+    if (!source) throw new Error('Choose a living building you own to supply maintenance materials.');
+    Object.assign(w, { maintenanceEnabled: true, maintenanceBudgetGold: action.budgetGold, maintenancePlotId: source.id });
+    return 'Automatic maintenance enabled. Broken supplied tools use wallet gold within this budget and materials from the selected storage.';
+  }
+  if (!['axe', 'pickaxe', 'scythe'].includes(action.tool)) throw new Error('Choose an axe, pickaxe or scythe.');
+  if (distance(p, w) > 3.3) throw new Error('Stand next to this worker to change or repair their tools.');
+  if (w.staffRole === 'transporter') throw new Error('Transporters carry supplies and do not use gathering tools.');
+  if (action.kind === 'worker_repair') return repairEquipment(v, w, p, action.tool, p);
+  const tool = action.tool, previous = w.equipment[tool];
+  p.durability ??= {}; p.maxDurability ??= {}; p.tiers ??= {};
+  if (action.kind === 'worker_unequip') {
+    if (!previous) throw new Error('This worker uses standard wooden equipment in that slot.');
+    if (p.durability[tool] > 0) throw new Error('Your tool slot is occupied. Supply that tool to swap it, or empty the slot first.');
+    if (previous.durability > 0 && inventoryWeight(p) + TOOL_WEIGHTS[tool] > carryCapacity(p) + 1e-6) throw new Error('Your pack is full. Make room before recovering this tool.');
+    Object.assign(p.tiers, { [tool]: previous.tier }); p.durability[tool] = previous.durability; p.maxDurability[tool] = previous.maxDurability;
+    delete w.equipment[tool];
+    if (p.boundKitTools) delete p.boundKitTools[tool];
+    return 'Worker tool recovered. Standard wooden equipment is available again.';
+  }
+  if (!['stone', 'iron'].includes(action.tier) || p.tiers[tool] !== action.tier || !whole(p.durability[tool]) || p.durability[tool] <= 0) throw new Error('Carry a usable stone or iron tool of the selected tier to supply it.');
+  if (p.boundKitTools?.[tool]) throw new Error('Crate-bound tools stay with their owner. Supply a crafted tool instead.');
+  const supplied = { tier: p.tiers[tool], durability: p.durability[tool], maxDurability: Math.max(p.durability[tool], whole(p.maxDurability[tool]) ? p.maxDurability[tool] : TOOL_TIERS[action.tier].durability) };
+  w.equipment[tool] = supplied;
+  p.tiers[tool] = previous?.tier ?? 'wood'; p.durability[tool] = previous?.durability ?? 0;
+  p.maxDurability[tool] = previous?.maxDurability ?? TOOL_TIERS.wood.durability;
+  if (p.tool === tool && !p.durability[tool]) p.tool = '';
+  return `${TOOL_TIERS[supplied.tier].name} ${tool} supplied.${previous ? ' The previous tool was returned to your pack.' : ''}`;
+}
+
 export function workersAction(sim, v, p, action) {
   if (!kinds.has(action.kind)) return null;
   ensureWorkers(v);
   if (action.kind === 'worker_hire') {
     requireBank(p);
     const owned = v.workers.filter(w => w.ownerId === p.id && !w.staffPlotId);
-    if (owned.length >= RULES.maxPerPlayer) throw new Error(`You may hire at most ${RULES.maxPerPlayer} workers.`);
+    const limit = workerEmployment(p).limit;
+    if (owned.length >= limit) throw new Error(`You may hire at most ${limit} workers in your current role.`);
     if (!whole(p.wallet) || p.wallet < RULES.hireCost) throw new Error(`Hiring a worker costs ${RULES.hireCost} wallet gold.`);
     const worker = {
       id: `worker-${randomUUID()}`, name: `${p.name}'s worker ${owned.length + 1}`, ownerId: p.id,
@@ -151,7 +228,8 @@ export function workersAction(sim, v, p, action) {
     return 'Worker hired. Choose a resource and delivery order to begin.';
   }
   const w = ownedWorker(v, p, action.workerId);
-  if (w.staffRetired && !['worker_collect', 'worker_dismiss', 'worker_color'].includes(action.kind)) throw new Error('This plot no longer supports this worker. Rebuild it or collect the carried supplies.');
+  if (w.staffRetired && !['worker_collect', 'worker_dismiss', 'worker_color', 'worker_unequip'].includes(action.kind)) throw new Error('This plot no longer supports this worker. Rebuild it or collect the carried supplies.');
+  if (['worker_equip', 'worker_unequip', 'worker_repair', 'worker_maintenance'].includes(action.kind)) return equipmentAction(v, w, p, action);
   if (action.kind === 'worker_upgrade') {
     if (typeof action.attribute !== 'string' || !Object.hasOwn(WORKER_ATTRIBUTES, action.attribute)) throw new Error('Choose gathering, movement or carrying to improve.');
     if (w.attributes[action.attribute] >= RULES.maxAttributeRank) throw new Error('This worker attribute is fully upgraded.');
@@ -166,6 +244,7 @@ export function workersAction(sim, v, p, action) {
     return `Worker clothing changed to ${color.name.toLowerCase()}.`;
   }
   if (action.kind === 'worker_assign') {
+    if (w.roleLimitPaused) throw new Error('Your current role supports fewer personal workers. Become a Manager or dismiss another hire to reactivate this worker.');
     if (w.staffRole === 'transporter') {
       const source = storageSource(v, { ...w, sourcePlotId: action.sourcePlotId });
       if (!cargoResources.includes(action.resource)) throw new Error('Choose a stored resource to transport.');
@@ -192,6 +271,7 @@ export function workersAction(sim, v, p, action) {
   }
   if (action.kind === 'worker_pause') {
     if (typeof action.paused !== 'boolean') throw new Error('Choose whether to pause your worker.');
+    if (!action.paused && w.roleLimitPaused) throw new Error('This worker is suspended by your current role limit. Their cargo and prepaid wages are kept.');
     w.paused = action.paused; w.gatherProgress = 0; w.targetNodeId = null;
     w.stalledFor = 0; resetNpcNavigation(w);
     const restingPlace = w.staffPlotId ? 'plot' : 'treasury';
@@ -218,6 +298,7 @@ export function workersAction(sim, v, p, action) {
   requireBank(p);
   if (!nearBank(w)) throw new Error('Pause this worker and wait for them to return to the treasury before dismissal.');
   if (hasCargo(w)) throw new Error('Collect or deliver this worker\'s cargo before dismissal.');
+  if (Object.keys(w.equipment).length) throw new Error('Recover this worker\'s supplied tools before dismissal.');
   v.workers = v.workers.filter(worker => worker !== w);
   return 'Worker dismissed. Hiring fees and unused prepaid wages are not refunded.';
 }
@@ -262,12 +343,12 @@ function availableNodes(v, w) {
 
 function allowance(w, p, dt) {
   if (w.paidWorkSeconds > 1e-7) return Math.min(dt, w.paidWorkSeconds);
-  return whole(p.wallet) && p.wallet >= RULES.wageGold ? Math.min(dt, RULES.wageSeconds) : 0;
+  return whole(p.wallet) && p.wallet >= RULES.wageGold ? Math.min(dt, workerEmployment(p).wageSeconds) : 0;
 }
 
 function payForTime(w, p, dt) {
   if (dt <= 0) return;
-  if (w.paidWorkSeconds <= 1e-7) { p.wallet -= RULES.wageGold; w.paidWorkSeconds = RULES.wageSeconds; }
+  if (w.paidWorkSeconds <= 1e-7) { p.wallet -= RULES.wageGold; w.paidWageSeconds = workerEmployment(p).wageSeconds; w.paidWorkSeconds = w.paidWageSeconds; }
   w.paidWorkSeconds = Math.max(0, w.paidWorkSeconds - dt);
 }
 
@@ -282,7 +363,7 @@ function move(w, target, dt, neighbors, solids, p = null, elapsedDt = dt) {
     const approachGate = Math.abs(w.x) > 4 || (inside ? w.z < 10 : w.z > 26);
     destination = { x: 0, z: approachGate ? (inside ? 11 : 25) : (inside ? 25 : 11) };
   }
-  const speed = workerStats(w).speed;
+  const speed = workerStats(w, p ?? {}).speed;
   stepNpcNavigation(w, destination, speed, dt, neighbors, solids, elapsedDt);
   const moved = distance(before, w);
   if (moved > .001) w.stalledFor = 0;
@@ -358,7 +439,7 @@ function transporterTick(v, w, p, dt, neighbors, solids) {
     w.status = moved ? 'Walking to supply storage' : 'Waiting for a clear supply path';
     return;
   }
-  const amount = Math.min(available, wanted, room, Math.floor((workerStats(w).carryCapacity + 1e-6) / weight));
+  const amount = Math.min(available, wanted, room, Math.floor((workerStats(w, p).carryCapacity + 1e-6) / weight));
   if (!whole(amount) || !amount) return;
   source.storage[w.resource] -= amount; w.cargo[w.resource] = amount; w.delivering = true;
   payForTime(w, p, time); w.status = `Collected ${amount} ${w.resource} for delivery`;
@@ -392,16 +473,23 @@ export function workersTick(sim, v, dt) {
   for (const w of v.workers) {
     w.anim = 'idle';
     const p = v.players?.[w.ownerId];
-    const stats = workerStats(w);
-    const reason = w.staffRetired ? 'Plot staff inactive — cargo kept' : w.paused ? 'Paused' : !p ? 'Owner unavailable' : !(w.staffRole === 'transporter' ? cargoResources : WORKER_RESOURCES).includes(w.resource) ? 'Choose an assignment' : null;
+    const stats = workerStats(w, p);
+    const reason = w.staffRetired ? 'Plot staff inactive — cargo kept' : w.roleLimitPaused ? 'Current role worker limit — cargo and wages kept' : w.paused ? 'Paused' : !p ? 'Owner unavailable' : !(w.staffRole === 'transporter' ? cargoResources : WORKER_RESOURCES).includes(w.resource) ? 'Choose an assignment' : null;
     if (reason) { returnHome(v, w, reason, dt, neighbors, solids); continue; }
     if (w.staffRole === 'transporter') { transporterTick(v, w, p, dt, neighbors, solids); continue; }
     if (w.mode === 'store' && !destinationPlot(v, w)) { returnHome(v, w, 'Choose a storage building', dt, neighbors, solids); continue; }
     if (w.sourcePlotId !== null && !sourcePlot(v, w) && !hasCargo(w)) { returnHome(v, w, 'Choose a resource source', dt, neighbors, solids); continue; }
     const time = allowance(w, p, dt);
     if (!time) { returnHome(v, w, 'Needs wallet gold for wages', dt, neighbors, solids); continue; }
+    const tool = tools[w.resource], supplied = w.equipment[tool];
+    if (supplied?.durability === 0 && w.maintenanceEnabled) {
+      const store = v.plots?.find(plot => plot.id === w.maintenancePlotId && plot.ownerId === p.id && plot.building && plot.hp > 0);
+      if (store) try { repairEquipment(v, w, p, tool, store.storage, true); } catch { /* Keep working with standard wood when maintenance is unfunded. */ }
+    }
     const harvest = productionHarvest(1, w.sourcePlotId === null ? null : sourcePlot(v, w), w.resource, v.environment, w.environmentYieldRemainders?.[w.resource] ?? 0);
-    const harvestYield = harvest.yield;
+    const savedRemainder = w.toolYieldRemainders?.[w.resource], toolRemainder = Number.isFinite(savedRemainder) && savedRemainder >= 0 && savedRemainder < 1 ? savedRemainder : 0;
+    const toolTotal = harvest.yield * WORKER_EQUIPMENT[workerTool(w, tool).tier].multiplier + toolRemainder;
+    const harvestYield = Math.floor(toolTotal + 1e-9);
     const harvestWeight = RESOURCE_WEIGHTS[w.resource] * harvestYield;
     if (inventoryWeight(w.cargo) + harvestWeight > stats.carryCapacity) w.delivering = true;
     const nodes = availableNodes(v, w);
@@ -450,6 +538,8 @@ export function workersTick(sim, v, dt) {
     if (!chosen.state.available || chosen.state.remaining <= 0) continue;
     w.cargo[w.resource] += harvestYield; chosen.state.remaining--;
     w.environmentYieldRemainders ??= {}; w.environmentYieldRemainders[w.resource] = harvest.remainder;
+    w.toolYieldRemainders ??= {}; w.toolYieldRemainders[w.resource] = Math.max(0, toolTotal - harvestYield);
+    if (w.equipment[tool]?.durability > 0) w.equipment[tool].durability--;
     w.workXp = Math.min(WORKER_MAX_XP, w.workXp + 1); ensureWorkerProgress(w);
     if (chosen.state.remaining <= 0) {
       chosen.state.available = false;
@@ -464,11 +554,13 @@ export function workersSnapshot(v, viewerId) {
   return { workers: v.workers.map(w => ({
     id: w.id, name: w.name, ownerId: w.ownerId, x: w.x, z: w.z, yaw: w.yaw,
     hp: 100, maxHp: 100, role: 'villager', tool: tools[w.resource] ?? '', anim: w.anim, color: w.color,
-    backpackTier: 1, tiers: { axe: 'wood', pickaxe: 'wood', scythe: 'wood' },
+    backpackTier: 1, tiers: Object.fromEntries(['axe', 'pickaxe', 'scythe'].map(tool => [tool, workerTool(w, tool).tier])),
     ...(viewerId === w.ownerId ? { resource: w.resource, sourcePlotId: w.sourcePlotId,
       staffPlotId: w.staffPlotId ?? null, staffSlot: w.staffSlot ?? null, staffRole: w.staffRole ?? null, staffRetired: !!w.staffRetired, targetPercent: w.targetPercent ?? 50,
       mode: w.mode, destinationPlotId: w.destinationPlotId, status: w.status,
       paused: w.paused, cargo: { ...w.cargo }, paidWorkSeconds: w.paidWorkSeconds,
+      roleLimitPaused: w.roleLimitPaused, employment: workerEmployment(v.players?.[w.ownerId]),
+      equipment: structuredClone(w.equipment), maintenanceEnabled: w.maintenanceEnabled, maintenanceBudgetGold: w.maintenanceBudgetGold, maintenancePlotId: w.maintenancePlotId,
       level: w.level, workXp: w.workXp, upgradePoints: w.upgradePoints, attributes: { ...w.attributes } } : {})
   })) };
 }

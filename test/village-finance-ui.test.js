@@ -173,3 +173,36 @@ test('saved result rendering escapes server messages and reports exact loss vers
   assert.deepEqual(tavernResult({game:'roulette',outcome:36,stake:10,payout:360}),{outcome:'36 red',total:360,profit:350,label:'You won 350 gold profit'});
   const f=fixture();f.ui.showInvestments();f.click('Invest amount');f.receipt({amount:10,message:'<img src=x onerror=alert(1)>'});assert.match(f.html,/&lt;img/);assert.doesNotMatch(f.html,/<img src=x/);
 });
+
+test('all four new games are selectable in the same tavern and respect their authoritative limits', () => {
+  const f = fixture(); f.visit('merchant'); Object.assign(f.state.tavern, { blackjackMaximumStake: 100, pokerMaximumAnte: 100, slotsMaximumStake: 100, wheelMaximumStake: 100 }); f.ui.showTavern();
+  for (const [label, id, text] of [['Blackjack', 'blackjack', /soft 17/], ['Three-card poker', 'three_card_poker', /ante plus 2× play/], ['Enchanted reels', 'slots', /216 symbol combinations/], ['Wheel of Fate', 'wheel', /twenty stops/]]) {
+    f.click(label); assert.match(f.html, text); assert.equal(f.button('Place bet').disabled, false); assert.match(f.html, /Largest possible total return/);
+    assert.equal(tavernQuote(id, '', '101', f.state.tavern, f.me.wallet).valid, false);
+  }
+  assert.equal(tavernQuote('three_card_poker', '', '100', f.state.tavern, 199).valid, false);
+  assert.equal(tavernQuote('blackjack', '', '11', f.state.tavern, 100).total, 27);
+  assert.equal(tavernQuote('slots', '', '10', f.state.tavern, 100).total, 300);
+  f.click('Enchanted reels'); f.click('Place bet'); assert.equal(f.sent[0].game, 'slots');
+});
+
+test('blackjack private hand controls send recoverable hit/stand moves and keep a press through updates', () => {
+  const f = fixture(); f.visit('merchant'); f.state.tavern.blackjackMaximumStake = 100; f.ui.showTavern(); f.click('Blackjack'); f.click('Place bet');
+  const round = { id: f.sent[0].requestId, game: 'blackjack', stake: 10, totalStake: 10, cards: [0, 1], dealer: [13, null], value: 5, secondsRemaining: 120 };
+  f.state.tavern.round = round; f.receipt({ game: 'blackjack', status: 'playing', roundId: round.id, round });
+  assert.match(f.html, /Your hand · 5/); assert.match(f.html, /Face-down card/); assert.equal(f.buttons.some(button => button.label === 'Place bet'), false);
+  const held = f.press('Hit'); f.state.tavern.round = { ...round, secondsRemaining: 119 }; f.ui.update(); f.release(held);
+  assert.equal(f.sent[1].roundId, round.id); assert.equal(f.sent[1].move, 'hit'); assert.notEqual(f.sent[1].requestId, round.id);
+  assert.equal(f.button('Stand').disabled, true);
+  f.receipt({ game: 'blackjack', status: 'playing', roundId: round.id, round: { ...round, value: 9, cards: [0, 1, 2] } });
+  f.state.tavern.round = { ...round, value: 9, cards: [0, 1, 2] }; f.ui.update(); f.click('Stand'); assert.equal(f.sent[2].move, 'stand');
+});
+
+test('poker play requires its extra wager and reconnect resumes a hand then shows automatic folding', () => {
+  const f = fixture(); f.visit('merchant');
+  const round = { id: '00000000-0000-4000-8000-000000000101', game: 'three_card_poker', stake: 100, totalStake: 100, cards: [0, 15, 30], dealer: [null, null, null], hand: 'High card', secondsRemaining: 32 };
+  f.state.tavern.round = round; f.me.wallet = 99; f.ui.showTavern();
+  assert.equal(f.button('Play · 100g').disabled, true); assert.equal(f.button('Fold').disabled, false); assert.match(f.html, /32 village seconds/);
+  f.state.tavern.history.unshift({ kind: 'tavern_bet', requestId: '00000000-0000-4000-8000-000000000102', game: 'three_card_poker', status: 'settled', roundId: round.id, stake: 100, payout: 0, outcome: 'Fold', cards: round.cards, dealer: [13, 28, 42] });
+  f.state.tavern.round = null; f.ui.update(); assert.match(f.html, /Fold · You lost 100 gold/); assert.equal(f.buttons.some(button => button.label === 'Fold'), false);
+});

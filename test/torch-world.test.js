@@ -81,7 +81,7 @@ test('mine entrance crossings retain one Three light layout and material shader 
       }
       if(nightMix===0)daytimeCounts.add(pool.filter(light=>light.intensity>0).length);
     }
-    assert.deepEqual([...daytimeCounts].sort((a,b)=>a-b),[0,2,3,4,5,6],'route exercises each entrance torch activation boundary');
+    assert.deepEqual([...daytimeCounts].sort((a,b)=>a-b),[0,1,3,4,5,6],'route exercises the recessed entrance and side-working torch activation boundaries');
   }finally{probe.dispose();torches.dispose();cave.dispose();}
 });
 

@@ -1,4 +1,4 @@
-// Export actual cave architecture and all 44 public mineral formations.
+// Export actual cave architecture and all 52 public mineral formations.
 // node scripts/preview-cave.mjs [output.json]
 import fs from 'node:fs';
 import * as THREE from 'three';
@@ -17,7 +17,7 @@ const torches=createTorchSystem(cave.root,cave.torchFixtures); // export actual 
 const minerals=RESOURCES.filter(n=>n.caveTier),oreTypes={};
 for(const node of minerals){
   // A reproducible fresh-village roll; live villages have their own saved seed.
-  const type=caveResourceType(node.caveTier,`preview-cave:${node.id}`,0);
+  const type=node.type==='sulfur'?'sulfur':caveResourceType(node.caveTier,`preview-cave:${node.id}`,0);
   oreTypes[type]=(oreTypes[type]??0)+1;
   const geometry=mineralOutcropGeometry(type,node.seed);oreGeometries.push(geometry);
   const mesh=new THREE.Mesh(geometry,oreMaterial);mesh.position.set(node.x,groundHeight(node.x,node.z),node.z);mesh.name=`${type}:${node.id}`;ore.add(mesh);
@@ -68,9 +68,9 @@ torches.update(0,0,camera,{x:-2,y:groundHeight(-2,-147),z:-147});
 const lights=torches.lights.filter(light=>light.visible&&light.intensity>0).map(light=>({position:light.position.toArray(),color:light.color.toArray(),intensity:light.intensity}));
 const chambers=CAVE_AREAS.filter(a=>a.kind==='chamber').map(a=>({label:`${a.tier.toUpperCase()}  /  ${-groundHeight(a.x,a.z)} m`,point:[a.x,groundHeight(a.x,a.z)+.15,a.z]}));
 const panels=[
-  {id:'overview',projection:'orthographic',view:[.10,2.1,1],hide:['roof','crown'],label:'THREE DESCENDING CHAMBERS',caption:'Ceiling and mouth crown hidden for this cutaway.',chambers},
-  {id:'entrance',projection:'perspective',camera:[4,4,-102],target:[0,2,-123],fov:60,hide:[],label:'THE DEEPWORKS ENTRANCE',caption:'Dressed stone, brass-inlaid nameplate and a continuous rail descent.'},
-  {id:'interior',projection:'perspective',camera:[-2,1,-147],target:[7,-1.5,-161],fov:70,hide:[],label:'INSIDE THE UPPER WORKINGS',caption:'Rock chambers and torch holders; animated fire has its own GLSL preview.',lights}
+  {id:'overview',projection:'orthographic',view:[.10,2.1,1],hide:['roof','crown'],label:'BRANCHING DESCENDING WORKINGS',caption:'The stable route connects irregular side workings and sulfur veins.',chambers},
+  {id:'entrance',projection:'perspective',camera:[10,9,-97],target:[0,10,-133],fov:60,hide:[],label:'RECESSED INTO THE MOUNTAIN',caption:'Continuous foothills wrap the carved rock arch and recessed timber frame.'},
+  {id:'interior',projection:'perspective',camera:[-2,1,-147],target:[-14,.4,-154],fov:70,hide:[],label:'VAULTS AND SIDE WORKINGS',caption:'Folded strata, damp seams and branching widths replace repeated boxes.',lights}
 ];
 fs.writeFileSync(output,JSON.stringify({format:1,triangles,panels,stats}));
 ore.removeFromParent();for(const g of oreGeometries)g.dispose();oreMaterial.dispose();torches.dispose();cave.dispose();

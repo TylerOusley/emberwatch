@@ -20,6 +20,9 @@ function sourceModule(filename,overrides={}){
 const plots=sourceModule('plots-world.js');
 const {createWorld}=await import(sourceModule('world.js',{'./plots-world.js':plots}));
 const {createCaveWorld}=await import(sourceURL('../public/src/cave-world.js'));
+const {createCivicWorld}=await import(sourceURL('../public/src/civic-world.js'));
+const {PLOTS}=await import(sourceURL('../shared/world.js'));
+const build27=process.argv.includes('--build27'),mineReview=process.argv.includes('--mine');
 
 // Keep the actual signs' drawing instructions for the offline renderer.
 const previousDocument=globalThis.document;
@@ -30,7 +33,11 @@ globalThis.document={createElement:()=>{
   return canvas;
 }};
 const scene=new THREE.Scene();let world;
-try{world=createWorld(scene);createCaveWorld(scene);world.update(1,0,{});}finally{globalThis.document=previousDocument;}
+try{
+  world=createWorld(scene);createCaveWorld(scene);
+  const state=build27?{id:'build27-art-review',clock:1,plots:['arcane_academy','wizard_tower','wizard_tower'].map((building,index)=>({id:PLOTS[index].id,ownerId:'preview',building,hp:700,level:index===2?2:1})),civic:{completed:['reinforcement','ballista','trebuchet'],depot:{timber:200,stone:200,arrows:30},siege:{}}}:{};
+  world.update(1,0,state);if(build27)createCivicWorld(scene).update(state,0,1);
+}finally{globalThis.document=previousDocument;}
 scene.updateMatrixWorld(true);
 const geometries=[],materials=[],draws=[],canvases={},geometryIds=new Map(),materialIds=new Map();
 const pack=values=>Buffer.from(values.buffer,values.byteOffset,values.byteLength).toString('base64');
@@ -78,17 +85,27 @@ scene.traverse(mesh=>{
   }
 });
 const width=1080,height=660,sun=new THREE.Vector3(-.44,.83,.48).normalize();
-const frames=[
+const frames=(mineReview?[
+  {label:'RECESSED MOUNTAIN MOUTH',caption:'The mountain grows around the recessed frame and the original twelve-metre route.',eye:[10,9,-97],target:[0,8,-135],fov:60,shadowRadius:80},
+  {label:'ARCHED SIDE WORKINGS',caption:'Actual curved rock transitions and rounded shoulders preserve existing free floor.',eye:[-2,1,-147],target:[-15,.4,-154],fov:70,shadowRadius:35},
+  {label:'DESCENT THROUGH THE MIDDLE WORKINGS',caption:'Uneven vaulted rock and the deeper main passage retain the fixed ore positions.',eye:[20,-5,-180],target:[6,-6,-193],fov:70,shadowRadius:35},
+  {label:'SULFUR IN THE DEEP WORKINGS',caption:'Eight dedicated yellow sulfur seams remain available beside the original mineral veins.',eye:[-2,-11,-214],target:[11,-12.5,-220],fov:70,shadowRadius:35}
+]:build27?[
+  {label:'ARCANE ACADEMY',caption:'The actual observatory hall, open books and armillary above the owner\'s shop.',eye:[-33,11,10],target:[-50,4,3],fov:52,shadowRadius:32},
+  {label:'EMBER AND STORM SPIRES',caption:'Fire and upgraded lightning towers share the saved plot levels and real materials.',eye:[-26,12,-3],target:[-50,4.3,-18],fov:56,shadowRadius:35},
+  {label:'SHARED GATEHOUSE DEFENSES',caption:'Completed ballista and trebuchet replace their tower roofs and reinforce the gate.',eye:[21,18,37],target:[0,10,18],fov:60,shadowRadius:44},
+  {label:'VILLAGE WORKS AND FREIGHT DEPOT',caption:'The shared contributions board stands beside the Treasury and donated supplies.',eye:[-5,4.2,-16],target:[-10,1.9,-23],fov:57,shadowRadius:25}
+]:[
   {label:'THE VILLAGE',caption:'Textured stone, timber architecture, cobbled lanes and the surrounding landscape.',eye:[29,17,15],target:[-3,3,-22],fov:62,shadowRadius:95},
   {label:'AT STREET LEVEL',caption:'The actual shops, well and watch buildings beside the main road.',eye:[4.3,3.8,12.5],target:[-1,3,-24],fov:72,shadowRadius:62},
   {label:'THE WOODLAND',caption:'Individual leaves, bending branches, exposed roots and fine terrain texture.',eye:[-16,4,77],target:[-30,3,52],fov:64,shadowRadius:48},
   {label:'THE MOUNTAIN APPROACH',caption:'Layered mine stonework and eroded ridgelines beyond the northern gate.',eye:[17,8,-95],target:[0,4.5,-121],fov:66,shadowRadius:80}
-].map(frame=>{
+]).map(frame=>{
   const camera=new THREE.PerspectiveCamera(frame.fov,width/height,.15,850);camera.position.set(...frame.eye);camera.lookAt(...frame.target);camera.updateMatrixWorld(true);
   const radius=frame.shadowRadius,light=new THREE.OrthographicCamera(-radius,radius,radius,-radius,.1,650);light.position.copy(new THREE.Vector3(...frame.target).addScaledVector(sun,260));light.lookAt(...frame.target);light.updateMatrixWorld(true);
   return {...frame,vp:new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse).toArray(),lightVP:new THREE.Matrix4().multiplyMatrices(light.projectionMatrix,light.matrixWorldInverse).toArray()};
 });
 const stats={geometries:geometries.length,materials:materials.length,draws:draws.length,instanceCount,uniqueVertices:geometries.reduce((sum,g)=>sum+g.vertices,0),uniqueTriangles:geometries.reduce((sum,g)=>sum+g.count/3,0),triangleInstances};
-const output=process.argv[2]??'/tmp/emberwatch-world.json';
-fs.writeFileSync(output,JSON.stringify({format:1,width,height,assetRoot:path.join(root,'public/assets/surfaces'),sun:sun.toArray(),geometries,materials,draws,canvases,frames,stats}));
+const output=process.argv.slice(2).find(value=>!value.startsWith('--'))??'/tmp/emberwatch-world.json';
+fs.writeFileSync(output,JSON.stringify({format:1,heading:mineReview?'EMBERWATCH / BUILD 27 — THE DEEPWORKS':build27?'EMBERWATCH / BUILD 27 — SHARED WORKS AND ARCANA':'EMBERWATCH / WORLD ART',width,height,assetRoot:path.join(root,'public/assets/surfaces'),sun:sun.toArray(),geometries,materials,draws,canvases,frames,stats}));
 console.log(JSON.stringify({output,bytes:fs.statSync(output).size,...stats}));

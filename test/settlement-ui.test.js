@@ -5,6 +5,7 @@ import { BUILDINGS, PLOTS, plotBedPoint, CAVE_ENTRANCE } from '../shared/world.j
 import { buildingEntrance, plotEntrance } from '../shared/access.js';
 import { taxedSaleQuote, taxedPurchaseQuote, foodQuote } from '../shared/economy.js';
 import { NOTICEBOARD_POINT } from '../public/src/noticeboard.js';
+import { ownershipSnapshot } from '../server/ownership.js';
 
 // A narrow DOM harness verifies displayed quotes and dispatched actions without
 // WebGL. It is intentionally not a screenshot or browser rendering test.
@@ -130,7 +131,7 @@ test('illustrated storefronts keep price, gear effects and materials accessible 
   assert.match(f.html, /data-shop-theme="weapons"/); assert.match(f.html, /20 base \/ hit/); assert.match(f.html, /Each swing uses one durability/);
   f.state.plots[0].building = 'tinker_shop'; f.visit('plot', site.id);
   for (const item of ['bow', 'arrows', 'cart']) assert.match(f.html, new RegExp(`data-item="${item}"`));
-  assert.match(f.html, /22 base \/ arrow/); assert.match(f.html, /12 arrows/); assert.match(f.html, /300 weight/);
+  assert.match(f.html, /22 base \/ arrow/); assert.match(f.html, /12 arrows/); assert.match(f.html, /1000 weight/);
 });
 
 test('native item inspection and keyboard focus survive refreshed stock, then clear between villages', t => {
@@ -238,6 +239,24 @@ test('tinker owners set individual bundle prices and craft supplies into storage
   plot.ownerId = 'bob'; f.ui.refresh();
   assert.equal(f.fields.has('shop-price-gunpowder'), false); assert.doesNotMatch(f.html, /Craft into storage/);
   f.click('Buy · 37g'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'craft_buy', plotId: id, recipe: 'gunpowder', price: 37 });
+});
+
+test('visitors can buy with exactly the offline Tinker owner’s discounted material quote and confirmation matches it', t => {
+  const f = fixture(t), id = PLOTS[0].id;
+  const owner = { id: 'bob', name: 'Bob', role: 'tinker', online: false, wallet: 1000, skills: { tinker_efficiency: 2 } };
+  const plot = { id, ownerId: owner.id, building: 'tool_shop', hp: 350, maxHp: 350, storage: { stone: 8, timber: 4 } };
+  const village = { players: { alice: f.player, bob: owner }, plots: [plot], clock: 0 };
+  f.state.plots = ownershipSnapshot(village, f.player.id).plots;
+  assert.deepEqual(f.state.plots[0].shopCosts.stone_axe, { stone: 8, timber: 4 });
+  f.visit('plot', id);
+  const buy = f.buttons.find(button => button.dataset.shopFocus === 'buy-stone_axe-0');
+  assert.equal(buy.disabled, false); buy.onclick();
+  assert.match(f.html, /8 stone/); assert.match(f.html, /4 timber/);
+  assert.doesNotMatch(f.html, /10 stone/);
+  f.click('Confirm change');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'craft_buy', plotId: id, recipe: 'stone_axe', price: 35, confirm: true });
+  owner.role = 'villager'; f.state.plots = ownershipSnapshot(village, f.player.id).plots; f.visit('plot', id);
+  assert.equal(f.buttons.find(button => button.dataset.shopFocus === 'buy-stone_axe-0').disabled, true, 'the newly quoted full recipe exceeds stored materials when the owner changes roles');
 });
 
 test('shop price drafts survive blur and snapshots and each price quote remains tied to its rendered item', t => {

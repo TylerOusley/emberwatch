@@ -170,15 +170,16 @@ export function createCannonImpactPool(parent,{capacity=8}={}){
 export function createPlotsWorld(parent){
  const root=new THREE.Group();root.name='Village neighborhoods';parent.add(root);
  const geometries={box:createBeveledBlockGeometry(),cylinder:new THREE.CylinderGeometry(1,1,1,16),cone:new THREE.ConeGeometry(1,1,12),rock:createWeatheredRockGeometry(17,{detail:1}),sphere:new THREE.SphereGeometry(1,12,8),ring:new THREE.TorusGeometry(1,.055,4,16),bow:new THREE.TorusGeometry(1,.06,4,16,Math.PI*.85),barrel:new THREE.LatheGeometry([new THREE.Vector2(0,-.5),new THREE.Vector2(.85,-.5),new THREE.Vector2(.96,-.32),new THREE.Vector2(1,0),new THREE.Vector2(.96,.32),new THREE.Vector2(.85,.5),new THREE.Vector2(0,.5)],16)};
- const colors={stone:'#deddd0',pale:'#fff2d7',wood:'#c1a17a',dark:'#615349',roof:'#629391',trim:'#e4c295',iron:'#58666c',glass:'#edbc69',cloth:'#ac6249',purple:'#766080',leaf:'#64854a',dirt:'#e0cdae',gold:'#d9b452'};
+ const colors={stone:'#deddd0',pale:'#fff2d7',wood:'#c1a17a',dark:'#615349',roof:'#629391',trim:'#e4c295',iron:'#58666c',glass:'#edbc69',cloth:'#ac6249',purple:'#766080',leaf:'#64854a',dirt:'#e0cdae',gold:'#d9b452',ember:'#ff9a45',storm:'#b7a4ff'};
  const surfaces={stone:'masonry',pale:'plaster',wood:'wood',dark:'wood',roof:'roof',trim:'wood',dirt:'earth'};
  const materials=Object.fromEntries(Object.entries(colors).map(([id,color])=>[id,surfaces[id]?createSurfaceMaterial(surfaces[id],{color,worldScale:id==='roof'?2:id==='stone'?1.8:2.4,normalStrength:id==='pale'?.16:.55}):new THREE.MeshStandardMaterial({color,roughness:id==='iron'?.5:id==='gold'?.4:.86,metalness:['iron','gold'].includes(id)?.62:0,...(id==='glass'?{emissive:color,emissiveIntensity:.3,roughness:.24}:{})})]));
  materials.geology=createSurfaceMaterial('rock',{color:'#ffffff',vertexColors:true,worldScale:1.6,normalStrength:.68});
  materials.mineralSoil=createSurfaceMaterial('earth',{color:'#fff1d1',vertexColors:true,worldScale:2.3,normalStrength:.32});
+ for(const id of ['ember','storm']){materials[id].emissive.set(colors[id]);materials[id].emissiveIntensity=.8;materials[id].roughness=.35;}
  const records=new Map(),shots=new Map(),dummy=new THREE.Object3D(),impacts=createCannonImpactPool(root);
  const shotDirection=new THREE.Vector3(),forward=new THREE.Vector3(0,0,1);
  let renderTime=0,baselineEffects=true,villageId=null,lastClock=null,disposed=false;
- const labels={tool_shop:'TOOLS',tinker_shop:'TINKER',sword_shop:'ARMORY',mine:'MINE',tree_farm:'GROVE',wheat_farm:'FIELD',house:'HEARTH',barracks:'WATCH',church:'SANCTUARY',archer_tower:'ARCHER POST',cannon:'CANNON'};
+ const labels={tool_shop:'TOOLS',tinker_shop:'TINKER',sword_shop:'ARMORY',mine:'MINE',tree_farm:'GROVE',wheat_farm:'FIELD',house:'HEARTH',barracks:'WATCH',church:'SANCTUARY',archer_tower:'ARCHER POST',cannon:'CANNON',arcane_academy:'ARCANE ACADEMY',wizard_tower:'WIZARD TOWER'};
  function textSign(text,group,x,y,z,width=3){
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;
   const ctx=canvas.getContext('2d');ctx.fillStyle='#342d25';ctx.fillRect(0,0,512,128);ctx.strokeStyle='#ae8c58';ctx.lineWidth=7;ctx.strokeRect(7,7,498,114);ctx.fillStyle='#edddb7';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='600 40px Georgia';ctx.fillText(text,256,64,475);
@@ -323,6 +324,46 @@ export function createPlotsWorld(parent){
     box('gold',-2.15,8.18,-.47,.047,.52,.04,0,-.35);box('gold',-2.02,8.1,-.47,.28,.044,.04);
     for(const side of[-1,1])for(const bz of[4.2,6.0]){box('purple',side*2.5,.825,bz+.22,1.29,.025,1.07);box('gold',side*2.5,.843,bz+.32,.085,.017,.70);}
    }
+  }else if(type==='arcane_academy'){
+   building(7,6,4.3,'stone');
+   // An observatory dome, brass armillary and open teaching lecterns distinguish
+   // the academy while leaving the existing seven-by-six entrance clear.
+   cylinder('stone',0,5.75,-.65,1.67,2.2);
+   add('sphere','purple',0,6.88,-.65,1.75,1.3,1.75);
+   for(const y of [5.15,6.75])cylinder('gold',0,y,-.65,1.78,.13);
+   for(let i=0;i<8;i++){const a=i*Math.PI/4;box('gold',Math.sin(a)*1.60,6.1,-.65+Math.cos(a)*1.60,.08,1.02,.08);}
+   cylinder('gold',0,8.37,-.65,.055,1.2);
+   add('ring','gold',0,8.7,-.65,.58,.58,.58,.45,.3,.25);
+   add('ring','gold',0,8.7,-.65,.57,.57,.57,-.6,1.3,-.4);
+   add('sphere','storm',0,8.7,-.65,.17,.17,.17);
+   for(const side of[-1,1]){
+    box('purple',side*2.70,3.15,3.2,.65,1.9,.055);box('gold',side*2.70,3.82,3.26,.71,.12,.08);
+    add('ring','gold',side*2.70,3.22,3.27,.2,.25,.2);
+    box('wood',side*2.63,.67,3.77,.14,1.34,.14);box('trim',side*2.63,1.39,3.77,1.05,.12,.66);
+    for(const page of[-1,1])box('pale',side*2.63+page*.22,1.48,3.79,.45,.06,.51,0,page*.12);
+    box('purple',side*2.63,1.44,3.79,1.01,.04,.57);
+   }
+  }else if(type==='wizard_tower'){
+   const power=level>=2?'storm':'ember';
+   cylinder('stone',0,.25,0,2,.5);cylinder('stone',0,3.05,0,1.58,5.8);
+   for(const y of [.66,2.45,4.48,5.88])cylinder('pale',0,y,0,1.68,.20);
+   for(let i=0;i<8;i++){
+    const a=i*Math.PI/4,x=Math.sin(a),z=Math.cos(a);
+    box('stone',x*1.55,2.9,z*1.55,.26,5.3,.26,a);
+    box('gold',x*1.63,4.85,z*1.63,.12,.70,.10,a);
+    box('stone',x*1.72,6.50,z*1.72,.43,.85,.43,a);
+   }
+   cylinder('iron',0,6.18,0,1.93,.22);cylinder('gold',0,6.39,0,1.77,.12);
+   add('sphere',power,0,7.15,0,.68,.85,.68);
+   if(level>=2){
+    add('ring','gold',0,7.15,0,1.12,1.12,1.12,.65,.2,.45);
+    add('ring','iron',0,7.15,0,1.15,1.15,1.15,-.50,1.35,-.30);
+    for(const side of[-1,1])add('rock','storm',side*.91,7.35,0,.18,.60,.18,0,0,side*.5);
+   }else{
+    for(let i=0;i<3;i++){const a=i*Math.PI*2/3;add('cone','ember',Math.sin(a)*.27,7.91,Math.cos(a)*.27,.22,.95,.22,0,a,.16);}
+   }
+   box('dark',0,1.36,1.61,.98,2.14,.10);box('wood',0,1.36,1.68,.77,1.91,.045);box('gold',0,1.45,1.74,.09,.46,.03);
+   textSign(level>=2?'STORM SPIRE':'EMBER SPIRE',group,0,3.13,1.74,2.4);
   }else if(type==='mine'){
    const mineralSeed=Array.from(plot.id).reduce((sum,char)=>sum*31+char.charCodeAt(0)|0,421);
    const floor=new THREE.Mesh(mineralBedGeometry(mineralSeed,w-.5,d-1),materials.mineralSoil);floor.name='excavated-mine-floor';floor.receiveShadow=true;floor.userData.sharedMaterial=true;group.add(floor);
@@ -450,7 +491,7 @@ export function createPlotsWorld(parent){
    let record=records.get(plot.id);
    if(record?.key!==key){if(record)remove(record.group);record={key,group:build(plot,value)};records.set(plot.id,record);}
    const shot=value?.lastShot;
-   if(!ruined&&shot&&Number.isFinite(shot.x)&&Number.isFinite(shot.z)&&Number.isFinite(shot.until)){
+   if(!ruined&&value?.building!=='wizard_tower'&&shot&&Number.isFinite(shot.x)&&Number.isFinite(shot.z)&&Number.isFinite(shot.until)){
     const turret=record.group.getObjectByName('aiming-cannon');
     if(turret)turret.rotation.y=Math.atan2(shot.x-plot.x,shot.z-plot.z)-(plot.yaw??0);
     let effect=shots.get(plot.id);

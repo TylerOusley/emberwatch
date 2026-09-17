@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { EXPANSION_UTILITIES, createExpansionUtility } from './crate-expansion-art.js';
 
 // Original, rigid utility accessories fitted to the natural dwarf's body bone.
 // +Z is the chest; the body origin is 1.04 m above the ground. These are cosmetic
@@ -52,6 +53,7 @@ function textile(kind) {
 }
 
 export function createUtility(id) {
+  if (EXPANSION_UTILITIES.has(id)) return createExpansionUtility(id);
   if (!IDS.has(id)) return null;
   const object = new THREE.Group(); object.name = `crate-utility-${id}`;
   object.userData.utilityId = id; object.userData.backpackTier = 0;

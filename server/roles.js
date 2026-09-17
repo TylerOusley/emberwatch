@@ -1,4 +1,5 @@
 import { ROLE_STATS } from '../shared/roles.js';
+import { roleSkills } from '../shared/skills.js';
 
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const clockOf=village=>Number.isFinite(village?.clock)?Math.max(0,village.clock):0;
@@ -8,7 +9,7 @@ const clockOf=village=>Number.isFinite(village?.clock)?Math.max(0,village.clock)
 // a depleted guard shield. `fresh` is reserved for a new life, never a revival.
 export function ensureRoleStats(player,{fresh=false,clock}={}) {
   const role=Object.hasOwn(ROLE_STATS,player.role)?player.role:'villager';
-  const stats=ROLE_STATS[role],previousRole=player.roleStatsRole;
+  const base=ROLE_STATS[role], skills=roleSkills(player), stats={...base,maxHp:base.maxHp+skills.maxHpBonus,maxShield:base.maxShield+skills.extraShield},previousRole=player.roleStatsRole;
   const oldMax=Number.isFinite(player.maxHp)&&player.maxHp>0?player.maxHp:100;
   const oldHp=Number.isFinite(player.hp)?clamp(player.hp,0,oldMax):oldMax;
   const now=Number.isFinite(clock)?Math.max(0,clock):Number.isFinite(player.shieldHitAt)?Math.max(0,player.shieldHitAt):0;

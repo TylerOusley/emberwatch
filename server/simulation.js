@@ -3,9 +3,9 @@ import { CONFIG, ROAD, GUARD_ROAD, RESOURCES, BUILDINGS, SOLIDS, canStand, moveW
 import { ensureOwnership, ownershipAction, ownershipTick, ownershipSnapshot } from './ownership.js';
 import { ensureEconomy, economyAction, economyDawn, economySnapshot } from './economy.js';
 import { ensureCare, careAction, careTick, careNight, careSnapshot, guardPathFor, tickDefenseAttack, cancelCarry, cancelTreatment, resolveHealTarget } from './care-defense.js';
-import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer, chargePurchase, bankTransfer } from './transport.js';
+import { ensureTransport, transportAction, transportTick, transportSnapshot, repayIncome, dismountPlayer, releaseTransportPassenger, chargePurchase, bankTransfer } from './transport.js';
 import { ensureWorkers, workersAction, workersTick, workersSnapshot } from './workers.js';
-import { TRANSPORT } from '../shared/transport.js';
+import { TRANSPORT, mountedTravelSpeed } from '../shared/transport.js';
 import { stepNpcNavigation } from './navigation.js';
 import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight, acquiredToolDurability, normalizeToolDurability, transferableCount } from '../shared/content.js';
 
@@ -20,17 +20,24 @@ import { guardOrdersAction, guardOrdersSnapshot, guardDirective, guardOrderCanEn
 import { ensureCaves, regrowCaveResource, publicResourceSnapshot } from './caves.js';
 import { ensureTrading, tradingAction, tradingTick, tradingSnapshot, cancelPlayerTrades } from './trading.js';
 import { joinCrates, crateAction, crateSnapshot, forfeitCrates, refreshCrateMilestones } from './crates.js';
-import { ensureCrateEffects, crateProtectionActive, breakCrateProtection, crateEnemyDamage, crateAfterEnemyHit, crateRespawnEffects } from './crate-effects.js';
+import { ensureCrateEffects, crateProtectionActive, breakCrateProtection, crateEnemyDamage, crateAfterEnemyHit, crateRespawnEffects, emberWardStatus } from './crate-effects.js';
 import { TEST_GOLD } from './admin.js';
-import { ensureVillageFinance, villageFinanceAction, villageFinanceDawn, villageFinanceSnapshot } from './village-finance.js';
+import { ensureVillageFinance, villageFinanceAction, villageFinanceDawn, villageFinanceSnapshot, villageFinanceTick } from './village-finance.js';
 import { MUSKET } from '../shared/firearms.js';
 import { ensureEnvironment, tickEnvironment, environmentSnapshot } from './environment.js';
 import { tickRangedTroop, troopCanEngage } from './troop-combat.js';
-const ROLES = new Set(['guard', 'priest', 'villager']);
+import { ROLE_STATS } from '../shared/roles.js';
+import { roleSkills } from '../shared/skills.js';
+import { ensureSkills, skillsAction, skillsSnapshot } from './skills.js';
+import { magicAttack, magicTick } from './magic.js';
+import { magicMovementMultiplier } from '../shared/magic.js';
+import { ensureCivic, civicAction, civicTick, civicSnapshot } from './civic.js';
+import { movePlayer, resetJump } from '../shared/movement.js';
+const ROLES = new Set(Object.keys(ROLE_STATS));
 const FINANCE_ACTIONS = new Set(['investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 // Form transfers and release actions are immediately validated transactions;
 // they should not inherit the swing delay used for tools and combat.
-const IMMEDIATE_ACTIONS = new Set(['dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
+const IMMEDIATE_ACTIONS = new Set(['ember_ward', 'civic_select', 'civic_donate', 'civic_supply', 'academy_learn', 'staff_element', 'cartRescueUnload', 'cartRescueTreat', 'cartPlotLoad', 'cartPlotUnload', 'dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, sulfur: 0, gunpowder: 0, musket_ammo: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, musket: 0, cart: 0 });
@@ -65,9 +72,9 @@ function ensureVillage(village) {
   ensureCaves(village);
   ensureTrading(village);
   ensureVillageFinance(village);
-  ensureEnvironment(village);
+  ensureEnvironment(village); ensureCivic(village);
   for (const player of Object.values(village.players)) {
-    ensureRoleStats(player, { clock: village.clock });
+    ensureSkills(player); ensureRoleStats(player, { clock: village.clock });
     ensureCrateEffects(village, player);
     player.inventory = { ...emptyInventory(), ...player.inventory };
     player.durability = { ...durability(), ...player.durability };
@@ -100,7 +107,7 @@ export class Simulation {
     this.devTools = devTools;
     this.villages = new Map(store.loadVillages().map(village => {
       ensureVillage(village);
-      for (const player of Object.values(village.players)) { player.online = false; player.anim = player.downed ? 'downed' : 'idle'; player.healing = null; }
+      for (const player of Object.values(village.players)) { player.online = false; player.anim = player.downed ? 'downed' : 'idle'; player.healing = null; resetJump(player); }
       for (const player of Object.values(village.players)) cancelPlayerTrades(village, player.id);
       return [village.id, village];
     }));
@@ -122,7 +129,7 @@ export class Simulation {
   join(villageId, account, role = 'villager') {
     const village = this.villages.get(villageId);
     if (!village) throw new Error('Village not found.');
-    if (!ROLES.has(role)) throw new Error('Choose guard, priest or villager.');
+    if (!ROLES.has(role)) throw new Error('Choose one of the six village roles.');
     if (village.status !== 'active') throw new Error('This village has fallen. Join or found a new village.');
     if ([...this.villages.values()].some(v => v.id !== villageId && v.status === 'active' && v.players[account.id])) throw new Error('You already have a reserved place in another active village.');
     let player = village.players[account.id];
@@ -136,9 +143,11 @@ export class Simulation {
       }
       player.online = true;
       ensureVillage(village);
+      transportTick(this, village, 0);
       joinProgression(this, village, player);
       joinCrates(this, village, player, { fresh });
       this.relocateBlocked(village);
+      resetJump(player);
       this.inputs.delete(player.id);
       this.store.saveVillage(village);
     }); } catch (error) { restoreState(village, checkpoint); throw error; }
@@ -149,7 +158,7 @@ export class Simulation {
     if (!player) return;
     cancelPlayerTrades(village, playerId);
     cancelCarry(village, player); cancelTreatment(village, player);
-    dismountPlayer(village, player);
+    dismountPlayer(village, player); releaseTransportPassenger(village, player); resetJump(player);
     player.online = false; player.healing = null; player.anim = player.downed ? 'downed' : 'idle';
     transportTick(this, village, 0);
     this.inputs.delete(player.id);
@@ -160,7 +169,7 @@ export class Simulation {
     if (!player?.online) return;
     if (![input.x, input.z, input.yaw].every(Number.isFinite) || Math.abs(input.x) > 100 || Math.abs(input.z) > 100 || Math.abs(input.yaw) > 1e6) throw new Error('Invalid movement.');
     const length = Math.hypot(input.x, input.z);
-    this.inputs.set(playerId, { x: length > 1 ? input.x / length : input.x, z: length > 1 ? input.z / length : input.z, yaw: input.yaw, sprint: input.sprint === true, received: performance.now() });
+    this.inputs.set(playerId, { x: length > 1 ? input.x / length : input.x, z: length > 1 ? input.z / length : input.z, yaw: input.yaw, sprint: input.sprint === true, jump: input.jump === true, received: performance.now() });
     if (canEquip(player, input.tool) || input.tool === 'food' && FOOD_IDS.some(id => canEquip(player, id))) player.tool = input.tool;
   }
   snapshot(village, viewerId) {
@@ -171,12 +180,13 @@ export class Simulation {
       gate: village.gate, keep: village.keep, treasury: village.treasury, stock: village.stock, barracks: village.barracks, status: village.status, devTools: this.devTools,
       ...ownershipSnapshot(village, viewerId), ...economySnapshot(village, viewerId), ...careSnapshot(village, viewerId, this), ...transportSnapshot(village, viewerId, this.store), ...workersSnapshot(village, viewerId),
       ...requestsSnapshot(village), ...progressionSnapshot(this, village, viewerId), ...guardOrdersSnapshot(village, viewerId), ...tradingSnapshot(village, viewerId), ...crateSnapshot(this, village, viewerId), ...villageFinanceSnapshot(this, village, viewerId),
+      ...skillsSnapshot(village, viewerId), ...civicSnapshot(village),
       environment: environmentSnapshot(village),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
-        lastShot: p.lastShot,
-        ...(p.id === viewerId ? { environmentYieldRemainders: p.environmentYieldRemainders } : {}),
+        lastShot: p.lastShot, y: p.y, verticalSpeed: p.verticalSpeed, grounded: p.grounded, jumpHeld: p.jumpHeld, rescueCartId: p.rescueCartId, rescueSlot: p.rescueSlot, emberWard: p.emberWard, emberWardUntil: p.emberWardUntil, staffElement: p.staffElement,
+        ...(p.id === viewerId ? { environmentYieldRemainders: p.environmentYieldRemainders, skills: p.skills, mana: p.mana, manaMax: p.manaMax, emberWardStatus: emberWardStatus(village,p) } : {}),
         tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
-        ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
+        ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, boundKitTools: p.boundKitTools ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
       siegeNight: village.siegeNight,
       zombies: village.zombies.filter(z => z.hp > 0).map(enemySnapshot),
       guards: village.guards.filter(g => g.hp > 0).map(({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId, unitType, troopLevel, tool, damage, lastShot }) => ({ id, x, z, yaw, hp, maxHp, anim, hungry, ownerId, plotId, unitType, troopLevel, tool, damage, lastShot })),
@@ -223,13 +233,13 @@ export class Simulation {
     if (!IMMEDIATE_ACTIONS.has(kind) && village.clock - player.lastAction < .55) throw new Error('Wait for your next action.');
     if (player.bedPlotId && !['churchLeave', 'respawn', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive'].includes(kind)) throw new Error('Leave your church bed before taking another action.');
     if (player.carryingId && ['attack', 'gather', 'repair', 'repairPlot', 'heal', 'mountHorse'].includes(kind)) throw new Error('Put your companion down before using tools or weapons.');
-    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
+    if (player.mountedHorseId && !['dismountHorse', 'attachCart', 'cartDeposit', 'cartWithdraw', 'cartRescueUnload', 'cartRescueTreat', 'cartPlotLoad', 'cartPlotUnload', 'guide_visibility', 'trade_cancel', 'crate_open', 'crate_loadout'].includes(kind)) throw new Error('Dismount before working, shopping, or fighting.');
     if (!['heal', 'guide_visibility'].includes(kind)) player.healing = null;
-    for (const handler of [villageFinanceAction, crateAction, tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
+    for (const handler of [skillsAction, magicAttack, civicAction, villageFinanceAction, crateAction, tradingAction, requestsAction, progressionAction, guardOrdersAction, ownershipAction, economyAction, careAction, transportAction, workersAction]) {
       const result = handler(this, village, player, action);
       if (result !== null && result !== undefined) {
         if (kind === 'plot_build') this.relocateBlocked(village);
-        if (kind === 'role_change') { ensureRoleStats(player, { clock: village.clock }); if (!canEquip(player, player.tool)) player.tool = ''; }
+        if (kind === 'role_change') { ensureSkills(player); ensureRoleStats(player, { clock: village.clock }); if (!canEquip(player, player.tool)) player.tool = ''; }
         player.lastAction = village.clock;
         recordProgressionAction(this, village, player, action);
         this.store.saveVillage(village);
@@ -273,7 +283,7 @@ export class Simulation {
       if (village.stock.timber < cost.timber || village.stock.stone < cost.stone) throw new Error('The village needs more repair materials.');
       if (player.repairBonus < CONFIG.repairCap && village.treasury < 1) throw new Error('The treasury cannot currently fund repair work.');
       village.stock.timber -= cost.timber; village.stock.stone -= cost.stone;
-      structure.hp = Math.min(structure.maxHp, structure.hp + (TOOL_TIERS[player.tiers?.hammer ?? 'wood']?.repair ?? 35));
+      structure.hp = Math.min(structure.maxHp, structure.hp + (TOOL_TIERS[player.tiers?.hammer ?? 'wood']?.repair ?? 35) * roleSkills(player).repairMultiplier);
       player.durability.hammer -= 1;
       if (player.repairBonus < CONFIG.repairCap) { player.repairBonus++; village.treasury--; }
       player.anim = 'repair'; player.animationUntil = village.clock + .5;
@@ -284,19 +294,20 @@ export class Simulation {
       if (!target || target.id === player.id || distance(player, target) > 3.5) throw new Error('Move near another injured dwarf or living town guard.');
       if (target.hp >= target.maxHp) throw new Error('That dwarf is already healthy.');
       if (player.healing) throw new Error('Your blessing is already in progress. Stay nearby.');
-      player.healing = { targetId: target.id, targetKind: resolved.isGuard ? 'guard' : 'player', revive: Boolean(target.downed), until: village.clock + (target.downed ? 5 : 2) };
+      player.healing = { targetId: target.id, targetKind: resolved.isGuard ? 'guard' : 'player', revive: Boolean(target.downed), until: village.clock + (target.downed ? 5 * roleSkills(player).reviveSecondsMultiplier : 2) };
       player.anim = 'heal'; player.animationUntil = player.healing.until;
-      message = target.downed ? 'Hold still for 5 seconds to revive your companion.' : 'Hold still to heal your companion.';
+      message = target.downed ? `Hold still for ${5 * roleSkills(player).reviveSecondsMultiplier} seconds to revive your companion.` : 'Hold still to heal your companion.';
     } else if (kind === 'respawn') {
       if (!player.downed || !player.respawnAvailable) throw new Error('Respawning unlocks at the next dawn.');
       forfeitCrates(this, village, player);
       crateRespawnEffects(player);
-      cancelCarry(village, player); cancelTreatment(village, player);
+      cancelCarry(village, player); cancelTreatment(village, player); releaseTransportPassenger(village, player);
       player.inventory = emptyInventory(); player.wallet = Math.floor(player.wallet * .75); player.durability = durability(); player.backpackTier = 0;
       player.boundInventory = {}; player.maxDurability = {};
       player.tiers = { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' };
       Object.assign(player, { downed: false, respawnAvailable: false, hp: 100, hunger: 100, x: 0, z: 4, yaw: Math.PI, tool: '', anim: 'idle', healing: null });
       ensureRoleStats(player, { fresh: true, clock: village.clock });
+      resetJump(player);
       message = 'You returned empty-handed. Your carried inventory, equipment, backpack and 25% of wallet gold were lost. Your bank savings are safe.';
     } else if (kind === 'deposit' || kind === 'withdraw') {
       message = bankTransfer(this, village, player, action);
@@ -352,11 +363,12 @@ export class Simulation {
   relocateBlocked(village) {
     const solids = plotSolids(village.plots);
     for (const entity of [...Object.values(village.players), ...village.guards, ...village.zombies, ...village.horses, ...village.carts, ...village.workers]) {
-      if (entity.bedPlotId || entity.carriedBy || canStand(entity.x, entity.z, .5, solids)) continue;
+      const isPlayer = village.players[entity.id] === entity, feet = isPlayer && Number.isFinite(entity.y) ? entity.y : 0;
+      if (entity.bedPlotId || entity.carriedBy || canStand(entity.x, entity.z, .5, solids, feet)) continue;
       let found = false;
       for (let radius = 1; radius <= 20 && !found; radius++) for (let i = 0; i < 24; i++) {
         const x = entity.x + Math.sin(i * Math.PI / 12) * radius, z = entity.z + Math.cos(i * Math.PI / 12) * radius;
-        if (canStand(x, z, .6, solids)) { entity.x = x; entity.z = z; found = true; break; }
+        if (canStand(x, z, .6, solids)) { entity.x = x; entity.z = z; if (isPlayer) resetJump(entity); found = true; break; }
       }
     }
   }
@@ -400,7 +412,7 @@ export class Simulation {
     const previousHp = player.hp;
     player.hp = Math.max(0, player.hp - crateEnemyDamage(village, player, absorbDamage(village, player, damage)));
     crateAfterEnemyHit(village, player, previousHp);
-    if (player.hp <= 0) { cancelCarry(village, player); cancelTreatment(village, player); dismountPlayer(village, player); player.downed = true; player.respawnAvailable = false; player.anim = 'downed'; player.healing = null; this.inputs.delete(player.id); }
+    if (player.hp <= 0) { cancelCarry(village, player); cancelTreatment(village, player); dismountPlayer(village, player); player.downed = true; player.respawnAvailable = false; player.anim = 'downed'; player.healing = null; resetJump(player); this.inputs.delete(player.id); }
   }
   startNight(village) {
     village.phase = 'night'; village.phaseRemaining = this.nightSeconds; village.spawned = 0; village.nextSpawn = village.clock + 2;
@@ -447,7 +459,7 @@ export class Simulation {
   tick(dt) {
     for (const village of this.villages.values()) {
       if (village.status !== 'active' || !Object.values(village.players).some(p => p.online)) continue;
-      village.clock += dt; village.phaseRemaining -= dt;
+      village.clock += dt; village.phaseRemaining -= dt; this.activeClock = village.clock; this.activeSolids = plotSolids(village.plots);
       for (const notice of tickEnvironment(village, dt, { active: true })) this.notice(village.id, notice.text);
       const solids = plotSolids(village.plots);
       ownershipTick(this, village, dt);
@@ -459,27 +471,30 @@ export class Simulation {
         const wage = player.role === 'guard' ? village.policies.guardWage : player.role === 'priest' ? village.policies.priestWage : 0;
         player.wageAccrued = (player.wageAccrued ?? 0) + wage * dt / (this.daySeconds + this.nightSeconds);
         if (player.downed) continue;
-        player.hunger = Math.max(0, (player.hunger ?? 100) - dt * .05);
+        player.hunger = Math.max(0, (player.hunger ?? 100) - dt * .05 * roleSkills(player).hungerMultiplier);
         const input = this.inputs.get(player.id);
         const fresh = input && performance.now() - input.received < 700;
         // Gathering and blessings can turn toward a target without walking.
         if (fresh) player.yaw = input.yaw;
         if (fresh && !player.bedPlotId && !player.carriedBy && Math.hypot(input.x, input.z) > .02) {
           player.healing = null;
-          let speed = player.mountedHorseId ? TRANSPORT.horseSpeed : input.sprint && player.hunger > 0 ? CONFIG.sprintSpeed : CONFIG.speed;
+          let speed = player.mountedHorseId ? mountedTravelSpeed(village, player) : input.sprint && player.hunger > 0 ? CONFIG.sprintSpeed : CONFIG.speed;
           if (player.carryingId) speed = CONFIG.speed * .55;
           if (inventoryWeight(player) > carryCapacity(player)) speed *= .65;
-          moveWithCollision(player, input.x * speed * dt, input.z * speed * dt, player.mountedHorseId ? .8 : CONFIG.playerRadius, solids);
+          movePlayer(player, input.x * speed * dt, input.z * speed * dt, dt, fresh && input.jump, solids, player.mountedHorseId ? .8 : CONFIG.playerRadius);
           if (village.clock > player.animationUntil) player.anim = input.sprint ? 'run' : 'walk';
-        } else if (player.bedPlotId) player.anim = 'downed';
-        else if (village.clock > player.animationUntil) player.anim = 'idle';
+        } else {
+          movePlayer(player, 0, 0, dt, fresh && input.jump, solids);
+          if (player.bedPlotId) player.anim = 'downed';
+          else if (village.clock > player.animationUntil) player.anim = 'idle';
+        }
         if (player.healing) {
           const resolved = resolveHealTarget(village, player.healing.targetId), target = resolved?.target;
           const targetKind = resolved?.isGuard ? 'guard' : 'player';
           if (!target || targetKind !== (player.healing.targetKind ?? 'player') || distance(player, target) > 3.5 || Boolean(target.downed) !== Boolean(player.healing.revive)) { player.healing = null; continue; }
           if (village.clock >= player.healing.until) {
             const wasDowned = target.downed;
-            const restored = Math.min(wasDowned ? 45 : 30, target.maxHp - target.hp);
+            const restored = Math.min((wasDowned ? 45 : 30) * roleSkills(player).healMultiplier, target.maxHp - target.hp);
             target.hp += restored;
             if (wasDowned) {
               target.downed = false; target.respawnAvailable = false; target.anim = 'idle';
@@ -494,6 +509,9 @@ export class Simulation {
           }
         }
       }
+      magicTick(this, village, dt);
+      civicTick(this, village, dt);
+      villageFinanceTick(this, village);
       careTick(this, village, dt);
       transportTick(this, village, dt);
       for (let i = 0; i < village.resources.length; i++) {
@@ -518,10 +536,10 @@ export class Simulation {
     }
   }
   stepNpc(entity, target, speed, dt, neighbors = []) {
-    return stepNpcNavigation(entity, target, speed, dt, neighbors, this.activeSolids ?? []);
+    return stepNpcNavigation(entity, target, speed * magicMovementMultiplier(entity, this.activeClock ?? 0), dt, neighbors, this.activeSolids ?? []);
   }
   tickNpcs(village, dt) {
-    this.activeSolids = plotSolids(village.plots);
+    this.activeClock = village.clock; this.activeSolids = plotSolids(village.plots);
     const alivePlayers = Object.values(village.players).filter(p => p.online && !p.downed);
     const guards = village.guards.filter(g => g.hp > 0);
     const zombies = village.zombies.filter(z => z.hp > 0);

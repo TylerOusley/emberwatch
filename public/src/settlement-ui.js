@@ -4,18 +4,21 @@ import { BUILDINGS, PLOTS, CAVE_ENTRANCE } from '../../shared/world.js';
 import { buildingEntrance, plotEntrance, canUseBuilding, canUsePlot, canUseChurchBed } from '../../shared/access.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE, MAX_TRADE_AMOUNT } from '../../shared/market.js';
 import { FOOD, POLICIES, taxedSaleQuote, taxedPurchaseQuote, maxSaleQuote, merchantExportPercent } from '../../shared/economy.js';
-import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, bedCapacity } from '../../shared/defense.js';
+import { CHURCH, RECRUIT, DEFENSE_UPGRADES, TOWER_STATS, towerStats, bedCapacity } from '../../shared/defense.js';
 import { TROOP_TYPES, barracksCapacity, troopType, troopStats } from '../../shared/troops.js';
-import { ROLE_STATS } from '../../shared/roles.js';
-import { WORKER_RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats } from '../../shared/workers.js';
+import { ROLE_STATS, ROLE_DESCRIPTIONS, roleCanBuild } from '../../shared/roles.js';
+import { WORKER_RULES, WORKER_RESOURCES, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, workerStats, workerEmployment } from '../../shared/workers.js';
 import { NOTICEBOARD_POINT } from './noticeboard.js';
 import { itemArt, shopInterior } from './shop-display.js';
-import { TRANSPORT } from '../../shared/transport.js';
+import { TRANSPORT, cartCapacity } from '../../shared/transport.js';
 import { createBuildCarousel, buildingAvailability, buildingArt } from './build-carousel.js';
 import { transferLimit } from '../../shared/transfers.js';
 import { ownedCartCount } from '../../shared/cart-ownership.js';
 import { plotStorageCapacity } from '../../shared/production.js';
 import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionStats, productionUpgrade, productionYield } from '../../shared/production.js';
+
+import { workerEquipmentPanel } from './workers-ui.js';
+import { cartTransportControls } from './transport-ui.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -23,11 +26,11 @@ const label = id => ({ food: 'Bread', good_food: 'Hearty meal', best_food: 'Feas
 const exportPolicyLabel = priority => `${label(priority)} · ${merchantExportPercent(priority)}% of surplus`;
 const costText = cost => Object.entries(cost || {}).map(([id, count]) => `${num(count)} ${id}`).join(' · ');
 const resources = ['timber', 'stone', 'wheat', 'iron', 'coal', 'sulfur'];
-const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow', 'musket'];
+const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow', 'musket', 'staff'];
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
-export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null }) {
+export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null, showAcademy = null, showCivic = null }) {
   let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const transferDrafts = new Map();
@@ -210,14 +213,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.boundInventory, p.crateEquipment, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color, w.staffPlotId, w.staffRole, w.staffRetired, w.targetPercent]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus, p.inventory, p.boundInventory, p.crateEquipment, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId, c.capacity, c.rescuePlayerIds]), p.skills, s.players?.map(q=>[q.id,q.rescueCartId,q.downed,q.online,q.carriedBy,current.kind==='cart'?gap(p,q)<=3.5:null]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color, w.staffPlotId, w.staffRole, w.staffRetired, w.targetPercent, w.equipment, w.roleLimitPaused, w.maintenanceEnabled, w.maintenanceBudgetGold, w.maintenancePlotId]), current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
     const p = me(), s = state(), backpack = BACKPACKS[p.backpackTier] || BACKPACKS[0];
     let html = menuHero(itemArt('backpack', { tier: backpack.tier }), 'YOUR PACK', 'Ready for the next watch.', 'Your supplies, working tools and village earnings in one place.', tierBadge(backpack.tier, 3));
     html += stats([['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Carrying gear', backpack.name], ['Wallet', `${num(p.wallet)} gold`], ['Plots', `${owned().length} / ${MAX_PLOTS}`]]) + meter(inventoryWeight(p), carryCapacity(p), 'Carrying capacity used');
-    html += '<div class="panel-actions">' + button('Mark the backpack shop', () => markService('tools')) + button('Manage workers', () => show('workers')) + button('Village atlas', () => show('atlas')) + button('Change role', () => show('roles')) + '</div><p class="menu-footnote">Buy larger backpacks at Oak &amp; Iron, the village starter tool shop.</p>';
+    html += '<div class="panel-actions">' + button('Mark the backpack shop', () => markService('tools')) + button('Manage workers', () => show('workers')) + button('Village atlas', () => show('atlas')) + button('Change role', () => show('roles')) + (showAcademy ? button('Role skill trees', () => showAcademy()) : '') + (showCivic ? button('Village projects', () => showCivic()) : '') + '</div><p class="menu-footnote">Buy larger backpacks at Oak &amp; Iron, the village starter tool shop.</p>';
     html += '<h3>Carried supplies</h3><div class="pack-supplies">' + Object.keys(RESOURCE_WEIGHTS).map(id => `<article class="pack-supply" data-supply="${id}"><div>${itemArt(id)}</div><strong>${num(p.inventory?.[id])}</strong><span>${esc(label(id))}</span><small>${num(resourceWeight(p, id))} weight each${resourceWeight(p, id) < RESOURCE_WEIGHTS[id] ? ' with your equipped pack' : ''}</small>${boundInventoryCount(p, id) ? `<small class="bound-supply">${esc(carriedText(id))}</small>` : ''}</article>`).join('') + '</div>';
     if (p.inventory?.cart) html += command('Place your cargo cart', 'deployCart');
     if (p.carryingId) html += command('Put down the carried dwarf', 'dropPlayer');
@@ -242,6 +245,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     html += '<div class="menu-service-links">';
     if (showInvestments) html += menuSection('Invest in your future', 'Review investment choices and manage your holdings.', button('Open investments', () => showInvestments()), itemArt('gold'));
     if (showTavern) html += menuSection('The village tavern', 'Visit the tavern counter for its games and services.', button('Visit tavern', () => showTavern()), itemArt('food'));
+    if (showCivic) html += menuSection('Village works', 'Donate resources and gold to shared village defenses.', button('Open village projects', () => showCivic()), itemArt('hammer'));
     if (showRequests) html += menuSection('The task board', 'Help fund the next watch by completing village supply requests.', button('Open task board', () => showRequests()), itemArt('wheat'));
     html += '</div>';
     return html;
@@ -304,8 +308,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function workers() {
     const p = me(), crew = ownWorkers(), destinations = owned().filter(plot => plot.building && plot.hp > 0);
     const personal = crew.filter(worker => !worker.staffPlotId).length, staff = crew.filter(worker => worker.staffPlotId && !worker.staffRetired).length;
-    const nearBank = atTreasury(p), full = personal >= WORKER_RULES.maxPerPlayer;
-    let html = menuHero(workerPortrait(), 'HIRED HANDS', 'Build your village crew.', 'Choose a gathering ground, train each worker and decide where every haul goes.', `<span class="menu-tier">${personal} / ${WORKER_RULES.maxPerPlayer} personal workers · ${staff} plot staff</span>`) + stats([['Personal workers', `${personal} / ${WORKER_RULES.maxPerPlayer}`], ['Plot staff', staff], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${WORKER_RULES.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
+    const employment = workerEmployment(p), nearBank = atTreasury(p), full = personal >= employment.limit;
+    let html = menuHero(workerPortrait(), 'HIRED HANDS', 'Build your village crew.', 'Choose a gathering ground, train each worker and decide where every haul goes.', `<span class="menu-tier">${personal} / ${employment.limit} personal workers · ${staff} plot staff</span>`) + stats([['Personal workers', `${personal} / ${employment.limit}`], ['Plot staff', staff], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${employment.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
     html += `<p>Workers start with ${WORKER_RULES.carryCapacity} cargo capacity and work day and night while anyone is online in this village, including after you leave. Hiring and wages use your wallet. Workers finish any prepaid work time, then stop if you cannot pay the next wage. An empty village pauses all work and wages. Sales follow village prices and tax, with proceeds paid to you. Every ${WORKER_RULES.xpPerPoint} completed harvests earns one upgrade point. Spend points below to train each worker.</p>`;
     html += '<p>Production plots add one gatherer per building level, up to three. Shops, churches, barracks and defenses add transporters at the same rate. Plot staff are extra and arrive paused with no hiring fee; activate their orders when you are ready to pay wages. Empty or destroyed plots have no active staff.</p>';
     html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury entrance to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
@@ -317,7 +321,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const draft = workerDraft(worker), order = draft.order, sources = transporter ? destinations.filter(plot => plot.id !== worker.staffPlotId) : workerSourcePlots(order.resource).filter(plot => !gatherer || plot.id === worker.staffPlotId);
       const sourceValid = (!transporter && !gatherer && !order.sourcePlotId) || sources.some(plot => plot.id === order.sourcePlotId);
       const destinationValid = (order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId)) && (!transporter || order.mode === 'store' && order.destinationPlotId === worker.staffPlotId && Number.isInteger(order.targetPercent) && order.targetPercent >= 1 && order.targetPercent <= 100);
-      const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker);
+      const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker, p);
       const room = carryCapacity(p) - inventoryWeight(p), canCollect = Object.keys(RESOURCE_WEIGHTS).some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
       const cargoText = Object.keys(RESOURCE_WEIGHTS).filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
       const currentSource = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : 'Public gathering grounds';
@@ -327,10 +331,11 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       if (worker.staffPlotId) html += row(worker.staffRetired ? 'Inactive plot staff' : transporter ? 'Plot transporter' : 'Plot gatherer', workerPlotName(worker.staffPlotId));
       if (worker.staffRetired) html += '<p class="settlement-warning">This building no longer supports this worker. Cargo stays safe with them. Rebuild to reactivate this staff slot, or collect the cargo and dismiss them at the treasury.</p>';
       html += stats([['Level', worker.level || 1], ['Upgrade points', worker.upgradePoints || 0], ['Next point', (worker.workXp || 0) >= WORKER_MAX_XP ? 'Training complete' : `${(worker.workXp || 0) % WORKER_RULES.xpPerPoint} / ${WORKER_RULES.xpPerPoint} harvests`]]);
+      html += workerEquipmentPanel({worker,player:p,plots:destinations,command,row,esc,plotName:workerPlotName});
       html += '<h4>Worker attributes</h4><div class="worker-training">';
       for (const [attribute, rule] of Object.entries(WORKER_ATTRIBUTES)) {
         const rank = worker.attributes?.[attribute] || 0;
-        const next = workerStats({ ...worker, attributes: { ...worker.attributes, [attribute]: Math.min(WORKER_RULES.maxAttributeRank, rank + 1) } });
+        const next = workerStats({ ...worker, attributes: { ...worker.attributes, [attribute]: Math.min(WORKER_RULES.maxAttributeRank, rank + 1) } }, p);
         const metric = stats => attribute === 'gathering' ? `${num(stats.gatherSeconds)} seconds / harvest` : attribute === 'speed' ? `${num(stats.speed)} movement speed` : `${stats.carryCapacity} cargo capacity`;
         html += `<article class="worker-training-card"><span class="menu-tier">Rank ${rank} / ${WORKER_RULES.maxAttributeRank}</span><h5>${esc(rule.name)}</h5><p><small>Current</small><strong>${esc(metric(ability))}</strong></p><p><small>${rank >= WORKER_RULES.maxAttributeRank ? 'Maximum rank' : 'Next rank'}</small><strong>${esc(metric(next))}</strong></p>` + command(rank >= WORKER_RULES.maxAttributeRank ? 'Fully trained' : '+1 rank · 1 point', 'worker_upgrade', { workerId: worker.id, attribute }, rank >= WORKER_RULES.maxAttributeRank || !(worker.upgradePoints > 0)) + '</article>';
       }
@@ -356,11 +361,11 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += '<div class="panel-actions">' + button('Apply orders', () => {
         draft.order = { ...order, destinationPlotId: order.mode === 'store' ? order.destinationPlotId : null };
         send({ type: 'action', kind: 'worker_assign', workerId: worker.id, ...draft.order });
-      }, !sourceValid || !destinationValid || worker.staffRetired);
-      html += command(worker.paused ? 'Resume work' : worker.staffPlotId ? 'Pause & return to plot' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused }, worker.staffRetired || transporter && worker.paused && (!worker.resource || !worker.sourcePlotId), transporter && !worker.sourcePlotId ? 'Apply a supply route first.' : '');
+      }, !sourceValid || !destinationValid || worker.staffRetired || worker.roleLimitPaused);
+      html += command(worker.paused ? 'Resume work' : worker.staffPlotId ? 'Pause & return to plot' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused }, worker.staffRetired || worker.roleLimitPaused && worker.paused || transporter && worker.paused && (!worker.resource || !worker.sourcePlotId), transporter && !worker.sourcePlotId ? 'Apply a supply route first.' : '');
       html += button('Find worker', () => { waypoint = { kind: 'worker', id: worker.id, name: worker.name || 'Your worker', x: worker.x, z: worker.z }; toast('Your worker is marked on the minimap.'); });
       html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Take as much as your pack can hold. The worker keeps any remainder.');
-      if (!worker.staffPlotId || worker.staffRetired) html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
+      if (!worker.staffPlotId || worker.staffRetired) html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack and return supplied equipment before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0 || Object.keys(worker.equipment || {}).length > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
       html += '</div></div></section>';
     });
     return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div>';
@@ -513,8 +518,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function cart(id) {
     const c = state().carts?.find(v => v.id === id);
     if (!c) return head('CARGO CART', 'This cart is no longer here.');
-    let html = menuHero(itemArt('cart'), 'CARGO CART', 'Bring supplies back together.', 'Cart storage is separate from your carrying capacity. Attach the cart to your horse to transport its contents.') + stats([['Stored weight', `${num(inventoryWeight(c.storage || {}))} / ${TRANSPORT.cartCapacity}`]]) + meter(inventoryWeight(c.storage || {}), TRANSPORT.cartCapacity, 'Cart capacity used');
+    let html = menuHero(itemArt('cart'), 'CARGO CART', 'Bring supplies back together.', 'Cart storage is separate from your carrying capacity. Attach the cart to your horse to transport its contents.') + stats([['Stored weight', `${num(inventoryWeight(c.storage || {}))} / ${cartCapacity(c)}`]]) + meter(inventoryWeight(c.storage || {}), cartCapacity(c), 'Cart capacity used');
     html += storage(c.storage || {}, id, true);
+    html += cartTransportControls({state:state(),player:me(),cart:c,command});
     const h = state().horses?.find(h => h.ownerId === me().id && gap(h, c) <= 4);
     if (c.horseId) html += command('Detach from horse', 'attachCart', { targetId: c.id, horseId: null });
     else if (h) html += command('Attach to nearby horse', 'attachCart', { targetId: c.id, horseId: h.id });
@@ -523,7 +529,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function merchant() {
     const m = state().merchant || {};
     let html = head('THE WAYFARER', 'Tavern games & traveling wares.', 'The inn’s gaming table is open day and night, including when the traveling merchant is away.');
-    if (showTavern) html += menuSection('Tavern games', 'Play coin flip or European roulette with your wallet gold.', button('Play tavern games', () => showTavern(), false, '', 'primary-button'), itemArt('gold'));
+    if (showTavern) html += menuSection('Tavern games', 'Play blackjack, three-card poker, Enchanted reels, Wheel of Fate, coin flip and European roulette with wallet gold.', button('Play tavern games', () => showTavern(), false, '', 'primary-button'), itemArt('gold'));
     html += head('TRAVELING MERCHANT', m.present ? 'Fresh wares at the crossroads.' : 'The merchant is on the road.', 'The merchant visits during the day after every second night. Dwarfs gather the village’s basic materials; the steward can export a safe surplus.');
     html += `<p>The current council policy sells ${merchantExportPercent(state().policies?.exportPriority)}% of surplus wheat, timber and stone on each visit, with no unit cap. Food and repair reserves are set aside first; sales round down to whole units. Change the percentage through the Village Council.</p>`;
     if (m.summary) html += `<p>${esc(m.summary)}</p>`;
@@ -564,10 +570,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function roles() {
     let html = head('YOUR CALLING', 'Choose how you serve.', 'Every job can gather, use weapons, build universal structures, and repair defenses. Role changes preserve your land and universal buildings.');
-    for (const id of ['villager', 'guard', 'priest']) {
-      const losses = owned().filter(p => BUILDING_TYPES[p.building]?.role && BUILDING_TYPES[p.building].role !== id);
+    for (const id of Object.keys(ROLE_STATS)) {
+      const losses = owned().filter(p => !roleCanBuild(id, BUILDING_TYPES[p.building]));
       const traits = ROLE_STATS[id];
-      html += row(label(id), { villager: `Build, gather, craft, and trade. Carry ${traits.extraCapacity} extra weight, with or without a backpack.`, guard: `Own barracks and sword shops. Earn defense pay. Gain ${traits.maxShield} shield; it recovers ${traits.shieldRegen} per second after ${traits.shieldDelay} seconds without taking damage.`, priest: `Heal and revive allies. Own churches and earn care pay. ${traits.maxHp} maximum health.` }[id], button(id === me().role ? 'Current role' : 'Choose ' + id, () => {
+      html += row(label(id), { villager: `Build, gather, craft, and trade. Carry ${traits.extraCapacity} extra weight, with or without a backpack.`, guard: `Own barracks and sword shops. Earn defense pay. Gain ${traits.maxShield} shield; it recovers ${traits.shieldRegen} per second after ${traits.shieldDelay} seconds without taking damage.`, priest: `Heal and revive allies. Own churches and earn care pay. ${traits.maxHp} maximum health.` }[id] || ROLE_DESCRIPTIONS[id], button(id === me().role ? 'Current role' : 'Choose ' + id, () => {
         if (losses.length) confirm('Change your role?', 'You will lose ' + losses.map(p => `${BUILDING_TYPES[p.building].name} (${PLOTS.find(v => v.id === p.id)?.name || p.id})`).join(', ') + '. Their troops are disbanded. Empty their stores and finish treatments first. Your plots and universal buildings remain.', 'role_change', { role: id, confirm: true });
         else send({ type: 'action', kind: 'role_change', role: id });
       }, id === me().role));
@@ -596,7 +602,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const isCart = current?.kind === 'cart', container = isCart ? state().carts?.find(cart => cart.id === current.id) : plots().find(plot => plot.id === current?.id);
     if (!container) return null;
     const resource = value('storage-resource'), stored = container.storage || {}, count = amount('storage-amount');
-    let storeMax = transferLimit(me(), stored, resource, isCart ? TRANSPORT.cartCapacity : plotStorageCapacity(container));
+    let storeMax = transferLimit(me(), stored, resource, isCart ? cartCapacity(container) : plotStorageCapacity(container));
     if (resource === 'cart' && container.ownerId !== me().id) {
       const recipient = state().players?.find(player => player.id === container.ownerId);
       if (recipient) storeMax = Math.min(storeMax, Math.max(0, TRANSPORT.maxCarts - ownedCartCount(state(), recipient)));
@@ -661,26 +667,29 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     html += stats([['Owner', p.ownerName || 'Village resident'], ['Building health', p.building ? `${num(p.hp)} / ${num(p.maxHp)}` : 'Unbuilt'], ['Level', num(p.level || 1)]]);
     if (p.building === 'cannon' && p.hp > 0) html += deliveries(id);
-    if (p.building && p.hp > 0 && p.hp < p.maxHp) html += command('Repair with equipped hammer', 'repairPlot', { plotId: id }, !me().durability?.hammer, 'Consumes shared village repair supplies and hammer durability.');
+    if (p.building && p.hp < p.maxHp) html += command(p.hp <= 0 ? `Rebuild with hammer · ${p.rebuildProgress || 0}/${Math.ceil(p.maxHp*.35)}` : 'Repair with equipped hammer', 'repairPlot', { plotId: id }, !me().durability?.hammer, 'Consumes shared village repair supplies and hammer durability.');
+    if (p.building === 'arcane_academy' && showAcademy) html += button('Open your role skill tree', () => showAcademy(id), p.hp <= 0);
+    if (p.hp <= 0 && p.building) html += '<p>Any dwarf can rebuild this ruin with a working hammer. Each swing uses one timber and one stone from their pack or village stock. It reopens at 35% structural health, keeping its owner, goods and upgrades.</p>';
     if (['mine', 'wheat_farm', 'tree_farm'].includes(p.building)) html += '<p>' + (mine ? 'Your harvest is yours. When visitors harvest, their output is split 80% to them and 20% into your storage over time.' : p.allowVisitors ? 'Visitors may gather here. Your share is 80%; the owner receives the remaining 20% over time.' : 'This owner has closed harvesting to visitors.') + '</p>' + (mine ? command(p.allowVisitors ? 'Close visitor harvesting' : 'Allow visitor harvesting', 'plot_access', { plotId: id, allowVisitors: !p.allowVisitors }) : '');
     const recipes = Object.entries(RECIPES).filter(([, r]) => r.shop === p.building);
     if (recipes.length) {
       html += '<h3>Workshop counter</h3><p>The owner sets each item’s price. Purchases use ready stock or craft from stored materials. Payment goes to the owner after village trade tax. Equipment replaces your current item of that type.</p>' + (mine ? '<p>Set a whole-gold price for each item or bundle below. You can also craft gunpowder and musket shots into storage for customers, transporters or your own use.</p>' : '') + '<div class="shop-item-grid">';
       for (const [recipe, r] of recipes) {
+        const effectiveCost = p.shopCosts?.[recipe] ?? r.cost;
         const price = shopPrice(p, recipe), readyStock = r.stockable && (p.storage?.[r.item] || 0) >= r.amount;
-        const stocked = readyStock || hasCost(p.storage, r.cost), owned = r.tool && me().durability?.[r.tool] > 0;
+        const stocked = readyStock || hasCost(p.storage, effectiveCost), owned = r.tool && me().durability?.[r.tool] > 0;
         const addedWeight = r.tool ? owned ? 0 : TOOL_WEIGHTS[r.tool] : resourceWeight(me(), r.item) * r.amount;
         const cartOwned = r.item === 'cart' && ownedCartCount(state(), me()) >= TRANSPORT.maxCarts;
         const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= price && p.hp > 0 && !full && !cartOwned;
         const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : r.item === 'gunpowder' ? [['Bundle', `${r.amount} gunpowder`], ['Use', 'Craft musket ammunition']] : r.item === 'musket_ammo' ? [['Bundle', `${r.amount} musket shots`], ['Use', 'One per musket shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One cart per dwarf']];
         const copy = r.tool ? r.tool === 'sword' ? 'A forward sweep can hit several enemies. Guards deal 20% extra damage. Each swing uses one durability. Replacing a sword discards the equipped weapon.' : r.tool === 'bow' ? 'A ranged shot consumes one carried arrow and one durability. Guards deal 20% extra damage. Aim toward your enemy.' : r.tool === 'musket' ? 'A powerful ranged shot with a slower reload. Each shot uses one carried musket shot and one durability. Guards deal 20% extra damage.' : r.tool === 'hammer' ? 'Restores damaged structures using the village’s repair materials. Each repair uses one durability.' : 'Every tool tier can gather every matching resource. Higher tiers give more resources at the same swing speed. Each harvest uses one durability.' : r.item === 'arrows' ? 'A bundle for your bow. These go into your inventory and weigh 0.1 each. Archer towers do not need arrows.' : r.item === 'gunpowder' ? 'Combine mined sulfur and coal at a tinker shop. Store this crafted supply to make ammunition, or sell it at your own price.' : r.item === 'musket_ammo' ? 'Combine stone and gunpowder into ready musket shots. Carry them to fire your musket or supply your barracks musketeers.' : 'Place this cart, then attach it to your horse to move stored supplies. Cart storage is separate from your pack.';
-        let controls = button(`Buy · ${price}g`, () => { if (r.tool && me().durability?.[r.tool] > 0) confirm('Replace your equipped item?', `${r.name} costs ${price} gold and uses ${costText(r.cost)} from this shop. Your existing ${r.tool} and its remaining durability will be lost.`, 'craft_buy', { plotId: id, recipe, price, confirm: true }); else send({ type: 'action', kind: 'craft_buy', plotId: id, recipe, price }); }, !available, !stocked ? 'The shop needs more materials.' : readyStock ? 'Buys the prepared stock.' : 'Crafts from shop storage.');
+        let controls = button(`Buy · ${price}g`, () => { if (r.tool && me().durability?.[r.tool] > 0) confirm('Replace your equipped item?', `${r.name} costs ${price} gold and uses ${costText(effectiveCost)} from this shop. Your existing ${r.tool} and its remaining durability will be lost.`, 'craft_buy', { plotId: id, recipe, price, confirm: true }); else send({ type: 'action', kind: 'craft_buy', plotId: id, recipe, price }); }, !available, !stocked ? 'The shop needs more materials.' : readyStock ? 'Buys the prepared stock.' : 'Crafts from shop storage.');
         if (mine) {
           controls += `<label>Price for ${esc(r.name)} · gold${quantity(`shop-price-${recipe}`, SHOP_PRICE_LIMIT, price)}</label>` + button('Save item price', () => send({ type: 'action', kind: 'shop_price', plotId: id, recipe, price: amount(`shop-price-${recipe}`) }), p.hp <= 0);
-          if (r.stockable) controls += `<label>Craft batches · ${r.amount} per batch${quantity(`shop-batches-${recipe}`, SHOP_CRAFT_BATCH_LIMIT)}</label>` + button('Craft into storage', () => send({ type: 'action', kind: 'craft_stock', plotId: id, recipe, batches: amount(`shop-batches-${recipe}`) }), p.hp <= 0 || !hasCost(p.storage, r.cost));
+          if (r.stockable) controls += `<label>Craft batches · ${r.amount} per batch${quantity(`shop-batches-${recipe}`, SHOP_CRAFT_BATCH_LIMIT)}</label>` + button('Craft into storage', () => send({ type: 'action', kind: 'craft_stock', plotId: id, recipe, batches: amount(`shop-batches-${recipe}`) }), p.hp <= 0 || !hasCost(p.storage, effectiveCost));
         }
         html += itemCard({ id: recipe, item: r.tool || r.item, tier: r.tier, name: r.name, tag: r.tool === 'musket' ? 'Heavy ranged weapon' : r.tier ? TOOL_TIERS[r.tier].name + ' quality' : 'Workshop supply', facts, copy,
-          extra: materialDisplay(r.cost, p.storage), controls, available,
+          extra: materialDisplay(effectiveCost, p.storage), controls, available,
           status: p.hp <= 0 ? 'Workshop needs rebuilding.' : cartOwned ? 'You already own a cargo cart, packed, stored or deployed.' : !stocked ? 'The shop needs more materials.' : full ? 'Make room in your pack.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : readyStock ? `${num(p.storage[r.item])} ready in stock` : 'Materials ready · crafted when purchased' });
       }
       html += '</div>';
@@ -699,7 +708,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       for (const [unitType, info] of Object.entries(TROOP_TYPES)) html += row(info.name, `${info.hp} health · ${info.damage} damage · ${info.range} m range · ${info.cooldown}s between attacks. Recruit: ${costText({ gold: info.gold, ...info.resources })}.`, mine ? command(`Recruit ${info.name} · ${info.gold}g`, 'recruitGuard', { plotId: id, unitType }, troops.length + replacements.length >= capacity || wallet() < info.gold || !hasCost(p.storage, info.resources) || p.hp <= 0) : '');
     }
     if (TOWER_STATS[p.building]) {
-      const tower = TOWER_STATS[p.building], status = state().defenseStatus?.find(d => d.plotId === id);
+      const tower = towerStats(p), status = state().defenseStatus?.find(d => d.plotId === id);
       const ammunition = Object.entries(tower.ammo).map(([resource, cost]) => [label(resource) + ' stored', num(p.storage?.[resource])]);
       const unlimited = Object.keys(tower.ammo).length === 0;
       const shots = unlimited ? null : status?.shotsRemaining ?? Math.min(...Object.entries(tower.ammo).map(([resource, cost]) => Math.floor((p.storage?.[resource] || 0) / cost)));
@@ -710,11 +719,11 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         blocked: ['Shot blocked', 'Nearby terrain or buildings block the shot. A target needs a clear line of fire.'],
         out_of_range: ['Waiting for targets', 'The zombies are outside this defense’s firing range.'],
         empty: ['Out of ammunition', 'Add ammunition to Building storage below to resume firing.'],
-        destroyed: ['Destroyed', 'The owner must empty its storage, remove the ruined building, and rebuild.']
+        destroyed: ['Destroyed', 'Any dwarf can hammer this ruin back into service with timber and stone. Ownership, stored goods and upgrades stay safe.']
       };
       const [name, detail] = descriptions[condition] || descriptions.ready;
-      html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Damage per shot', num(tower.damage * ((p.level || 1) >= 2 ? 1.5 : 1))], ['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shot interval', `${num(tower.cooldown)} seconds`], ['Shots available', unlimited ? 'Unlimited' : num(shots)], ...ammunition]);
-      html += '<p>' + (p.building === 'archer_tower' ? 'Archer towers fire automatically without arrows or other ammunition. Keep the tower repaired and upgrade it when you can.' : 'Each shot consumes one stored stone and one stored coal. Gather both with a pickaxe and place them in this building’s storage.') + '</p>';
+      html += '<h3>Automatic defense</h3><div class="defense-state" data-defense-state="' + esc(condition) + '"><strong>' + esc(name) + '</strong><p>' + esc(detail) + '</p></div>' + stats([['Damage per shot', num(tower.damage)], ['Firing range', `${num(status?.range ?? tower.range)} m`], ['Shot interval', `${num(tower.cooldown)} seconds`], ['Shots available', unlimited ? 'Unlimited' : num(shots)], ...ammunition]);
+      html += '<p>' + (p.building === 'wizard_tower' ? 'Each shot uses one stored sulfur. Level 2 unlocks lightning chaining to at most three nearby zombies with diminishing damage.' : p.building === 'archer_tower' ? 'Archer towers fire automatically without arrows or other ammunition. Keep the tower repaired and upgrade it when you can.' : 'Each shot consumes one stored stone and one stored coal. Gather both with a pickaxe and place them in this building’s storage.') + '</p>';
     }
     if (Object.hasOwn(PRODUCTION_UPGRADES, p.building || '')) {
       const upgrade = productionUpgrade(p), currentStats = productionStats(p), next = upgrade ? { ...p, level: upgrade.level } : p, nextStats = productionStats(next);
@@ -727,8 +736,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const level = p.level || 1, upgrade = level < 2 ? { ...DEFENSE_UPGRADES[p.building], level: 2 } : null;
       const rows = [['Building health', num(p.maxHp), num(p.maxHp + (upgrade ? Math.ceil(p.maxHp * .5) : 0))]];
       if (p.building === 'church') rows.push(['Treatment beds', num(bedCapacity(p)), '4']);
-      if (p.building === 'barracks') rows.push(['Troop capacity', num(barracksCapacity(p)), '6']);
-      if (TOWER_STATS[p.building]) { const tower = TOWER_STATS[p.building]; rows.push(['Damage per shot', num(tower.damage * (level >= 2 ? 1.5 : 1)), num(tower.damage * 1.5)], ['Firing range', `${tower.range} m`, `${tower.range} m`]); }
+      if (p.building === 'barracks') rows.push(['Troop capacity', num(barracksCapacity(p)), num(barracksCapacity({...p,level:2}))]);
+      if (TOWER_STATS[p.building]) { const tower = TOWER_STATS[p.building]; rows.push(['Damage per shot', num(towerStats(p).damage), num(towerStats({...p,level:2}).damage)], ['Firing range', `${tower.range} m`, `${tower.range} m`]); }
       html += structureUpgrade(p, 'Building upgrade', rows, upgrade, 2, mine, 'upgradeDefense');
     }
     if (mine || p.building) html += '<h3>Building storage</h3><p>Capacity: ' + num(inventoryWeight(p.storage||{})) + ' / ' + num(plotStorageCapacity(p)) + ' weight. Materials stored on an empty plot can fund its construction.</p>' + storage(p.storage || {}, id, false, mine);

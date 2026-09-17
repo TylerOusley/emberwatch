@@ -28,10 +28,11 @@ test('cave has one continuous floor following the authoritative ramps and all52 
 
 test('terrain is clipped precisely over the cave, side walls face inward and the mouth is open',()=>{
   for(const n of [...minerals,{x:0,z:-124},{x:9,z:-167},{x:4,z:-198}])assert.equal(rayHits(world.ground,n.x,50,n.z,0,-1,0).length,0,'surface triangles cannot cover cave rooms or ramps');
-  for(const p of[{x:6.02,z:-124},{x:-6.02,z:-124},{x:14.03,z:-152},{x:35,z:-182},{x:20,z:-216}])assert.ok(rayHits(world.ground,p.x,50,p.z,0,-1,0).length>0,'clipping does not create coarse holes beyond the cave boundary');
+  for(const p of[{x:6.02,z:-124},{x:-6.02,z:-124},{x:22.03,z:-147},{x:44.03,z:-184},{x:-25.03,z:-216}])assert.ok(rayHits(world.ground,p.x,50,p.z,0,-1,0).length>0,'clipping does not create coarse holes beyond the cave boundary');
   const cave=createCaveWorld(new THREE.Scene()),walls=cave.root.getObjectByName('inward-facing-cave-walls');
-  for(const area of CAVE_AREAS)for(const side of[-1,1]){
-    const hits=rayHits(walls,area.x,groundHeight(area.x,area.z)+2,area.z,side,0,0);assert.ok(hits.length>0);assert.ok(hits[0].distance>area.w/2-.2&&hits[0].distance<area.w/2+.1,'a real inward face closes each room side');
+  for(const edge of createCaveLayout().walls){
+    const t=(edge.a+edge.b)/2,x=edge.vertical?edge.fixed:t,z=edge.vertical?t:edge.fixed;
+    const hits=rayHits(walls,x+edge.nx*1.5,groundHeight(x,z)+1.5,z+edge.nz*1.5,-edge.nx,0,-edge.nz);assert.ok(hits.length>0);assert.ok(hits[0].distance>1.3&&hits[0].distance<1.6,'the shared irregular perimeter has a real inward face at body height');
   }
   assert.equal(rayHits(cave.root,0,1.45,-114,0,0,-1,25).length,0,'rocks and supports leave a dwarf-height approach through the mouth');cave.dispose();
 });
@@ -48,6 +49,19 @@ test('the dressed entrance preserves broad body clearance and has paired front-f
   const camera=new THREE.PerspectiveCamera();camera.position.set(0,8,-124);
   assert.equal(cave.update({x:0,z:-126},camera).cutaway,true);
   assert.equal(cave.root.getObjectByName('mouth-rock-crown').visible,false,'portal lintel shares the roof cutaway instead of obscuring the player');
+  cave.dispose();
+});
+
+test('passage mouths have real curved rock undersides above the complete camera envelope',()=>{
+  const cave=createCaveWorld(),arches=cave.root.getObjectByName('sculpted-working-archways');
+  for(const mouth of[{x:-14,z:-150,w:10,vertical:true},{x:14,z:-147,w:8,vertical:true},{x:9,z:-174,w:10},{x:4,z:-206,w:10}]){
+    const heights=[];
+    for(const t of[-.46,0,.46]){
+      const x=mouth.x+(mouth.vertical?0:t*mouth.w),z=mouth.z+(mouth.vertical?t*mouth.w:0),floor=groundHeight(x,z),hits=rayHits(arches,x,floor+3,z,0,1,0);
+      assert.ok(hits.length,'the doorway has actual overhead rock');const height=hits[0].point.y-floor;heights.push(height);assert.ok(height>5.1,'standing, jumping and the 4.85 m orbit envelope remain clear');
+    }
+    assert.ok(heights[1]>Math.max(heights[0],heights[2])+1,'the arch rises from uneven shoulders instead of a rectangular lintel');
+  }
   cave.dispose();
 });
 

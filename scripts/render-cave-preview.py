@@ -21,7 +21,7 @@ regular = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 font = lambda size, strong=False: ImageFont.truetype(bold if strong else regular, size)
 draw.text((66, 39), 'EMBERWATCH  /  THE DEEPWORKS', font=font(32, True), fill='#efe1c7')
-draw.text((66, 88), 'Actual cave geometry and 44 mineral formations  ·  Reproducible sample ore roll  ·  Offline lighting', font=font(21), fill='#abb9bf')
+draw.text((66, 88), f"Actual cave geometry and {data['stats']['minerals']} mineral formations  ·  Reproducible sample ore roll  ·  Offline lighting", font=font(21), fill='#abb9bf')
 
 def normalized(v):
     v = np.asarray(v, dtype=np.float64)

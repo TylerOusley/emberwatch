@@ -2,11 +2,21 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — worker continuity build 26.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — village expansion build 27.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 27 adds all four requested tavern games together: blackjack, three-card poker, Enchanted reels and Wheel of Fate, alongside coin flip and roulette. Card hands persist privately with escrowed payouts and a 120-second automatic decision. Maximum committed stake is 10,000 gold; three-card poker allows up to 5,000 ante plus its matching play wager.
+
+Managers start with eight personal workers and 60-second wages, train up to ten, and retain the existing plot staff system. Supply stone or iron tools for 25% or 50% more output, with actual durability and optional budgeted repairs. Tinker owners discount shop recipes 10–20% for every customer. Wizards start with a fire staff, can learn frost and chain lightning, and build Arcane Academies and sulfur-fed wizard towers. Each of the six roles has paid skill branches; lessons survive role changes, respawn and academy destruction for the current village run.
+
+The mine is recessed into broad mountain foothills, with folded vaults, side workings and readable sulfur veins. Space jumps over new fallen logs and onto stone ledges; tall walls and plots retain authoritative collision. Any dwarf can rebuild a ruin by hammering with timber and stone; it reopens at 35% health while preserving ownership, stock, upgrades and recruited troop training.
+
+Carriages hold 1,000 weight, upgrade to 2,000 for 750 gold, 40 timber and 15 iron, and travel 20% faster on roads when loaded. Direct plot freight and two rescue stretchers make mine runs and church evacuation practical. Shared village works fund gate/keep reinforcement (300 timber, 500 stone, 5,000 gold), a repair mason, a ballista and a trebuchet. Later projects cost up to 30,000 gold plus bulk resources and need donated supplies/ammunition.
+
+Crates now include seven additional rewards. Each opening makes one rarity roll: Basic 5% Rare, Rare 10% Epic, Epic 20% Legendary, and actual Legendary crates 1% Godly. The Godly Heart of Emberwatch grants a once-per-night Ember Ward (Q): wearer and nearby living allies gain 50 absorption for ten seconds, without stacking. Epic crates cannot award Godly items. Duplicate refunds remain based on the purchased crate price.
 
 Build 26 keeps unpaused personal hires, plot gatherers and transporters working after their owner leaves, as long as someone remains online in that village. Each crew spends its own owner's wallet and prepaid wage time; when both are exhausted, paid work stops. Sales still credit the owner. Leaving the village does not cancel orders or discard cargo. When the last resident disconnects, movement, gathering, deliveries and wages pause until a resident returns. The market queue also includes working crews whose owners are offline.
 

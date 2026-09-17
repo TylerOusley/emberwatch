@@ -16,7 +16,7 @@ async function fixture(t) {
   async function register(name) { const session = await store.authenticate('register', name, 'crate-persistence-password'); return store.account(session.playerId); }
   const account = await register('Crate Collector'), other = await register('Other Collector');
   const sim = new Simulation(store), id = account.id;
-  const open = (action = {}, index = 0) => crateAccountAction(store, id, { kind: 'crate_open', requestId: randomUUID(), tier: 'basic', currency: 'bank', ...action }, { chooseIndex: () => index });
+  const open = (action = {}, index = 0) => crateAccountAction(store, id, { kind: 'crate_open', requestId: randomUUID(), tier: 'basic', currency: 'bank', ...action }, { chooseIndex: () => index, chooseRarity: () => 9999 });
   const loadout = value => crateAccountAction(store, id, { kind: 'crate_loadout', loadout: { ...emptyLoadout(), ...value } });
   const nights = count => { for (let n = 1; n <= count; n++) store.recordSurvivedNight(id, 'verified-prior-run', n); };
   const start = name => { const { id: villageId } = sim.create(name, account), village = sim.villages.get(villageId); return { village, player: sim.join(villageId, account, 'priest') }; };

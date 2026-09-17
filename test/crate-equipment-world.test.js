@@ -28,6 +28,16 @@ function fixture(role = 'villager', equipment = {}) {
   return { rig, player, state: { players: [player] }, actors: new Map([[player.id, { rig }]]), world: createCrateEquipmentWorld() };
 }
 
+test('Ember Ward aura follows an ally without crate gear and expires without leaking meshes', () => {
+  const f = fixture(); Object.assign(f.player, { hp:100, emberWard:50, emberWardUntil:110 }); f.state.clock=100;
+  f.world.update(f.state,f.actors,0);
+  const aura=f.rig.group.getObjectByName('ember-ward-shield');assert.ok(aura);assert.equal(aura.parent,f.rig.group);
+  let freed=0;for(const resource of [aura.geometry,aura.material])resource.addEventListener('dispose',()=>freed++);
+  f.player.emberWard=20;f.world.update(f.state,f.actors,2);assert.equal(f.rig.group.getObjectByName('ember-ward-shield'),aura);
+  f.state.clock=110;f.world.update(f.state,f.actors,10);assert.equal(aura.parent,null);assert.equal(freed,2);
+  f.world.dispose();assert.equal(freed,2);f.rig.dispose();
+});
+
 test('live rigs keep removable head covers separate while faces and original honor choices remain intact', () => {
   for (const role of ['villager', 'guard', 'priest']) {
     const f = fixture(role, { head: 'dawnsteel_helm' }), head = f.rig.group.getObjectByName('head');

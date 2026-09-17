@@ -33,6 +33,34 @@ function fixture(t) {
   return { ui, player, worker, state, fields, sent, get html() { return html; }, get opens() { return opens; }, get buttons() { return buttons; }, button(text) { const found = buttons.find(b => b.text === text); assert.ok(found, `Missing button: ${text}`); return found; }, click(text) { const control = this.button(text); assert.equal(control.disabled, false, `Disabled button: ${text}`); control.onclick(); }, select(id, selected) { const control = fields.get(id); assert.ok(control, `Missing select: ${id}`); control.value = selected; control.onchange(); } };
 }
 
+test('worker management shows the active Manager cap, wage rate and trained cargo allowance', t => {
+  const f = fixture(t); f.player.role = 'manager'; f.player.skills = { manager_staffing: 2, manager_logistics: 2 };
+  f.ui.show('workers'); assert.match(f.html, /1 \/ 10 personal workers/); assert.match(f.html, /1 gold \/ 60 working seconds/);
+  assert.match(f.html, /0 \/ 60 weight/);
+  f.player.role = 'villager'; f.ui.refresh(); assert.match(f.html, /1 \/ 5 personal workers/); assert.match(f.html, /1 gold \/ 30 working seconds/);
+});
+
+test('actual worker equipment controls send supplied-tool choices and refresh after durability changes', t => {
+  const f = fixture(t); Object.assign(f.worker, { x: f.player.x, z: f.player.z });
+  f.player.tiers.pickaxe = 'iron'; f.player.durability.pickaxe = 91;
+  f.ui.show('workers'); f.click('Supply your iron pickaxe');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_equip', workerId: f.worker.id, tool: 'pickaxe', tier: 'iron' });
+  f.worker.equipment = { pickaxe: { tier: 'iron', durability: 91, maxDurability: 200 } }; f.player.durability.pickaxe = 0; f.ui.refresh();
+  assert.match(f.html, /91 \/ 200 durability/); f.click('Recover tool');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_unequip', workerId: f.worker.id, tool: 'pickaxe' });
+  f.worker.equipment.pickaxe.durability = 0; f.ui.refresh(); assert.match(f.html, /using wooden fallback/);
+  f.click('Repair · 20g + materials'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_repair', workerId: f.worker.id, tool: 'pickaxe' });
+});
+
+test('automatic worker maintenance controls submit an owned supply plot and bounded budget', t => {
+  const f = fixture(t), plotId = PLOTS[0].id;
+  f.state.plots = [{ id: plotId, ownerId: 'alice', building: 'house', hp: 300 }]; f.ui.show('workers'); f.click('Enable 100g budget');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_maintenance', workerId: f.worker.id, enabled: true, budgetGold: 100, plotId });
+  f.worker.maintenanceEnabled = true; f.worker.maintenanceBudgetGold = 80; f.worker.maintenancePlotId = plotId; f.ui.refresh();
+  assert.match(f.html, /80 gold remaining/); f.click('Disable automatic repairs');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_maintenance', workerId: f.worker.id, enabled: false });
+});
+
 test('worker management is discoverable from the pack and treasury and shows only the owner’s crew', t => {
   const f = fixture(t);
   f.state.workers.push({ ...f.worker, id: 'other-worker', ownerId: 'bob', name: 'Hidden Bob worker', cargo: { iron: 10 } });

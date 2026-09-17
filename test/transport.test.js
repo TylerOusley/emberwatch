@@ -6,8 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../server/store.js';
-import { BUILDINGS } from '../shared/world.js';
-import { ensureTransport, transportAction, transportTick, transportSnapshot, bankTransfer, spendGold, chargePurchase, availableGold, repayIncome } from '../server/transport.js';
+import { BUILDINGS, PLOTS, plotBedPoint } from '../shared/world.js';
+import { TRANSPORT, cartCapacity, mountedTravelSpeed } from '../shared/transport.js';
+import { plotEntrance } from '../shared/access.js';
+import { careTick, ensureCare } from '../server/care-defense.js';
+import { ensureRequests, requestsBeforeAction, requestsAfterAction, requestsTick } from '../server/requests.js';
+import { ensureTransport, transportAction, transportTick, transportSnapshot, bankTransfer, spendGold, chargePurchase, availableGold, repayIncome, releaseTransportPassenger } from '../server/transport.js';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'emberwatch-transport-'));
@@ -100,19 +104,19 @@ test('horse sale is finite, unique per owner, and only its owner can ride', asyn
 
 test('cart inventory transfers conserve cargo, respect weight and keep storage private', async t => {
   const { p, other, village, sim, act } = await fixture(t);
-  p.inventory = { cart: 1, stone: 101 }; act(p, { kind: 'deployCart' });
+  p.inventory = { cart: 1, stone: 334 }; act(p, { kind: 'deployCart' });
   const cart = village.carts[0]; assert.equal(p.inventory.cart, 0);
-  act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'stone', amount: 100 });
-  assert.equal(cart.storage.stone, 100); assert.equal(p.inventory.stone, 1);
+  act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'stone', amount: 333 });
+  assert.equal(cart.storage.stone, 333); assert.equal(p.inventory.stone, 1);
   assert.throws(() => act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'stone', amount: 1 }), /cart cannot/);
   assert.throws(() => act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 33 }), /pack cannot/);
   act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 32 });
-  assert.equal(cart.storage.stone, 68); assert.equal(p.inventory.stone, 33);
+  assert.equal(cart.storage.stone, 301); assert.equal(p.inventory.stone, 33);
   other.x = cart.x; other.z = cart.z;
   assert.throws(() => act(other, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 1 }), /another dwarf/);
   assert.equal(transportSnapshot(village, other.id, sim.store).carts[0].storage, undefined);
-  assert.deepEqual(transportSnapshot(village, p.id, sim.store).carts[0].storage, { stone: 68 });
-  assert.equal(transportSnapshot(village, other.id, sim.store).carts[0].weight, 204);
+  assert.deepEqual(transportSnapshot(village, p.id, sim.store).carts[0].storage, { stone: 301 });
+  assert.equal(transportSnapshot(village, other.id, sim.store).carts[0].weight, 903);
 });
 
 test('riding is blocked while carrying or occupying a church bed', async t => {
@@ -147,12 +151,143 @@ test('bank exact and all transfers use current balances and conserve wallet plus
 
 test('cart maximum transfers stop at capacity and apply current source counts without duplication', async t => {
   const { p, village, act } = await fixture(t);
-  p.inventory = { cart: 1, arrows: 3100 }; act(p, { kind: 'deployCart' });
+  p.inventory = { cart: 1, arrows: 10100 }; act(p, { kind: 'deployCart' });
   const cart = village.carts[0];
   act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'arrows', max: true });
-  assert.equal(p.inventory.arrows, 100); assert.equal(cart.storage.arrows, 3000);
+  assert.equal(p.inventory.arrows, 100); assert.equal(cart.storage.arrows, 10000);
   assert.throws(() => act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'arrows', max: true }), /cart cannot/);
   act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'arrows', max: true });
-  assert.equal(p.inventory.arrows, 1000); assert.equal(cart.storage.arrows, 2100);
-  assert.equal(p.inventory.arrows + cart.storage.arrows, 3100);
+  assert.equal(p.inventory.arrows, 1000); assert.equal(cart.storage.arrows, 9100);
+  assert.equal(p.inventory.arrows + cart.storage.arrows, 10100);
+});
+
+test('legacy cart cargo survives the capacity migration and reinforcement charges exactly once', async t => {
+  const { p, other, village, sim, act } = await fixture(t);
+  village.carts.push({ id: 'old-cart', ownerId: p.id, x: p.x, z: p.z, yaw: 0, storage: { iron: 99 } });
+  ensureTransport(village);
+  const cart = village.carts[0];
+  assert.equal(cartCapacity(cart), 1000); assert.equal(cart.storage.iron, 99);
+  p.wallet = 1000; p.inventory = { timber: 40, iron: 15 };
+  assert.throws(() => act(other, { kind: 'cartUpgrade', targetId: cart.id }), /another dwarf/);
+  p.boundInventory = { iron: 1 };
+  assert.throws(() => act(p, { kind: 'cartUpgrade', targetId: cart.id }), /40 timber/);
+  assert.equal(p.wallet, 1000); p.boundInventory = {};
+  act(p, { kind: 'cartUpgrade', targetId: cart.id });
+  assert.equal(p.wallet, 250); assert.equal(village.treasury, 3250);
+  assert.equal(p.inventory.timber, 0); assert.equal(p.inventory.iron, 0);
+  assert.equal(cartCapacity(cart), 2000); assert.equal(cart.storage.iron, 99);
+  assert.throws(() => act(p, { kind: 'cartUpgrade', targetId: cart.id }), /already/);
+  assert.equal(p.wallet, 250);
+  const restored = sim.store.loadVillages()[0]; ensureTransport(restored);
+  assert.equal(restored.carts[0].upgradeLevel, 1); assert.equal(cartCapacity(restored.carts[0]), 2000);
+  assert.equal(transportSnapshot(restored, p.id, sim.store).carts[0].capacity, 2000);
+});
+
+test('loaded and rescue carriages receive the same bounded road speed on server and snapshot', async t => {
+  const { p, village, sim } = await fixture(t);
+  Object.assign(p, { x: 0, z: 35, mountedHorseId: 'horse' });
+  village.horses.push({ id: 'horse', ownerId: p.id, riderId: p.id, cartId: 'cart', x: 0, z: 35 });
+  const cart = { id: 'cart', ownerId: p.id, horseId: 'horse', x: 0, z: 32, storage: {}, rescuePlayerIds: [] };
+  village.carts.push(cart);
+  assert.equal(mountedTravelSpeed(village, p), TRANSPORT.horseSpeed);
+  cart.storage.timber = 1;
+  assert.equal(mountedTravelSpeed(village, p), TRANSPORT.horseSpeed * 1.2);
+  assert.equal(mountedTravelSpeed(transportSnapshot(village, p.id, sim.store), p), mountedTravelSpeed(village, p));
+  cart.storage.timber = 0; cart.rescuePlayerIds = ['casualty'];
+  assert.equal(mountedTravelSpeed(village, p), TRANSPORT.horseSpeed * 1.2);
+  p.x = 15; assert.equal(mountedTravelSpeed(village, p), TRANSPORT.horseSpeed);
+  Object.assign(p, { x: 0, z: -180 }); assert.equal(mountedTravelSpeed(village, p), TRANSPORT.horseSpeed);
+  p.z = 35; village.horses[0].riderId = 'someone-else'; assert.equal(mountedTravelSpeed(village, p), TRANSPORT.horseSpeed);
+});
+
+test('two rescue stretchers retain the real players and release safely on revive, disconnect and respawn', async t => {
+  const { p, other, village, sim, act } = await fixture(t);
+  p.inventory = { cart: 1 }; act(p, { kind: 'deployCart' });
+  const cart = village.carts[0]; cart.storage.iron = 20;
+  Object.assign(other, { downed: true, hp: 0, carryingId: null, carriedBy: p.id, x: p.x, z: p.z }); p.carryingId = other.id;
+  const second = { ...other, id: 'second', name: 'Second', carriedBy: null }, third = { ...other, id: 'third', name: 'Third', carriedBy: null };
+  village.players.second = second; village.players.third = third;
+  act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: other.id });
+  assert.equal(p.carryingId, null); assert.equal(other.carriedBy, null); assert.equal(other.rescueCartId, cart.id);
+  assert.throws(() => act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: other.id }), /unseated/);
+  act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: second.id });
+  assert.throws(() => act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: third.id }), /occupied/);
+  cart.x += 2; transportTick(sim, village, 0);
+  assert.equal(other.x, cart.x - .46); assert.equal(second.x, cart.x + .46);
+  assert.equal(cart.storage.iron, 20);
+  other.downed = false; transportTick(sim, village, 0);
+  assert.equal(other.rescueCartId, null); assert.deepEqual(cart.rescuePlayerIds, [second.id]);
+  second.online = false; transportTick(sim, village, 0);
+  assert.equal(second.rescueCartId, null); assert.deepEqual(cart.rescuePlayerIds, []);
+  second.online = true; Object.assign(second, { x: p.x, z: p.z });
+  act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: second.id });
+  releaseTransportPassenger(village, second, { place: false });
+  Object.assign(second, { downed: false, x: 0, z: 4 }); transportTick(sim, village, 0);
+  assert.equal(second.x, 0); assert.equal(second.z, 4); assert.deepEqual(cart.rescuePlayerIds, []);
+  Object.assign(third, { x: p.x, z: p.z }); act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: third.id });
+  p.online = false; transportTick(sim, village, 0);
+  assert.equal(third.rescueCartId, null, 'disconnecting driver leaves passengers accessible to other rescuers');
+  assert.deepEqual(cart.rescuePlayerIds, []); assert.equal(cart.storage.iron, 20);
+});
+
+test('carriage bed handoff uses available church beds, normal treatment fees and completion', async t => {
+  const { p, other, village, sim, act } = await fixture(t);
+  village.clock = 0; village.guards = []; village.zombies = []; village.barracks = { wheat: 0 }; village.gate = { hp: 1200 };
+  p.inventory = { cart: 1 }; act(p, { kind: 'deployCart' });
+  const cart = village.carts[0]; Object.assign(other, { downed: true, hp: 0, maxHp: 100 });
+  act(p, { kind: 'cartRescueLoad', targetId: cart.id, playerId: other.id });
+  const site = PLOTS.find(p => p.id === 'west-1');
+  const plot = { id: site.id, building: 'church', ownerId: other.id, hp: 300, maxHp: 300, level: 1, storage: {}, patients: [] }; village.plots.push(plot);
+  ensureCare(village);
+  assert.throws(() => act(p, { kind: 'cartRescueTreat', targetId: cart.id, playerId: other.id, plotId: plot.id }), /Park beside/);
+  Object.assign(p, plotEntrance(site, plot)); Object.assign(cart, { x: p.x + 1, z: p.z }); transportTick(sim, village, 0);
+  plot.patients = [{ playerId: 'occupied-1', bedIndex: 0 }, { playerId: 'occupied-2', bedIndex: 1 }];
+  assert.throws(() => act(p, { kind: 'cartRescueTreat', targetId: cart.id, playerId: other.id, plotId: plot.id }), /occupied/);
+  assert.equal(other.rescueCartId, cart.id); assert.equal(p.wallet, 200);
+  plot.patients = [];
+  act(p, { kind: 'cartRescueTreat', targetId: cart.id, playerId: other.id, plotId: plot.id });
+  assert.equal(other.rescueCartId, null); assert.equal(other.bedPlotId, plot.id); assert.equal(p.wallet, 180);
+  assert.deepEqual(cart.rescuePlayerIds, []); assert.equal(plot.patients.length, 1);
+  assert.deepEqual({ x: other.x, z: other.z }, plotBedPoint(site, 0));
+  assert.throws(() => act(p, { kind: 'cartRescueTreat', targetId: cart.id, playerId: other.id, plotId: plot.id }), /not riding/);
+  village.clock = 20; careTick(sim, village, .1);
+  assert.equal(other.downed, false); assert.equal(other.hp, 45); assert.equal(other.bedPlotId, null); assert.equal(other.wallet, 220);
+});
+
+test('plot freight bypasses the pack while preserving capacity, ownership and complete cargo totals', async t => {
+  const { p, other, village, act } = await fixture(t);
+  p.inventory = { cart: 1 }; act(p, { kind: 'deployCart' });
+  const cart = village.carts[0], site = PLOTS.find(p => p.id === 'west-1');
+  const plot = { id: site.id, building: 'mine', ownerId: p.id, hp: 300, level: 1, storage: { stone: 500 } }; village.plots.push(plot);
+  Object.assign(p, plotEntrance(site, plot)); Object.assign(cart, { x: p.x + 1, z: p.z });
+  act(p, { kind: 'cartPlotLoad', targetId: cart.id, plotId: plot.id, resource: 'stone', max: true });
+  assert.equal(cart.storage.stone, 333); assert.equal(plot.storage.stone, 167); assert.equal(p.inventory.stone ?? 0, 0);
+  assert.throws(() => act(p, { kind: 'cartPlotLoad', targetId: cart.id, plotId: plot.id, resource: 'stone', amount: 1 }), /full/);
+  plot.ownerId = other.id;
+  assert.throws(() => act(p, { kind: 'cartPlotLoad', targetId: cart.id, plotId: plot.id, resource: 'stone', amount: 1 }), /Only the plot owner/);
+  act(p, { kind: 'cartPlotUnload', targetId: cart.id, plotId: plot.id, resource: 'stone', amount: 100 });
+  assert.equal(cart.storage.stone, 233); assert.equal(plot.storage.stone, 267);
+  p.z += 10;
+  assert.throws(() => act(p, { kind: 'cartPlotUnload', targetId: cart.id, plotId: plot.id, resource: 'stone', max: true }), /closer/);
+  assert.equal(cart.storage.stone + plot.storage.stone, 500);
+});
+
+test('withdrawing bulk cannon stock cannot manufacture a paid shortage after dawn or reload', async t => {
+  const { p, village, sim, act } = await fixture(t);
+  Object.assign(village, { clock: 0, status: 'active', day: 1, phase: 'day', stock: { wheat: 100, timber: 100, stone: 100 }, barracks: { wheat: 20 }, guards: [], policies: { guardWage: 25, priestWage: 25 } });
+  p.inventory = { cart: 1 }; act(p, { kind: 'deployCart' });
+  const cart = village.carts[0], site = PLOTS[0];
+  const plot = { id: site.id, ownerId: p.id, building: 'cannon', hp: 900, maxHp: 900, level: 1, storage: { coal: 8, stone: 8 } }; village.plots.push(plot);
+  Object.assign(p, plotEntrance(site, plot)); Object.assign(cart, { x: p.x + 1, z: p.z });
+  ensureRequests(village); requestsTick(sim, village);
+  const action = { kind: 'cartPlotLoad', targetId: cart.id, plotId: plot.id, resource: 'coal', max: true }, before = requestsBeforeAction(village);
+  act(p, action); requestsAfterAction(village, before, action);
+  assert.equal(village.requests.ledger[`${plot.id}:coal`].withdrawn, 8);
+  village.day++; village.requests = JSON.parse(JSON.stringify(village.requests)); requestsTick(sim, village);
+  assert.equal(village.requests.items.filter(r => r.status === 'open' && r.destinationId === plot.id).length, 0);
+  const restore = { kind: 'cartPlotUnload', targetId: cart.id, plotId: plot.id, resource: 'coal', max: true }, prior = requestsBeforeAction(village);
+  act(p, restore); requestsAfterAction(village, prior, restore);
+  assert.equal(village.requests.ledger[`${plot.id}:coal`].withdrawn, 0);
+  plot.storage.coal = 0; requestsTick(sim, village);
+  assert.ok(village.requests.items.some(r => r.status === 'open' && r.resource === 'coal'), 'actual firing creates a genuine funded need');
 });

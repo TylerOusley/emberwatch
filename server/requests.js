@@ -109,7 +109,7 @@ export function requestsAfterAction(v, before, action) {
   for (const [key, stock] of Object.entries(storeBalances(v))) {
     const item = record(book, key), previous = before[key] ?? stock;
     const removed = Math.max(0, previous - stock), added = Math.max(0, stock - previous);
-    if (removed && ['buyResource', 'plot_withdraw'].includes(action.kind)) item.withdrawn += removed;
+    if (removed && ['buyResource', 'plot_withdraw', 'cartPlotLoad'].includes(action.kind)) item.withdrawn += removed;
     // Rewarded deliveries fill the genuine deficit, never erase withdrawal debt.
     if (added && action.kind !== 'request_deliver') item.withdrawn = Math.max(0, item.withdrawn - added);
     item.stock = stock;

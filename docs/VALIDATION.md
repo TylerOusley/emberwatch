@@ -1,5 +1,21 @@
 # Emberwatch build validation
 
+## Build 27: village expansion
+
+Validated September 17, 2026: **822/822 tests pass** with `npm test` (no failures, cancellations or skips). All **119 runtime JavaScript modules** pass syntax checks, and **91 modules** reachable from the real browser entry point link with actual imports/exports. `git diff --check` passes.
+
+- Tavern: all four new games plus existing games, exact reel/wheel outcomes, card ranks and payouts, private hands, dealer rules, durable move receipts, treasury escrow and atomic timeout settlement/restart/rollback. Active button presses survive snapshot updates.
+- Crates: exact one-step rarity frequencies, no Epic→Godly path, duplicate refunds/replays and account persistence. Heart Ward respects range, living allies, nonstacking, night identity, role/equipment/reconnect changes and failed-save rollback; its visible aura follows every protected ally.
+- Roles: all six roles, paid Academy prerequisites/ranks/commission, active-role-only bonuses, one-time staff grant, mana and elemental hits. Real tower tests verify one sulfur per shot, fire34 and lightning42/27.3/17.745 with three-target/LOS limits. Guard capacity5/8, Priest39-point healing/4-second learned revival, and Tinker104-point ironhammer repairs exercise real simulation. Offline Tinker pricing quotes match purchase material requirements.
+- Workers: Manager caps and wage buckets survive role switches and disconnected owners; stone/iron output uses exact fractional accumulation and real wear. Budgeted repair cannot spend the next required wage. An eighty-worker village completes market deliveries without blocked queues. Supplied and kit-bound gear cannot be discarded or duplicated through worker management.
+- Transport: 1,000/2,000 migration, upgrade costs, shared server/client road speed, direct plot freight and preserved shortage provenance. Two-seat rescue conserves player identity and inventory through church handoff, disconnect, respawn and first join after a restart.
+- Rebuilding: thirteen building kinds reopen only at35% health, retaining ownership, storage, levels, prices and trained paid troops. Materials/hammer durability are real, no starterstock repeats, and inactive ruins cannot fire.
+- Civic works: inherited project identifiers are rejected, staged multiplayer donations/restarts and failed-save rollback preserve balances. Bound goods, cart ownership and contribution limits are enforced. The mason follows actual navigation, spends prepaid wages/materials, and the ballista/trebuchet consume depot ammunition for real damage.
+- Jumping: authenticated WebSocket input produces height/velocity/grounded snapshots for another player. Forged client height/timestep/owner fields are ignored. Held input, SQLite midair restart, mounted/carried/bed/downed states, full cave descent, boundary collision, three-step ascent/walk-off, ledge rejoin, NPC detours and remote vertical interpolation are checked.
+- The full regression suite retains prior seasons/weather/events, offline crew continuity, worker stall recovery, percentage merchant exports, musket manufacturing, owner pricing, ranged defenders and mine-light invariants.
+
+All **23 expanded Three.js shader programs** compile and link on Mesa25.2.8/OpenGL ES3.2, including the new civic materials, emissive Academy/towers, fire projectiles and lightning lines. Offline renders of the mine arches, Academy, both tower levels and completed gatehouse projects were inspected. Geometry remains deterministic and shared collision preserves old ore positions. Graphics verification uses actual Three.js geometry and local materials with offline Mesa rendering/compilation. This is not an interactive browser playtest or a measured real-device frame-rate claim; sustained eight-player performance and the new balance still need ordinary live playtesting.
+
 ## Build 26: worker continuity after owner disconnect
 
 Validated September 17, 2026: **731/731 tests pass** with `npm test`, with no failures, cancellations or skips. All **104 runtime JavaScript modules** pass syntax checks, and `git diff --check` passes.

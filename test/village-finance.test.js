@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Store } from '../server/store.js';
 import { Simulation } from '../server/simulation.js';
-import { villageFinanceAction, villageFinanceDawn, villageFinanceSnapshot } from '../server/village-finance.js';
-import { fairDividendAllocation, normalizeTavernBet, tavernPayout, ROULETTE_RED } from '../shared/village-finance.js';
+import { villageFinanceAction, villageFinanceDawn, villageFinanceSnapshot, villageFinanceTick } from '../server/village-finance.js';
+import { fairDividendAllocation, normalizeTavernBet, tavernPayout, ROULETTE_RED, blackjackValue, pokerHand, comparePokerHands, slotsMultiplier, FATE_WHEEL } from '../shared/village-finance.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { BUILDINGS } from '../shared/world.js';
 import { buildingEntrance } from '../shared/access.js';
@@ -25,7 +25,7 @@ async function fixture(t) {
   function act(action, player = first, roll = null) {
     village.clock += .7;
     const request = { requestId: randomUUID(), ...action }, original = sim.performAction;
-    if (roll !== null) sim.performAction = (villageId, playerId, message) => villageFinanceAction(sim, village, village.players[playerId], message, { random: () => roll });
+    if (roll !== null) sim.performAction = (villageId, playerId, message) => villageFinanceAction(sim, village, village.players[playerId], message, { random: typeof roll === 'function' ? roll : () => roll });
     try { const message = sim.action(village.id, player.id, request); return { message, receipt: store.financeReceipt(village.id, player.id, request.requestId), request }; }
     finally { sim.performAction = original; }
   }
@@ -227,4 +227,127 @@ test('recent receipt snapshots use indexed village/account histories without pru
     const plan = store.db.prepare(`EXPLAIN QUERY PLAN SELECT receipt FROM village_finance_receipts WHERE village_id=? AND account_id=? AND kind ${comparison} 'tavern_bet' ORDER BY created DESC,rowid DESC LIMIT 20`).all(village.id, first.id);
     assert.ok(plan.some(row => row.detail.includes(`USING INDEX ${index}`)), JSON.stringify(plan));
   }
+});
+
+const seededRoll = (seed = 17) => maximum => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % maximum; };
+const card = (rank, suit = 0) => suit * 13 + rank - 2;
+
+test('blackjack aces, three-card rankings and every reel/wheel outcome follow published returns', () => {
+  assert.deepEqual(blackjackValue([card(14), card(13)]), { total: 21, soft: true, natural: true });
+  assert.deepEqual(blackjackValue([card(14), card(14, 1), card(9)]), { total: 21, soft: true, natural: false });
+  assert.equal(blackjackValue([card(14), card(6), card(10)]).total, 17);
+  const lowStraight = pokerHand([card(14), card(2, 1), card(3, 2)]), highStraight = pokerHand([card(12), card(13, 1), card(14, 2)]), flush = pokerHand([card(14), card(11), card(8)]);
+  assert.equal(lowStraight.rank, 3); assert.equal(comparePokerHands(highStraight, lowStraight), 1); assert.equal(comparePokerHands(lowStraight, flush), 1);
+  assert.equal(pokerHand([card(7), card(7, 1), card(7, 2)]).bonus, 4);
+  assert.equal(comparePokerHands(pokerHand([card(9), card(9, 1), card(14)]), pokerHand([card(9, 2), card(9, 3), card(13)])), 1);
+  let returns = 0, paid = 0, profits = 0;
+  for (let a = 0; a < 6; a++) for (let b = 0; b < 6; b++) for (let c = 0; c < 6; c++) { const payout = slotsMultiplier([a, b, c]); returns += payout; paid += payout > 0; profits += payout > 1; }
+  assert.equal(returns, 179); assert.equal(paid, 96); assert.equal(profits, 6);
+  assert.equal(FATE_WHEEL.length, 20); assert.equal(FATE_WHEEL.reduce((a, b) => a + b), 18); assert.equal(FATE_WHEEL.filter(n => n > 1).length, 4);
+});
+
+test('slots and Wheel of Fate settle server outcomes with reserve protection and durable replay', async t => {
+  const { first, village, near, act, total } = await fixture(t); near('merchant'); village.treasury = 1_000_000;
+  const goldBefore = total(), crown = act({ kind: 'tavern_bet', game: 'slots', stake: 10000, outcome: [0, 1, 2], payout: 99 }, first, 5);
+  assert.deepEqual(crown.receipt.outcome, [5, 5, 5]); assert.equal(crown.receipt.payout, 300000); assert.equal(total(), goldBefore);
+  act(crown.request, first, 0); assert.equal(total(), goldBefore);
+  const wheel = act({ kind: 'tavern_bet', game: 'wheel', stake: 10000 }, first, 14); assert.equal(wheel.receipt.payout, 60000);
+  village.treasury = TREASURY_RESERVE + 49;
+  let rolled = false;
+  assert.throws(() => act({ kind: 'tavern_bet', game: 'wheel', stake: 10 }, first, () => { rolled = true; return 0; }), /maximum win/); assert.equal(rolled, false);
+});
+
+test('card dealing keeps a private shuffled deck, escrows the maximum payout, and rejects overlapping hands', async t => {
+  const { sim, village, first, second, act, near, total } = await fixture(t); near('merchant'); village.treasury = 100000;
+  const before = total(), wallet = first.wallet, treasury = village.treasury;
+  const dealt = act({ kind: 'tavern_bet', game: 'blackjack', stake: 11 }, first, seededRoll());
+  assert.equal(dealt.receipt.status, 'playing'); const round = village.villageFinance.rounds[first.id];
+  assert.equal(round.escrow, 27); assert.equal(first.wallet, wallet - 11); assert.equal(village.treasury, treasury - 16); assert.equal(total() + round.escrow, before);
+  assert.equal(new Set([...round.cards, ...round.dealer, ...round.deck]).size, 52);
+  const snapshot = villageFinanceSnapshot(sim, village, first.id).tavern;
+  assert.deepEqual(snapshot.round.dealer, [round.dealer[0], null]); assert.equal(snapshot.round.deck, undefined); assert.equal(dealt.receipt.round.deck, undefined);
+  assert.equal(villageFinanceSnapshot(sim, village, second.id).tavern.round, null); assert.equal(villageFinanceSnapshot(sim, village).tavern.round, null);
+  for (const game of ['blackjack', 'three_card_poker', 'coinflip', 'slots']) assert.throws(() => act({ kind: 'tavern_bet', game, choice: 'heads', stake: 10 }), /current card hand/);
+  assert.throws(() => act({ kind: 'tavern_bet', game: 'blackjack', roundId: 'not-yours', move: 'stand' }), /no longer active/);
+  assert.throws(() => act({ kind: 'tavern_bet', game: 'blackjack', roundId: round.id, move: 'double' }), /available move/);
+});
+
+test('blackjack hit/stand, soft-17 dealer, bust, pushes and natural rounding pay from held funds', async t => {
+  const { village, first, near, act, total } = await fixture(t); near('merchant'); village.treasury = 100000;
+  for (const [cards, dealer, expected] of [
+    [[card(10), card(8)], [card(14), card(6)], 22],
+    [[card(10), card(7)], [card(14), card(6)], 11],
+    [[card(14), card(13)], [card(10), card(7)], 27],
+    [[card(10), card(8), card(5)], [card(10), card(7)], 0]
+  ]) {
+    act({ kind: 'tavern_bet', game: 'blackjack', stake: 11 }, first, seededRoll());
+    const round = village.villageFinance.rounds[first.id]; round.cards = cards; round.dealer = dealer; const before = total() + round.escrow;
+    const receipt = act({ kind: 'tavern_bet', game: 'blackjack', roundId: round.id, move: 'stand' }).receipt;
+    assert.equal(receipt.payout, expected); assert.equal(receipt.dealer.length, 2); assert.equal(total(), before); assert.equal(village.villageFinance.rounds[first.id], undefined);
+  }
+  act({ kind: 'tavern_bet', game: 'blackjack', stake: 10 }, first, seededRoll());
+  const round = village.villageFinance.rounds[first.id]; round.cards = [card(2), card(3)]; round.dealer = [card(10), card(7)]; round.deck = [card(13), card(4)];
+  const hit = act({ kind: 'tavern_bet', game: 'blackjack', roundId: round.id, move: 'hit' }); assert.equal(hit.receipt.status, 'playing'); assert.equal(round.cards.length, 3);
+  act(hit.request); assert.equal(round.cards.length, 3, 'replayed hit does not draw again');
+  village.treasury = TREASURY_RESERVE;
+  act({ kind: 'tavern_bet', game: 'blackjack', roundId: round.id, move: 'hit' });
+  const settled = act({ kind: 'tavern_bet', game: 'blackjack', roundId: round.id, move: 'stand' }).receipt;
+  assert.equal(settled.payout, 20); assert.equal(village.treasury, TREASURY_RESERVE + 5, 'reserved payout survives other treasury spending');
+});
+
+test('three-card poker enforces total stake limit, ante/play/fold and qualification with ante bonuses', async t => {
+  const { village, first, near, act, total } = await fixture(t); near('merchant'); village.treasury = 100000;
+  assert.throws(() => act({ kind: 'tavern_bet', game: 'three_card_poker', stake: 5001 }), /5,000/);
+  for (const [cards, dealer, move, payout] of [
+    [[card(12), card(13), card(14)], [card(7), card(8, 1), card(11, 2)], 'play', 80],
+    [[card(12), card(13), card(14)], [card(7), card(7, 1), card(14, 2)], 'play', 90],
+    [[card(12), card(13, 1), card(14, 2)], [card(7), card(7, 1), card(7, 2)], 'play', 10],
+    [[card(2), card(3), card(4)], [card(7), card(8), card(9)], 'fold', 0]
+  ]) {
+    const before = total(); act({ kind: 'tavern_bet', game: 'three_card_poker', stake: 10 }, first, seededRoll());
+    const round = village.villageFinance.rounds[first.id]; round.cards = cards; round.dealer = dealer;
+    const receipt = act({ kind: 'tavern_bet', game: 'three_card_poker', roundId: round.id, move }).receipt;
+    assert.equal(receipt.payout, payout); assert.equal(receipt.stake, move === 'fold' ? 10 : 20); assert.equal(total(), before);
+  }
+});
+
+test('a saved active hand resumes after restart, times out offline, and a failed move rolls back deck and receipt', async t => {
+  const { directory, village, first, account, near, act, sim, store } = await fixture(t); near('merchant');
+  const start = act({ kind: 'tavern_bet', game: 'three_card_poker', stake: 10 }, first, seededRoll());
+  const round = structuredClone(village.villageFinance.rounds[first.id]), beforeWallet = first.wallet;
+  const save = store.saveVillage; store.saveVillage = () => { throw new Error('write failed'); };
+  const move = { kind: 'tavern_bet', game: 'three_card_poker', roundId: round.id, move: 'play', requestId: randomUUID() };
+  assert.throws(() => act(move), /write failed/); store.saveVillage = save;
+  assert.deepEqual(village.villageFinance.rounds[first.id], round); assert.equal(first.wallet, beforeWallet); assert.equal(store.financeReceipt(village.id, first.id, move.requestId), null);
+  sim.disconnect(village.id, first.id);
+  const reopened = new Store(directory, { testAdminAccountIds: [] });
+  try {
+    const recovered = new Simulation(reopened), v = recovered.villages.get(village.id), player = recovered.join(v.id, account);
+    assert.deepEqual(v.villageFinance.rounds[first.id], round); assert.equal(villageFinanceSnapshot(recovered, v, first.id).tavern.round.id, start.request.requestId);
+    recovered.disconnect(v.id, first.id); v.clock = round.deadline;
+    reopened.transaction(() => { villageFinanceTick(recovered, v); reopened.saveVillage(v); });
+    assert.equal(v.villageFinance.rounds[first.id], undefined); assert.equal(player.wallet, beforeWallet);
+    assert.equal(reopened.financeReceipts(v.id, first.id, true)[0].outcome, 'Fold');
+    const treasury = v.treasury; villageFinanceTick(recovered, v); assert.equal(v.treasury, treasury);
+  } finally { reopened.close(); }
+});
+
+test('automatic timeout saves its balances and receipt atomically without relying on the next world save', async t => {
+  const { directory, village, first, near, act, sim, store } = await fixture(t); near('merchant');
+  act({ kind: 'tavern_bet', game: 'blackjack', stake: 10 }, first, seededRoll());
+  const round = village.villageFinance.rounds[first.id]; round.cards = [card(10), card(8)]; round.dealer = [card(10), card(7)]; village.clock = round.deadline;
+  store.saveVillage(village);
+  const checkpoint = structuredClone({ treasury: village.treasury, wallet: first.wallet, round }), save = store.saveVillage;
+  store.saveVillage = () => { throw new Error('timeout persistence failed'); };
+  assert.throws(() => villageFinanceTick(sim, village), /timeout persistence failed/); store.saveVillage = save;
+  assert.deepEqual({ treasury: village.treasury, wallet: first.wallet, round: village.villageFinance.rounds[first.id] }, checkpoint);
+  assert.equal(store.financeReceipts(village.id, first.id, true).filter(receipt => receipt.status === 'settled').length, 0);
+  villageFinanceTick(sim, village);
+  const reopened = new Store(directory, { testAdminAccountIds: [] });
+  try {
+    const recovered = new Simulation(reopened), v = recovered.villages.get(village.id);
+    assert.equal(v.villageFinance.rounds[first.id], undefined); assert.equal(v.players[first.id].wallet, checkpoint.wallet + 20);
+    assert.equal(reopened.financeReceipts(village.id, first.id, true)[0].payout, 20);
+    const treasury = v.treasury; villageFinanceTick(recovered, v); assert.equal(v.treasury, treasury);
+  } finally { reopened.close(); }
 });

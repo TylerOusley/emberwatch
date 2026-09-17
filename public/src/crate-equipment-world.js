@@ -1,9 +1,10 @@
 import { CRATE_ITEMS } from './crate-catalog.js';
 import { createCrateAsset } from './crate-assets.js';
+import * as THREE from 'three';
 
 const SLOTS = ['head', 'body', 'feet', 'utility'];
 const ITEMS = new Map(CRATE_ITEMS.map(item => [item.id, item]));
-const ROLES = new Set(['villager', 'guard', 'priest']);
+const ROLES = new Set(['villager', 'guard', 'priest', 'manager', 'tinker', 'wizard']);
 const BONES = ['body', 'head', 'leftShin', 'rightShin', 'leftFoot', 'rightFoot'];
 const backpackTier = player => Number.isInteger(player.backpackTier) && player.backpackTier >= 0 && player.backpackTier <= 3 ? player.backpackTier : 0;
 
@@ -12,22 +13,37 @@ const backpackTier = player => Number.isInteger(player.backpackTier) && player.b
 // Assets own their resources; character disposal must not dispose them instead.
 export function createCrateEquipmentWorld() {
   const records = new Map();
+  const wards = new Map();
   let disposed = false;
   function remove(record) {
     for (const asset of record.slots.values()) asset.dispose();
     record.slots.clear();
   }
-  function removePlayer(id) { const record = records.get(id); if (record) { remove(record); records.delete(id); } }
+  function removeWard(id) { const ward = wards.get(id); if (!ward) return; ward.mesh.removeFromParent(); ward.mesh.geometry.dispose(); ward.mesh.material.dispose(); wards.delete(id); }
+  function removePlayer(id) { const record = records.get(id); if (record) { remove(record); records.delete(id); } removeWard(id); }
   function clear() {
     for (const record of records.values()) remove(record);
     records.clear();
+    for (const id of wards.keys()) removeWard(id);
   }
   function update(state = {}, actors = new Map(), time = 0, { reducedMotion = false } = {}) {
     if (disposed) return;
     const live = new Set();
+    const protectedPlayers = new Set();
     for (const player of state?.players ?? []) {
       const actor = actors.get(player.id)?.rig, group = actor?.group;
       if (!group || player.online === false || !ROLES.has(player.role)) continue;
+      if (!player.downed && player.hp > 0 && player.emberWard > 0 && player.emberWardUntil > (state.clock ?? 0)) {
+        protectedPlayers.add(player.id);
+        let ward = wards.get(player.id);
+        if (ward && ward.group !== group) { removeWard(player.id); ward = null; }
+        if (!ward) {
+          const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), new THREE.MeshBasicMaterial({ color:0xffa54d, transparent:true, opacity:.13, depthWrite:false, side:THREE.BackSide }));
+          mesh.name = 'ember-ward-shield'; mesh.position.y=1.1; mesh.scale.set(.85,1.15,.85); group.add(mesh);
+          ward={ group,mesh }; wards.set(player.id,ward);
+        }
+        ward.mesh.material.opacity = .065 + .065 * Math.min(1, player.emberWard / 50) + (reducedMotion ? 0 : .012 * Math.sin(time * 3));
+      }
       const desired = new Map();
       for (const slot of SLOTS) {
         const id = player.crateEquipment?.[slot], item = ITEMS.get(id);
@@ -65,11 +81,12 @@ export function createCrateEquipmentWorld() {
           // Refit its utility cover so the new base pack is hidden as well.
           asset.fit(actor);
         }
-        asset.update(time, { reducedMotion, backpackTier: tier });
+        asset.update(time, { reducedMotion, backpackTier: tier, emberWard: player.emberWard, emberWardUntil: player.emberWardUntil });
       }
       record.backpack = pack;
     }
     for (const [id, record] of records) if (!live.has(id)) { remove(record); records.delete(id); }
+    for (const id of wards.keys()) if (!protectedPlayers.has(id)) removeWard(id);
   }
   return { update, clear, removePlayer,
     dispose() { if (disposed) return; clear(); disposed = true; },

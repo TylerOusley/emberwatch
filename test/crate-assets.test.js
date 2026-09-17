@@ -7,8 +7,8 @@ import { createCharacter } from '../public/src/characters.js';
 import { studioDistance } from '../public/src/crate-framing.js';
 
 test('the complete art catalogue resolves to finite standalone models and shares the real rig anchors',()=>{
-  assert.equal(CRATE_ITEMS.length,20);assert.equal(new Set(CRATE_ITEMS.map(i=>i.id)).size,20);
-  assert.deepEqual(Object.fromEntries(['basic','rare','epic','legendary','milestone'].map(t=>[t,CRATE_ITEMS.filter(i=>i.tier===t).length])),{basic:4,rare:6,epic:4,legendary:5,milestone:1});
+  assert.equal(CRATE_ITEMS.length,27);assert.equal(new Set(CRATE_ITEMS.map(i=>i.id)).size,27);
+  assert.deepEqual(Object.fromEntries(['basic','rare','epic','legendary','godly','milestone'].map(t=>[t,CRATE_ITEMS.filter(i=>i.tier===t).length])),{basic:5,rare:7,epic:6,legendary:7,godly:1,milestone:1});
   const character=createCharacter('villager',1);character.group.updateMatrixWorld(true);
   // createCharacter samples breathing once on construction; remove that shared
   // vertical offset when comparing its authored bone positions to the rest pose.

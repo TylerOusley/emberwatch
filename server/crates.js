@@ -1,7 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { CRATE_CATALOG_VERSION, CRATE_EQUIPMENT, CRATE_POOLS, CRATE_PRICES, CRATE_RULES, LOADOUT_SLOTS, GATHERING_TOOLS, emptyLoadout, normalizeLoadout, crateMilestoneTier } from '../shared/crates.js';
+import { CRATE_CATALOG_VERSION, CRATE_EQUIPMENT, CRATE_POOLS, CRATE_PRICES, CRATE_RULES, LOADOUT_SLOTS, GATHERING_TOOLS, emptyLoadout, normalizeLoadout, crateMilestoneTier, crateRewardTier } from '../shared/crates.js';
 import { TOOL_TIERS } from '../shared/content.js';
 import { cancelCarry, cancelTreatment } from './care-defense.js';
+import { activateEmberWard, emberWardStatus } from './crate-effects.js';
 
 const physicalEquipment = loadout => Object.fromEntries(['head', 'body', 'feet', 'utility'].map(slot => [slot, loadout[slot] || '']));
 const safeKey = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{16,96}$/.test(value);
@@ -35,7 +36,7 @@ function selectedLoadout(store, playerId, value) {
   return normalizeLoadout(value);
 }
 
-function openCrate(store, playerId, action, chooseIndex = randomInt) {
+function openCrate(store, playerId, action, chooseIndex = randomInt, chooseRarity = randomInt) {
   if (!safeKey(action.requestId)) throw new Error('Provide a unique opening request ID.');
   const previous = store.crateOpening(playerId, action.requestId);
   if (previous) return previous;
@@ -57,7 +58,8 @@ function openCrate(store, playerId, action, chooseIndex = randomInt) {
       store.bank(playerId, -paid);
     } else store.crateCredit(playerId, -paid);
   }
-  const pool = CRATE_POOLS[tier], index = chooseIndex(pool.length);
+  const rewardTier = crateRewardTier(tier, chooseRarity(10000));
+  const pool = CRATE_POOLS[rewardTier], index = chooseIndex(pool.length);
   if (!Number.isInteger(index) || index < 0 || index >= pool.length) throw new Error('Unable to select this crate result.');
   const itemId = pool[index], openingId = randomUUID(), chargeGranted = itemId === 'phoenix_ember';
   const duplicate = !chargeGranted && !store.unlockCrateItem(playerId, itemId, openingId);
@@ -69,7 +71,7 @@ function openCrate(store, playerId, action, chooseIndex = randomInt) {
     if (currency === 'bank') store.bank(playerId, amount); else store.crateCredit(playerId, amount);
     refund = { currency, amount };
   }
-  const result = { id: openingId, requestId: action.requestId, grantId: grant?.id ?? null, tier, funding, paid, itemId, duplicate, refund, chargeGranted, createdAt: Date.now(), catalogVersion: CRATE_CATALOG_VERSION };
+  const result = { id: openingId, requestId: action.requestId, grantId: grant?.id ?? null, tier, rewardTier, funding, paid, itemId, duplicate, refund, chargeGranted, createdAt: Date.now(), catalogVersion: CRATE_CATALOG_VERSION };
   store.saveCrateOpening(playerId, result);
   if (grant) store.openCrateGrant(playerId, grant.id, openingId);
   return result;
@@ -86,11 +88,11 @@ export function accountCrateSnapshot(store, playerId, villageId = null) {
   return store.transaction(() => { milestones(store, playerId); store.releaseEndedEmbers(playerId); return snapshot(store, playerId, villageId); });
 }
 
-export function crateAccountAction(store, playerId, action, { chooseIndex = randomInt } = {}) {
+export function crateAccountAction(store, playerId, action, { chooseIndex = randomInt, chooseRarity = randomInt } = {}) {
   return store.transaction(() => {
     milestones(store, playerId);
     let result;
-    if (action?.kind === 'crate_open') result = openCrate(store, playerId, action, chooseIndex);
+    if (action?.kind === 'crate_open') result = openCrate(store, playerId, action, chooseIndex, chooseRarity);
     else if (action?.kind === 'crate_loadout') store.saveCrateLoadout(playerId, selectedLoadout(store, playerId, action.loadout));
     else throw new Error('Choose a crate opening or a future loadout.');
     store.releaseEndedEmbers(playerId);
@@ -142,7 +144,7 @@ export function joinCrates(sim, village, player, { fresh = false } = {}) {
 }
 
 export function forfeitCrates(sim, village, player) {
-  player.crateEquipment = physicalEquipment(emptyLoadout()); player.boundInventory = {}; player.boundKitTools = {}; player.phoenixProtectedUntil = 0;
+  player.crateEquipment = physicalEquipment(emptyLoadout()); player.boundInventory = {}; player.boundKitTools = {}; player.phoenixProtectedUntil = 0; player.emberWard = 0; player.emberWardUntil = 0;
   if (!sim.store.crateAccount) return;
   const run = sim.store.crateRun(player.id, village.id);
   if (!run) return;
@@ -152,7 +154,11 @@ export function forfeitCrates(sim, village, player) {
 }
 
 export function crateAction(sim, village, player, action) {
-  if (!['crate_open', 'crate_loadout', 'phoenix_revive'].includes(action.kind)) return null;
+  if (!['crate_open', 'crate_loadout', 'phoenix_revive', 'ember_ward'].includes(action.kind)) return null;
+  if (action.kind === 'ember_ward') {
+    const count = activateEmberWard(village, player);
+    return `Ember Ward protects ${count} ${count === 1 ? 'resident' : 'residents'} for ten seconds.`;
+  }
   if (action.kind !== 'phoenix_revive') {
     const response = crateAccountAction(sim.store, player.id, action);
     return response.result ? `Crate opened: ${response.result.itemId.replaceAll('_', ' ')}${response.result.duplicate ? ' · duplicate converted automatically' : ''}.` : 'Loadout saved for your next new village. Current equipment is unchanged.';
@@ -173,5 +179,5 @@ export function crateSnapshot(sim, village, viewerId) {
   if (!sim.store.crateAccount || !village.players[viewerId]) return {};
   // This path runs for every viewer at 10 Hz. Preparation/backfill belongs to
   // join, dawn and account actions; snapshots must never take a write lock.
-  return { crates: snapshot(sim.store, viewerId, village.id) };
+  return { crates: snapshot(sim.store, viewerId, village.id), emberWardStatus: emberWardStatus(village, village.players[viewerId]) };
 }

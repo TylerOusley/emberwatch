@@ -7,6 +7,9 @@ import { TOWER_STATS } from '../shared/defense.js';
 import { moveResource } from '../shared/transfers.js';
 import { requireCartAllowance } from '../shared/cart-ownership.js';
 import { plotStorageCapacity, PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionLevel, productionStats, productionUpgrade, productionHarvest } from '../shared/production.js';
+import { ROLE_STATS, roleCanBuild } from '../shared/roles.js';
+import { craftingCost, roleSkills } from '../shared/skills.js';
+import { ensureSkills } from './skills.js';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -67,6 +70,7 @@ export function ensureOwnership(village) {
   const sulfurPlots = new Set(village.plotResources.filter(node => node.type === 'sulfur').map(node => node.plotId));
   for (const plot of village.plots) if (activeIds.has(plot.id) && plot.building === 'mine' && !sulfurPlots.has(plot.id)) village.plotResources.push(plotNodes(plot).at(-1));
   for (const player of Object.values(village.players ?? {})) {
+    ensureSkills(player);
     if (!Number.isInteger(player.backpackTier) || !BACKPACKS[player.backpackTier]) player.backpackTier = 0;
     player.tiers ??= {};
     for (const tool of Object.keys(TOOL_WEIGHTS)) if (!['bow', 'musket'].includes(tool) && !own(player.tiers, tool)) player.tiers[tool] = 'wood';
@@ -136,14 +140,15 @@ export function ownershipAction(sim, village, player, action) {
     return `+${received} ${node.type}${ownerYield ? ` · ${ownerYield} to the plot owner` : ''}`;
   }
   if (action.kind === 'role_change') {
-    if (!['guard', 'priest', 'villager'].includes(action.role)) throw new Error('Choose guard, priest or villager.');
+    if (!Object.hasOwn(ROLE_STATS, action.role)) throw new Error('Choose villager, guard, priest, manager, tinker or wizard.');
     if (player.role === action.role) throw new Error('That is already your job.');
-    const losing = village.plots.filter(plot => plot.ownerId === player.id && BUILDING_TYPES[plot.building]?.role && BUILDING_TYPES[plot.building].role !== action.role);
+    const losing = village.plots.filter(plot => plot.ownerId === player.id && !roleCanBuild(action.role, BUILDING_TYPES[plot.building]));
     if (losing.length && action.confirm !== true) throw new Error(`Confirm this job change: ${losing.length} role buildings will be removed without a refund.`);
     for (const plot of losing) checkEmpty(plot);
     for (const plot of losing) removeBuilding(village, plot);
     // Accrued pay remains a separate dawn ledger; changing jobs never pays or resets it.
     player.role = action.role; player.healing = null;
+    ensureSkills(player);
     if (player.tool === 'heal') player.tool = 'sword';
     return `You are now a ${action.role}. Your land and universal buildings are retained.`;
   }
@@ -173,9 +178,9 @@ export function ownershipAction(sim, village, player, action) {
     const batches = action.batches ?? 1;
     if (!Number.isSafeInteger(batches) || batches < 1 || batches > SHOP_CRAFT_BATCH_LIMIT) throw new Error(`Craft from 1 to ${SHOP_CRAFT_BATCH_LIMIT} batches.`);
     const storage = { ...plot.storage };
-    for (const [id, quantity] of Object.entries(recipe.cost)) {
-      if (!Number.isSafeInteger(storage[id]) || storage[id] < quantity * batches) throw new Error(`The shop needs ${quantity * batches} ${id} to craft these batches.`);
-      storage[id] -= quantity * batches;
+    for (const [id, quantity] of Object.entries(craftingCost(recipe, player, batches))) {
+      if (!Number.isSafeInteger(storage[id]) || storage[id] < quantity) throw new Error(`The shop needs ${quantity} ${id} to craft these batches.`);
+      storage[id] -= quantity;
     }
     const output = recipe.amount * batches, count = (storage[recipe.item] ?? 0) + output;
     if (!Number.isSafeInteger(count) || count < 0) throw new Error('This shop cannot store more of that item.');
@@ -193,7 +198,8 @@ export function ownershipAction(sim, village, player, action) {
     if ((action.price !== undefined || price !== recipe.price) && action.price !== price) throw new Error('The shop price changed. Review the current price and buy again.');
     if (recipe.item === 'cart') requireCartAllowance(village, player, recipe.amount);
     const fromStock = recipe.stockable && Number.isSafeInteger(plot.storage[recipe.item]) && plot.storage[recipe.item] >= recipe.amount;
-    if (!fromStock) for (const [id, quantity] of Object.entries(recipe.cost)) if ((plot.storage[id] ?? 0) < quantity) throw new Error(`The shop needs more ${id} to craft this item.`);
+    const cost = craftingCost(recipe, owner);
+    if (!fromStock) for (const [id, quantity] of Object.entries(cost)) if ((plot.storage[id] ?? 0) < quantity) throw new Error(`The shop needs more ${id} to craft this item.`);
     const addedWeight = recipe.tool ? (player.durability[recipe.tool] > 0 ? 0 : TOOL_WEIGHTS[recipe.tool]) : resourceWeight(player, recipe.item) * recipe.amount;
     if (inventoryWeight(player) + addedWeight > carryCapacity(player) + 1e-6) throw new Error('Your pack is full.');
     if (recipe.tool && player.durability[recipe.tool] > 0 && action.confirm !== true) throw new Error('Confirm replacing your current tool or weapon; its remaining durability will be lost.');
@@ -208,7 +214,7 @@ export function ownershipAction(sim, village, player, action) {
     // Restricted loans cannot be cashed out through one's own shop.
     chargePurchase(sim, village, player, price, { credit: owner.id !== player.id });
     if (fromStock) plot.storage[recipe.item] -= recipe.amount;
-    else for (const [id, quantity] of Object.entries(recipe.cost)) plot.storage[id] -= quantity;
+    else for (const [id, quantity] of Object.entries(cost)) plot.storage[id] -= quantity;
     village.treasury += tax;
     if (owner.id === player.id) {
       // An owner crafting in their own shop recovers their existing payment.
@@ -279,7 +285,7 @@ export function ownershipAction(sim, village, player, action) {
   }
   const type = own(BUILDING_TYPES, action.building) ? BUILDING_TYPES[action.building] : null;
   if (!type) throw new Error('Choose a valid building.');
-  if (type.role && type.role !== player.role) throw new Error(`Only a ${type.role} can build a ${type.name.toLowerCase()}.`);
+  if (!roleCanBuild(player.role, type)) throw new Error(`Only a ${type.roles?.join(' or ') ?? type.role} can build a ${type.name.toLowerCase()}.`);
   if (type.limit && village.plots.filter(p => p.ownerId === player.id && p.building === action.building && p.id !== plot.id).length >= type.limit) throw new Error(`You may own at most ${type.limit} ${type.name.toLowerCase()} buildings.`);
   if (plot.building) {
     if (action.confirm !== true) throw new Error('Confirm replacing this building. It will be removed without a refund.');
@@ -314,7 +320,8 @@ export function ownershipTick(sim, village, dt) {
 export function ownershipSnapshot(village, viewerId) {
   ensureOwnership(village);
   return {
-    plots: village.plots.map(plot => ({ ...metadata(plot.id), ...plot, ownerName: village.players[plot.ownerId]?.name ?? null,
+    plots: village.plots.map(plot => ({ ...metadata(plot.id), ...plot, troopCapacityBonus: roleSkills(village.players[plot.ownerId]).troopCapacityBonus, ownerName: village.players[plot.ownerId]?.name ?? null, ownerRole: village.players[plot.ownerId]?.role ?? null, craftingDiscount: roleSkills(village.players[plot.ownerId]).tinkerCraftDiscount,
+      ...(['tool_shop', 'tinker_shop', 'sword_shop'].includes(plot.building) ? { shopCosts: Object.fromEntries(Object.entries(RECIPES).filter(([, recipe]) => recipe.shop === plot.building).map(([id, recipe]) => [id, craftingCost(recipe, village.players[plot.ownerId])])) } : {}),
       ...(Object.hasOwn(PRODUCTION_UPGRADES, plot.building ?? '') ? { production: productionStats(plot) } : {}) })),
     plotResources: village.plotResources.map(({ id, type, x, z, plotId, available, remaining, seed }) => {
       const plot = village.plots.find(plot => plot.id === plotId), stats = productionStats(plot);
