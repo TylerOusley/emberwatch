@@ -1,5 +1,11 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 26: workers continue with an offline owner
+
+Tyler requested that leaving a village should not stop the owner's workers when other players remain active there. All unpaused personal hires, plot gatherers and transporters therefore work while at least one resident is online in the same active village. Work and market queue eligibility do not depend on owner presence. Orders, identity, progress and cargo remain intact when the owner disconnects.
+
+Workers spend only their owner's wallet and already purchased work time, using the existing one-gold/30-working-second wage. When that time and wallet funding run out they stop paid work and return home without wages; sales continue crediting the owner and can fund later wages. Savings, purchase credit and other residents' wallets do not fund the crew. Manual pauses, retirement, valid ownership, source availability, storage capacity and treasury sale funding retain their existing restrictions. The last resident leaving pauses the entire village, including worker movement and wages. Restarting an empty village creates no elapsed-time earnings; any returning resident resumes its saved workers without requiring their owners to join.
+
 ## Build 25: seasons, plot staff, industry and ranged troops
 
 Tyler explicitly requested implementation and publishing of the previously planned seasons/events/weather alongside tavern access, additional plot workers, owner prices, sulfur/gunpowder/muskets, ranged troops and texture stability. Earlier planning holds are superseded for this scope.

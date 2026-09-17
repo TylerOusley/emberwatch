@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — seasons and industry build 25.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — worker continuity build 26.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. The original three roles remain Guard, Priest, and Villager. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 26 keeps unpaused personal hires, plot gatherers and transporters working after their owner leaves, as long as someone remains online in that village. Each crew spends its own owner's wallet and prepaid wage time; when both are exhausted, paid work stops. Sales still credit the owner. Leaving the village does not cancel orders or discard cargo. When the last resident disconnects, movement, gathering, deliveries and wages pause until a resident returns. The market queue also includes working crews whose owners are offline.
 
 Build 25 implements four one-hour seasons, season-aware rain/snow/clouds/fog, and six timed village events with actual production, public supply and demand effects. The HUD explains the current season, weather and event with countdowns. Schedules pause in empty villages and persist across restarts.
 
@@ -188,7 +190,7 @@ New accounts receive a compact optional guide covering their first tool, gatheri
 
 Visit the treasury to hire up to five workers per resident for 75 wallet gold each. Open **Workers** from the treasury or your inventory to choose wheat, timber, stone, iron or coal, select public resources or one of your matching production plots, and order delivery to one of your buildings or automatic sale at the Resource Exchange. Other residents’ private plots cannot be assigned.
 
-A new worker gathers one unit per harvest on public or level 1 sites, two on level 2 sites, and three on level 3 sites. Each harvest initially takes four seconds; the worker travels between the actual resource and destination and carries up to 40 weight. Tools are included in the contract. Pay is one wallet gold per 30 seconds of work, prepaid in small installments; bank savings and purchase credit are never charged. Workers work day and night while their employer is online, including near enemies. Pausing or going offline returns them to the treasury. Returning and waiting for resources, storage, or affordable sales do not incur wages.
+A new worker gathers one unit per harvest on public or level 1 sites, two on level 2 sites, and three on level 3 sites, before seasonal/event bonuses. Each harvest initially takes four seconds; the worker travels between the actual resource and destination and carries up to 40 weight. Tools are included in the contract. Pay is one owner-wallet gold per 30 seconds of work, prepaid in small installments; bank savings and purchase credit are never charged. Workers work day and night while anyone is online in their village, including while their employer is offline and near enemies. They finish prepaid time and stop when the owner cannot fund the next wage. Manual pause calls them home; an empty village freezes all crews without spending wages. Returning and waiting for resources, storage, or affordable sales do not incur wages.
 
 Sales use current stock prices, tax, the treasury’s emergency reserve and normal loan repayments. Full or unavailable storage and an underfunded treasury leave cargo with the worker. You can collect cargo beside the worker, change orders, pause/resume, or dismiss an empty worker at the treasury without a refund. Workers and their orders persist within the village run. Fallen villages disappear from the selection list; account savings remain available in the next run.
 

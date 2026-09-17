@@ -209,7 +209,8 @@ function showMenu(){
 }
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
- openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 25</p><h2>Seasons, industry & ranged defenders.</h2><p>Build a larger operation as seasons change and village events reshape production and demand.</p></div><span>${itemArt('musket')}</span></header><div class="build-feature-grid">
+ openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 26</p><h2>Your crew keeps working.</h2><p>Leave your workers on duty while other residents keep the village active.</p></div><span>${itemArt('pickaxe')}</span></header><div class="build-feature-grid">
+ ${feature(itemArt('pickaxe'),'Work continues after you leave','Personal hires, plot gatherers and transporters keep working while anyone is online in your village. They use your wallet and prepaid wage time. Pause them to stop work; an empty village pauses every crew.')}
  ${feature(buildingArt('wheat_farm'),'Four living seasons','Spring, summer, autumn and winter each last one hour of active village time. Rain, fog, clouds and snow follow the seasons, with production changes and a visible countdown.')}
  ${feature(buildingArt('keep'),'Village events','Caravans, bumper harvests, rich ore, cold snaps, festivals and construction drives change supplies or demand. The season panel explains the active event and time remaining.')}
  ${feature(itemArt('pickaxe'),'Workers for your plots','Keep five personal workers and gain one plot worker per farm or mine level. Shops and defenses gain transporters. Open Workers to activate staff, choose a source and set a destination stock percentage.')}

@@ -39,6 +39,8 @@ test('worker management is discoverable from the pack and treasury and shows onl
   f.ui.show('inventory'); f.click('Manage workers');
   assert.match(f.html, new RegExp(`1 / ${WORKER_RULES.maxPerPlayer}`)); assert.match(f.html, /1 gold \/ 30 working seconds/);
   assert.match(f.html, /Hiring and wages use your wallet/); assert.doesNotMatch(f.html, /Hidden Bob worker/);
+  assert.match(f.html, /while anyone is online in this village, including after you leave/);
+  assert.match(f.html, /finish any prepaid work time/); assert.match(f.html, /An empty village pauses all work and wages/);
   f.click(`Hire a worker · ${WORKER_RULES.hireCost}g`);
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_hire' });
   f.ui.show('bank'); f.click('Hire &amp; manage workers'); assert.match(f.html, /HIRED HANDS/);

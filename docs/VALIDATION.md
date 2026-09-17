@@ -1,5 +1,18 @@
 # Emberwatch build validation
 
+## Build 26: worker continuity after owner disconnect
+
+Validated September 17, 2026: **731/731 tests pass** with `npm test`, with no failures, cancellations or skips. All **104 runtime JavaScript modules** pass syntax checks, and `git diff --check` passes.
+
+The worker loop and Resource Exchange queue previously required each employer to be online even when another resident kept the village active. Both now use the existing owner record without requiring its connection. The worker loop explicitly freezes when the village is empty. Wage rates, prepaid balances, manual pauses and resource/capacity restrictions retain their existing behavior; queue positions exclude paused, retired and unfunded crews.
+
+- Three real Simulation/SQLite regressions cover personal gathering, plot gathering and supply transport while the employer remains offline; the last resident disconnecting; save/restart with only another resident returning; retained cargo, orders, progress and prepaid wages; no duplicate staff or delivery; and manual staff pauses.
+- A one-gold employer spends only that wallet gold, finishes the purchased work period, then stops harvesting when it is exhausted. Another resident's wallet, both bank balances and village funds remain untouched. The exhausted state survives restart.
+- An actual worker market journey after restart sells cargo and credits the offline employer exactly once, including a nearly exhausted prepaid balance. A second restart cannot duplicate stock or payment. The existing forty-worker queue test now runs with all employers online and with all employers offline while another resident remains present; every delivery completes in both cases.
+- Updated worker and plot-worker tests distinguish an empty village from an absent employer. Worker UI checks verify that the displayed guidance explains continuing after departure, prepaid wages and empty-village pausing. Independent review found no remaining owner-presence gate in worker execution, rendering, sale income or persistence.
+
+These are local automated gameplay, navigation, persistence and UI checks. No interactive browser playtest is claimed for this patch.
+
 ## Build 25: seasons, industry, staffing and ranged defense
 
 Validated September 17, 2026: **727/727 tests pass** with `npm test`, with no failures, cancellations or skips. All **104 runtime JavaScript modules** pass syntax checks; all **78 modules reachable from the browser entry point** link with their real imports/exports. `git diff --check` passes. An independent review covered feature integration, crafting conservation, saved migrations, troop orders and UI layout.

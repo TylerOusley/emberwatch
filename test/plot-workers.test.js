@@ -62,7 +62,7 @@ test('plot gathering consumes real finite nodes, delivers to owned storage and k
   assert.equal(w.cargo.wheat, 1); assert.equal(node.remaining, remaining - 1); assert.equal(farm.storage.wheat ?? 0, 0);
   assert.equal(f.p.wallet, wallet - 1); w.delivering = true; f.at(w, farm); f.tick();
   assert.equal(farm.storage.wheat, 1); assert.equal(w.cargo.wheat, 0);
-  f.p.online = false; const paid = w.paidWorkSeconds;
+  f.p.online = f.visitor.online = false; const paid = w.paidWorkSeconds;
   for (let i = 0; i < 10; i++) f.tick();
   assert.equal(w.paidWorkSeconds, paid); assert.equal(farm.storage.wheat, 1);
 });
@@ -143,13 +143,14 @@ test('transport rechecks source ownership at pickup and preserves cargo when a d
   assert.equal(source.storage.wheat, 35);
 });
 
-test('transporters support ammunition and powder and retain cargo when the owner goes offline or loses the destination', () => {
+test('transporters support ammunition and powder and retain cargo when the village empties or loses the destination', () => {
   const f = fixture(), source = f.build(0, 'house'), destination = f.build(1, 'archer_tower'), w = f.staff(destination)[0];
   for (const resource of ['arrows', 'gunpowder', 'musket_ammo']) {
+    f.p.online = true;
     assert.ok(RESOURCE_WEIGHTS[resource] > 0); source.storage[resource] = 10;
     f.route(w, source, resource, 50); f.at(w, source); f.tick(); assert.equal(w.cargo[resource], 10);
-    f.p.online = false; const paid = w.paidWorkSeconds; f.at(w, destination); f.tick();
-    assert.equal(w.cargo[resource], 10); assert.equal(w.paidWorkSeconds, paid); f.p.online = true;
+    f.p.online = f.visitor.online = false; const paid = w.paidWorkSeconds; f.at(w, destination); f.tick();
+    assert.equal(w.cargo[resource], 10); assert.equal(w.paidWorkSeconds, paid); f.visitor.online = true;
     f.at(w, destination); f.tick(); assert.equal(destination.storage[resource], 10); assert.equal(w.cargo[resource], 0);
   }
   source.storage.arrows = 5; f.route(w, source, 'arrows', 50); f.at(w, source); f.tick();

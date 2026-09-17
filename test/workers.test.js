@@ -190,19 +190,20 @@ test('partial sales preserve the treasury reserve and unsold cargo without idle 
   assert.equal(w.cargo.iron, 0); assert.equal(v.stock.iron, 5);
 });
 
-test('wages stop while paused, owner offline, or unable to pay', () => {
-  for (const reason of ['paused', 'offline', 'unpaid']) {
-    const { v, owner, hire, assign, advance, nodeOnly, atNode } = fixture();
+test('wages stop while paused, the village is empty, or the owner cannot pay', () => {
+  for (const reason of ['paused', 'empty', 'unpaid']) {
+    const { v, owner, visitor, hire, assign, advance, nodeOnly, atNode } = fixture();
     const w = hire(), { node, state } = nodeOnly('stone'); assign(w); atNode(w, node);
     w.gatherProgress = 3.9; w.cargo.stone = 1;
     if (reason === 'paused') w.paused = true;
-    if (reason === 'offline') owner.online = false;
+    if (reason === 'empty') owner.online = visitor.online = false;
     if (reason === 'unpaid') owner.wallet = 0;
     const wallet = owner.wallet, before = { x: w.x, z: w.z };
     advance(1);
     assert.equal(owner.wallet, wallet, reason); assert.equal(w.paidWorkSeconds, 0, reason);
     assert.equal(w.cargo.stone, 1, reason); assert.equal(state.remaining, 8, reason);
-    assert.equal(w.gatherProgress, 0, reason); assert.ok(apart(w, before) > .1, `${reason}: worker walks home`);
+    if (reason === 'empty') { assert.equal(w.gatherProgress, 3.9); assert.equal(apart(w, before), 0, 'an empty village freezes movement and progress'); }
+    else { assert.equal(w.gatherProgress, 0, reason); assert.ok(apart(w, before) > .1, `${reason}: worker walks home`); }
   }
 });
 
@@ -427,7 +428,7 @@ test('unreachable sidewall woodland is left for players instead of trapping hire
   assert.match(w.status, /Waiting for resources/);
 });
 
-test('forty hired workers can all deliver at the Resource Exchange and return within treasury dismissal range', () => {
+for (const ownersOnline of [true, false]) test(`forty hired workers can deliver and return with their owners ${ownersOnline ? 'online' : 'offline and another resident present'}`, () => {
   const { v, owner, act, advance } = fixture();
   for (let i = 0; i < 8; i++) {
     const p = { ...owner, id: `employer-${i}`, name: `Employer ${i}`, wallet: 1000, inventory: {}, durability: {} }; v.players[p.id] = p;
@@ -437,6 +438,7 @@ test('forty hired workers can all deliver at the Resource Exchange and return wi
       act({ kind: 'worker_assign', workerId: w.id, resource: 'stone', sourcePlotId: null, mode: 'sell', destinationPlotId: null }, p);
       const n = i * WORKER_RULES.maxPerPlayer + j; w.x = 2 + n % 4 * 1.2; w.z = -27.2 + Math.floor(n / 4) * 1.2;
     }
+    p.online = ownersOnline;
   }
   const stock = v.stock.stone;
   for (let i = 0; i < 700 && v.workers.some(w => w.cargo.stone > 0); i++) {

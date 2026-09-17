@@ -38,9 +38,9 @@ const homeFor = (v, w) => {
 };
 const marketFor = (v, w) => {
   // First arrivals occupy the counter; the remaining queue extends into the
-  // open forecourt and advances as deliveries finish. Offline/paused workers
-  // cannot reserve a counter position and block other owners' crews.
-  const queue = v.workers.filter(worker => !worker.paused && v.players?.[worker.ownerId]?.online && worker.mode === 'sell' && worker.delivering && hasCargo(worker));
+  // open forecourt and advances as deliveries finish. Owners need not be online;
+  // paused, retired or unfunded workers cannot hold a working crew's position.
+  const queue = v.workers.filter(worker => !worker.paused && !worker.staffRetired && v.players?.[worker.ownerId] && allowance(worker, v.players[worker.ownerId], 1) > 0 && worker.mode === 'sell' && worker.delivering && hasCargo(worker));
   const slot = Math.max(0, queue.indexOf(w)), row = Math.floor(slot / 4);
   return { x: marketDoor.x - (row < 4 ? row * .6 : 1.8 + (row - 3) * .9), z: marketDoor.z + (slot % 4 - 1.5) * .9 };
 };
@@ -175,7 +175,7 @@ export function workersAction(sim, v, p, action) {
       Object.assign(w, { resource: action.resource, sourcePlotId: source.id, targetPercent: action.targetPercent,
         paused: false, delivering: hasCargo(w), gatherProgress: 0, targetNodeId: null, stalledFor: 0, status: 'Starting supply route' });
       resetNpcNavigation(w);
-      return `Transporter will fill ${action.resource} to ${action.targetPercent}% of this building's storage capacity while you are online.`;
+      return `Transporter will fill ${action.resource} to ${action.targetPercent}% of this building's storage capacity while anyone is online in the village and your wages are funded.`;
     }
     if (!WORKER_RESOURCES.includes(action.resource)) throw new Error('Choose wheat, timber, stone, iron, coal or sulfur.');
     if (action.sourcePlotId !== null && typeof action.sourcePlotId !== 'string') throw new Error('Choose public resources or one of your production plots.');
@@ -188,7 +188,7 @@ export function workersAction(sim, v, p, action) {
     Object.assign(w, { resource: action.resource, sourcePlotId: action.sourcePlotId, mode: action.mode, destinationPlotId: action.mode === 'store' ? action.destinationPlotId : null,
       paused: false, status: 'Starting work', targetNodeId: null, gatherProgress: 0, delivering: hasCargo(w), nextSearchAt: 0, stalledFor: 0 });
     resetNpcNavigation(w);
-    return 'Worker assigned. Work continues day and night while you are online.';
+    return 'Worker assigned. Work continues day and night while anyone is online in the village and your wages are funded.';
   }
   if (action.kind === 'worker_pause') {
     if (typeof action.paused !== 'boolean') throw new Error('Choose whether to pause your worker.');
@@ -383,17 +383,17 @@ function sellCargo(sim, v, w, p) {
 }
 
 export function workersTick(sim, v, dt) {
-  if (!Number.isFinite(dt) || dt <= 0 || v.status !== 'active') return;
+  if (!Number.isFinite(dt) || dt <= 0 || v.status !== 'active' || !Object.values(v.players ?? {}).some(player => player.online)) return;
   ensureWorkers(v);
   // The server advances in short steps; a delayed caller cannot earn an entire
-  // offline harvest or jump a worker across the map in one update.
+  // catch-up harvest or jump a worker across the map in one update.
   dt = Math.min(dt, 1);
   const solids = plotSolids(v.plots), neighbors = [...v.workers, ...(v.guards ?? [])];
   for (const w of v.workers) {
     w.anim = 'idle';
     const p = v.players?.[w.ownerId];
     const stats = workerStats(w);
-    const reason = w.staffRetired ? 'Plot staff inactive — cargo kept' : w.paused ? 'Paused' : !p?.online ? 'Owner offline' : !(w.staffRole === 'transporter' ? cargoResources : WORKER_RESOURCES).includes(w.resource) ? 'Choose an assignment' : null;
+    const reason = w.staffRetired ? 'Plot staff inactive — cargo kept' : w.paused ? 'Paused' : !p ? 'Owner unavailable' : !(w.staffRole === 'transporter' ? cargoResources : WORKER_RESOURCES).includes(w.resource) ? 'Choose an assignment' : null;
     if (reason) { returnHome(v, w, reason, dt, neighbors, solids); continue; }
     if (w.staffRole === 'transporter') { transporterTick(v, w, p, dt, neighbors, solids); continue; }
     if (w.mode === 'store' && !destinationPlot(v, w)) { returnHome(v, w, 'Choose a storage building', dt, neighbors, solids); continue; }
