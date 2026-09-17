@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ownsStaff } from '../shared/equipment.js';
 import { MAGIC } from '../shared/magic.js';
 import { roleSkills } from '../shared/skills.js';
 import { ensureSkills } from './skills.js';
@@ -10,7 +11,7 @@ export function magicAttack(sim, village, player, action) {
   if (action.kind !== 'attack' || player.tool !== 'staff') return null;
   ensureSkills(player);
   if (player.role !== 'wizard') throw new Error('Only wizards can wield a staff.');
-  if (!(player.durability?.staff > 0)) throw new Error('Your staff is broken. Buy a replacement at a tinker shop.');
+  if (!ownsStaff(player)) throw new Error('Reclaim your staff for free at an Arcane Academy.');
   const stats = roleSkills(player), element = stats.staffElements.includes(player.staffElement) ? player.staffElement : 'fire', spell = MAGIC[element];
   if (Number.isFinite(player.staffReadyAt) && village.clock < player.staffReadyAt) throw new Error('Your staff is still recovering.');
   if (player.mana < spell.mana) throw new Error(`This spell needs ${spell.mana} mana. Let your mana recover.`);
@@ -21,7 +22,7 @@ export function magicAttack(sim, village, player, action) {
     const next = village.zombies.filter(target => target.hp > 0 && !hits.includes(target) && gap(prior, target) <= spell.chainRange && sim.clearAttack(village, prior, target, false)).sort((a, b) => gap(prior, a) - gap(prior, b))[0];
     if (!next) break; hits.push(next);
   }
-  player.mana -= spell.mana; player.durability.staff--; player.staffReadyAt = village.clock + spell.cooldown;
+  player.mana -= spell.mana; player.staffReadyAt = village.clock + spell.cooldown;
   player.anim = 'attack'; player.animationUntil = village.clock + .55; breakCrateProtection(player);
   for (const [index, target] of hits.entries()) {
     sim.hitZombie(village, target, spell.damage * stats.staffDamageMultiplier * (element === 'lightning' ? spell.chainFalloff ** index : 1), player);

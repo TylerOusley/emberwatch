@@ -37,7 +37,7 @@ const ROLES = new Set(Object.keys(ROLE_STATS));
 const FINANCE_ACTIONS = new Set(['investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 // Form transfers and release actions are immediately validated transactions;
 // they should not inherit the swing delay used for tools and combat.
-const IMMEDIATE_ACTIONS = new Set(['ember_ward', 'civic_select', 'civic_donate', 'civic_supply', 'academy_learn', 'staff_element', 'cartRescueUnload', 'cartRescueTreat', 'cartPlotLoad', 'cartPlotUnload', 'dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
+const IMMEDIATE_ACTIONS = new Set(['ember_ward', 'civic_select', 'civic_donate', 'civic_supply', 'academy_learn', 'academy_reclaim_staff', 'staff_element', 'cartRescueUnload', 'cartRescueTreat', 'cartPlotLoad', 'cartPlotUnload', 'dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, sulfur: 0, gunpowder: 0, musket_ammo: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, musket: 0, cart: 0 });
@@ -184,7 +184,7 @@ export class Simulation {
       environment: environmentSnapshot(village),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         lastShot: p.lastShot, y: p.y, verticalSpeed: p.verticalSpeed, grounded: p.grounded, jumpHeld: p.jumpHeld, rescueCartId: p.rescueCartId, rescueSlot: p.rescueSlot, emberWard: p.emberWard, emberWardUntil: p.emberWardUntil, staffElement: p.staffElement,
-        ...(p.id === viewerId ? { environmentYieldRemainders: p.environmentYieldRemainders, skills: p.skills, mana: p.mana, manaMax: p.manaMax, emberWardStatus: emberWardStatus(village,p) } : {}),
+        ...(p.id === viewerId ? { environmentYieldRemainders: p.environmentYieldRemainders, skills: p.skills, mana: p.mana, manaMax: p.manaMax, staffOwned: p.staffOwned, staffReadyAt: p.staffReadyAt ?? 0, emberWardStatus: emberWardStatus(village,p) } : {}),
         tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
         ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, boundKitTools: p.boundKitTools ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
       siegeNight: village.siegeNight,
@@ -302,7 +302,7 @@ export class Simulation {
       forfeitCrates(this, village, player);
       crateRespawnEffects(player);
       cancelCarry(village, player); cancelTreatment(village, player); releaseTransportPassenger(village, player);
-      player.inventory = emptyInventory(); player.wallet = Math.floor(player.wallet * .75); player.durability = durability(); player.backpackTier = 0;
+      player.inventory = emptyInventory(); player.wallet = Math.floor(player.wallet * .75); player.durability = durability(); player.staffOwned = false; player.backpackTier = 0;
       player.boundInventory = {}; player.maxDurability = {};
       player.tiers = { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' };
       Object.assign(player, { downed: false, respawnAvailable: false, hp: 100, hunger: 100, x: 0, z: 4, yaw: Math.PI, tool: '', anim: 'idle', healing: null });

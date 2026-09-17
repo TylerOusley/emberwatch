@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 28: Wizard staff repair
+
+Validated September 17, 2026: **836/836 tests pass** with `npm test`, with no failures, cancellations or skips. All **120 runtime JavaScript modules** pass syntax checks and **93 browser modules** link using the real imports/exports. `git diff --check` passes.
+
+The patch removes staff durability in favor of saved ownership, migrates existing broken staffs, and exposes free Academy recovery. New real Simulation/SQLite tests cover migration/restart, no role-change regrant, immediate/idempotent recovery and exact pack capacity, access/rejection rollback, ordinary respawn, private snapshots, repeated casts of all three elements below full mana, insufficient/exact mana thresholds, and 110 casts without wear. UI tests exercise actual reclaim handlers, stale clicks, ownership refresh, staff inventory/shop presentation and non-Wizard purchase restrictions. Client casting tests keep mana affordability separate from cooldown.
+
+The firing delays are now 0.6 seconds for fire/frost and 0.8 seconds for lightning; costs remain 15/15/22 mana and regeneration remains 8/second. The prior 1.8-second fire delay nearly refilled the 15 mana spent, creating the appearance that a full bar was required. Both client input and server enforcement now use the shorter per-spell delays. No interactive browser playtest is claimed; automated tests cover the behavior and the existing lobby lifecycle regression.
+
 ## Build 27: village expansion
 
 Validated September 17, 2026: **822/822 tests pass** with `npm test` (no failures, cancellations or skips). All **119 runtime JavaScript modules** pass syntax checks, and **91 modules** reachable from the real browser entry point link with actual imports/exports. `git diff --check` passes.

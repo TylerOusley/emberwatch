@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — village expansion build 27.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — Wizard staff repair build 28.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 28 makes Wizard staffs unbreakable and restores existing broken staffs during saved-game migration. Wizards can reclaim a lost staff for free at any working Arcane Academy entrance with room for its 3 weight. Recovery preserves mana, spell cooldown and learned skills. Fire/frost spend 15 mana with a 0.6-second delay; lightning spends 22 with a 0.8-second delay. You can keep casting below full mana until you cannot afford the next spell.
 
 Build 27 adds all four requested tavern games together: blackjack, three-card poker, Enchanted reels and Wheel of Fate, alongside coin flip and roulette. Card hands persist privately with escrowed payouts and a 120-second automatic decision. Maximum committed stake is 10,000 gold; three-card poker allows up to 5,000 ante plus its matching play wager.
 

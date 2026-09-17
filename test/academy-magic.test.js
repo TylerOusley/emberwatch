@@ -90,11 +90,11 @@ test('Tinker recipes discount the owner’s workshops for offline visitor purcha
 
 test('Wizard starter equipment and mana are granted once, and staff attunement requires learned skills', () => {
   const { player, village, sim } = fixture('wizard');
-  assert.equal(player.durability.staff, 100); assert.equal(canEquip(player, 'staff'), true);
-  player.durability.staff = 0; player.mana = 7; player.role = 'villager'; ensureSkills(player);
+  assert.equal(player.staffOwned, true); assert.equal(player.durability.staff, undefined); assert.equal(canEquip(player, 'staff'), true);
+  player.staffOwned = false; player.mana = 7; player.role = 'villager'; ensureSkills(player);
   assert.equal(canEquip(player, 'staff'), false);
   player.role = 'wizard'; ensureSkills(player);
-  assert.equal(player.durability.staff, 0); assert.equal(player.mana, 7);
+  assert.equal(player.staffOwned, false); assert.equal(player.mana, 7);
   assert.throws(() => skillsAction(sim, village, player, { kind: 'staff_element', element: 'lightning' }), /Learn/);
   player.skills.wizard_lightning = 1;
   skillsAction(sim, village, player, { kind: 'staff_element', element: 'lightning' });
@@ -104,13 +104,13 @@ test('Wizard starter equipment and mana are granted once, and staff attunement r
   assert.equal(laterWizard.mana, 100, 'the first Wizard role grants mana even when another role was chosen at join');
 });
 
-test('staff spells enforce mana, cooldown, durability and the same line of sight as ranged combat', () => {
+test('staff spells enforce mana, cooldown, ownership and the same line of sight as ranged combat', () => {
   const { player, village, sim } = fixture('wizard');
   Object.assign(player, { x: 0, z: 0, yaw: 0, tool: 'staff' });
   const target = { id: 'z', x: 0, z: 10, hp: 100 }; village.zombies = [target];
   sim.clearAttack = () => false;
   magicAttack(sim, village, player, { kind: 'attack' });
-  assert.equal(target.hp, 100); assert.equal(player.mana, 85); assert.equal(player.durability.staff, 99);
+  assert.equal(target.hp, 100); assert.equal(player.mana, 85); assert.equal(player.staffOwned, true); assert.equal(player.durability.staff, undefined);
   assert.throws(() => magicAttack(sim, village, player, { kind: 'attack' }), /recovering/);
   village.clock = 2; sim.clearAttack = () => true;
   magicAttack(sim, village, player, { kind: 'attack' });

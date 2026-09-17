@@ -9,6 +9,7 @@ import { requireCartAllowance } from '../shared/cart-ownership.js';
 import { plotStorageCapacity, PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionLevel, productionStats, productionUpgrade, productionHarvest } from '../shared/production.js';
 import { ROLE_STATS, roleCanBuild } from '../shared/roles.js';
 import { craftingCost, roleSkills } from '../shared/skills.js';
+import { ownsStaff } from '../shared/equipment.js';
 import { ensureSkills } from './skills.js';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -194,6 +195,10 @@ export function ownershipAction(sim, village, player, action) {
     if (!recipe || plot.building !== recipe.shop || !plot.ownerId || plot.hp <= 0) throw new Error('This shop cannot craft that item.');
     const owner = village.players[plot.ownerId];
     if (!owner) throw new Error('The shop has no owner.');
+    if (recipe.tool === 'staff') {
+      if (player.role !== 'wizard') throw new Error('Only wizards can buy a staff.');
+      if (ownsStaff(player)) throw new Error('You already have a permanent staff.');
+    }
     const price = shopPrice(plot, action.recipe);
     if ((action.price !== undefined || price !== recipe.price) && action.price !== price) throw new Error('The shop price changed. Review the current price and buy again.');
     if (recipe.item === 'cart') requireCartAllowance(village, player, recipe.amount);
@@ -224,7 +229,8 @@ export function ownershipAction(sim, village, player, action) {
       award(sim, village, owner, price - tax);
       owner.cycleServiceIncome = (owner.cycleServiceIncome ?? 0) + price - tax;
     }
-    if (recipe.tool) { player.tiers[recipe.tool] = recipe.tier; player.durability[recipe.tool] = player.maxDurability[recipe.tool] = acquiredToolDurability(player, recipe.tool, recipe.tier); if (player.boundKitTools) delete player.boundKitTools[recipe.tool]; }
+    if (recipe.tool === 'staff') { player.staffOwned = true; if (!player.tool) player.tool = 'staff'; }
+    else if (recipe.tool) { player.tiers[recipe.tool] = recipe.tier; player.durability[recipe.tool] = player.maxDurability[recipe.tool] = acquiredToolDurability(player, recipe.tool, recipe.tier); if (player.boundKitTools) delete player.boundKitTools[recipe.tool]; }
     else player.inventory[recipe.item] = (player.inventory[recipe.item] ?? 0) + recipe.amount;
     return `${recipe.name} purchased for ${price} gold; ${tax} gold paid to the treasury.`;
   }

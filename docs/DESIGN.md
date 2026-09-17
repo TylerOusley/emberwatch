@@ -1,5 +1,11 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 28: Wizard staff recovery and casting
+
+Staff ownership is an explicit saved boolean, independent of ordinary tool durability. Existing Build 27 staff records, including broken staffs, migrate once. Initial Wizard selection grants one staff; role changes cannot refresh mana or replace a subsequently lost staff. Ordinary respawn loses the staff with other equipment; revival retains it. Living Wizards can reclaim one missing staff for free at a working, resident-owned Arcane Academy entrance, provided the pack has room for 3 weight. Repeated recovery creates no duplicate and never refills mana, resets the firing timer or changes learned skills. The tinker-shop staff recipe remains an alternative purchase.
+
+Each cast requires only its mana cost, plus a short firing delay: fire/frost 15 mana and 0.6 seconds; lightning 22 mana and 0.8 seconds. Regeneration remains 8 mana/second; spell damage, range, elemental effects and tower rules remain unchanged. Client controls, HUD and Academy descriptions distinguish mana affordability from spell recovery.
+
 ## Build 27 implemented expansion
 
 Six role trees: Villager packing/provisions; Guard health/shield/command; Priest healing/revival; Manager logistics/staffing; Tinker efficiency/repair; Wizard focus/frost/lightning. Lessons are resident-per-village and remain learned when inactive; only the current role grants bonuses. Academy commission is 25g per lesson. All material costs round up, so batch crafting realizes fractional Tinker savings without free core ingredients. Wizards receive one starter staff per resident; role cycling cannot refill it.

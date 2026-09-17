@@ -1,6 +1,8 @@
 import { PLOTS } from '../shared/world.js';
 import { canUsePlot } from '../shared/access.js';
 import { ROLE_SKILLS, SKILLS, ACADEMY_COMMISSION, skillLevel, roleSkills } from '../shared/skills.js';
+import { ownsStaff } from '../shared/equipment.js';
+import { TOOL_WEIGHTS, inventoryWeight, carryCapacity } from '../shared/content.js';
 import { ensureRoleStats } from './roles.js';
 
 export function ensureSkills(player) {
@@ -9,13 +11,18 @@ export function ensureSkills(player) {
     const rank = skillLevel(player, id);
     if (!rank) delete player.skills[id]; else player.skills[id] = rank;
   }
+  // Upgrade saved Build 27 staffs, including broken ones, exactly once. A saved
+  // false means the permanent staff was subsequently lost and must be reclaimed.
+  const legacyStaff = Object.hasOwn(player.durability ?? {}, 'staff');
+  if (typeof player.staffOwned !== 'boolean') {
+    player.staffOwned = legacyStaff || (player.role === 'wizard' && player.wizardStarterGranted === true);
+    if (legacyStaff && player.role === 'wizard') player.wizardStarterGranted = true;
+  }
+  if (player.durability) delete player.durability.staff;
+  if (player.maxDurability) delete player.maxDurability.staff;
   if (player.role === 'wizard' && player.wizardStarterGranted !== true) {
-    player.durability ??= {}; player.maxDurability ??= {}; player.tiers ??= {};
-    // One grant per resident, not per role change. A broken staff is replaced at
-    // a tinker shop; switching jobs cannot refresh durability or mana.
-    if (!(player.durability.staff > 0)) player.durability.staff = 100;
-    player.maxDurability.staff = Math.max(100, player.durability.staff);
-    player.tiers.staff = 'wood'; player.wizardStarterGranted = true;
+    // Only the first choice of Wizard grants starter equipment and mana.
+    player.staffOwned = true; player.wizardStarterGranted = true;
     player.mana = 100;
     if (!player.tool) player.tool = 'staff';
   }
@@ -29,7 +36,7 @@ export function ensureSkills(player) {
 }
 
 export function skillsAction(sim, village, player, action) {
-  if (!['academy_learn', 'staff_element'].includes(action.kind)) return null;
+  if (!['academy_learn', 'academy_reclaim_staff', 'staff_element'].includes(action.kind)) return null;
   ensureSkills(player);
   if (action.kind === 'staff_element') {
     if (player.role !== 'wizard') throw new Error('Only wizards can attune a staff.');
@@ -38,15 +45,24 @@ export function skillsAction(sim, village, player, action) {
     return `Your staff is attuned to ${action.element}.`;
   }
   const plot = village.plots.find(item => item.id === action.plotId), site = PLOTS.find(item => item.id === plot?.id);
-  if (!plot || plot.building !== 'arcane_academy' || !(plot.hp > 0) || plot.ruined === true || plot.rebuilding === true || !plot.ownerId) throw new Error('Visit a working Arcane Academy to learn a skill.');
-  if (!canUsePlot(player, site, plot)) throw new Error('Visit the Arcane Academy entrance to learn this skill.');
+  if (!plot || plot.building !== 'arcane_academy' || !(plot.hp > 0) || plot.ruined === true || plot.rebuilding === true || !plot.ownerId) throw new Error('Visit a working Arcane Academy to use its services.');
+  if (!canUsePlot(player, site, plot)) throw new Error('Visit the Arcane Academy entrance to use its services.');
+  const owner = village.players[plot.ownerId];
+  if (!owner) throw new Error('This academy has no resident owner.');
+  if (action.kind === 'academy_reclaim_staff') {
+    if (player.role !== 'wizard') throw new Error('Only wizards can reclaim a staff.');
+    if (village.status !== 'active' || !player.online || player.downed || !(player.hp > 0)) throw new Error('A living wizard in an active village can reclaim a staff.');
+    if (player.bedPlotId || player.mountedHorseId || player.carriedBy) throw new Error('Leave your bed, dismount, or have your companion put you down before reclaiming your staff.');
+    if (ownsStaff(player)) return 'You already have your permanent staff.';
+    if (inventoryWeight(player) + TOOL_WEIGHTS.staff > carryCapacity(player) + 1e-6) throw new Error('Make room in your pack before reclaiming your staff.');
+    player.staffOwned = true; player.tool = 'staff';
+    return 'Your permanent staff has been restored for free and equipped.';
+  }
   const definition = SKILLS[action.skill], current = skillLevel(player, action.skill);
   if (!definition || definition.role !== player.role) throw new Error('Choose a skill from your current role’s tree.');
   if (current >= definition.maxRank) throw new Error('This skill is already fully learned.');
   if (action.rank !== current + 1) throw new Error('Your skill rank changed. Review the next rank and try again.');
   if (definition.requires && !skillLevel(player, definition.requires)) throw new Error(`Learn ${SKILLS[definition.requires].name} first.`);
-  const owner = village.players[plot.ownerId];
-  if (!owner) throw new Error('This academy has no resident owner.');
   const fee = definition.prices[current] + ACADEMY_COMMISSION;
   if (!Number.isSafeInteger(player.wallet) || player.wallet < fee) throw new Error(`This lesson costs ${fee} wallet gold, including the academy’s ${ACADEMY_COMMISSION} gold commission.`);
   if (!Number.isSafeInteger(village.treasury + fee) || !Number.isSafeInteger(owner.wallet + (owner.id === player.id ? -definition.prices[current] : ACADEMY_COMMISSION))) throw new Error('The academy cannot accept another lesson payment.');
@@ -68,6 +84,6 @@ export function skillsSnapshot(village, viewerId) {
   ensureSkills(player);
   const stats = roleSkills(player);
   return { academy: { skills: { ...player.skills }, role: player.role, stats, commission: ACADEMY_COMMISSION,
-    mana: player.mana, manaMax: player.manaMax, staffElement: player.staffElement,
+    mana: player.mana, manaMax: player.manaMax, staffElement: player.staffElement, staffOwned: ownsStaff(player),
     tree: (ROLE_SKILLS[player.role] ?? []).map(skill => ({ id: skill.id, rank: skillLevel(player, skill.id), nextPrice: skill.prices[skillLevel(player, skill.id)] === undefined ? null : skill.prices[skillLevel(player, skill.id)] + ACADEMY_COMMISSION })) } };
 }

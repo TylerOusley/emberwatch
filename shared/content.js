@@ -1,4 +1,5 @@
 // Shared, inspectable balance values. Prices and recipes are validated again by the server.
+import { ownsStaff } from './equipment.js';
 import { ROLE_STATS } from './roles.js';
 import { equippedItem, GATHERING_TOOLS } from './crates.js';
 import { roleSkills } from './skills.js';
@@ -92,7 +93,9 @@ export function acquiredToolDurability(player, tool, tier = 'wood', { starter = 
 // Recovery fills metadata only. Equipping a buckle never repairs an existing tool.
 export function normalizeToolDurability(player) {
   if (!player.maxDurability || typeof player.maxDurability !== 'object' || Array.isArray(player.maxDurability)) player.maxDurability = {};
+  delete player.maxDurability.staff;
   for (const tool of Object.keys(TOOL_WEIGHTS)) {
+    if (tool === 'staff') continue;
     if (Number.isSafeInteger(player.maxDurability[tool]) && player.maxDurability[tool] > 0) continue;
     const base = TOOL_TIERS[player.tiers?.[tool]]?.durability ?? TOOL_TIERS.wood.durability;
     const remaining = Number.isSafeInteger(player.durability?.[tool]) ? player.durability[tool] : 0;
@@ -103,6 +106,9 @@ export function normalizeToolDurability(player) {
 export function inventoryWeight(value = {}) {
   const inventory = value.inventory ?? value;
   let weight = Object.entries(inventory).reduce((sum, [id, amount]) => sum + (Number.isFinite(amount) && amount > 0 ? amount * resourceWeight(value.inventory ? value : null, id) : 0), 0);
-  if (value.inventory) for (const [id, amount] of Object.entries(value.durability ?? {})) if (amount > 0) weight += TOOL_WEIGHTS[id] ?? 0;
+  if (value.inventory) {
+    for (const [id, amount] of Object.entries(value.durability ?? {})) if (id !== 'staff' && amount > 0) weight += TOOL_WEIGHTS[id] ?? 0;
+    if (ownsStaff(value)) weight += TOOL_WEIGHTS.staff;
+  }
   return Math.round(weight * 100) / 100;
 }
