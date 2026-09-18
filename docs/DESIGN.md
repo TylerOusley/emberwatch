@@ -1,5 +1,9 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 30 hotfix: export all Resource Exchange materials
+
+Merchant arrivals export wheat, timber, stone, iron, coal and sulfur from village stock using the current council percentage. Food/repair reserves remain unchanged; iron, coal and sulfur use a zero reserve. Exports pay 1g per wheat, 2g per timber/stone/coal/sulfur and 3g per iron. These treasury export bids are independent of the merchant's limited player wares. No personal inventory, plot stock, civic depot or crafted goods are included. Existing saved policies take effect on the next scheduled arrival, without repeating prior dawns.
+
 ## Build 30: worker tool purchases and automatic replacement
 
 Owners buy stone axes, pickaxes or scythes for 30 wallet gold, or iron for 100, directly from worker management at any distance. No personal tool, materials or purchase credit are required. Purchased tools have 150/200 durability and the existing 1.25/1.5 output multipliers. One durability is spent per completed harvest. A usable tool cannot be repurchased at the same tier; buying another tier replaces the existing tool without refund. Purchases are a gold sink, like worker hiring.
@@ -174,7 +178,7 @@ The values below resolve earlier provisional details for this playtest and remai
 | Purchases on credit | Land, construction, a different player's equipment shop, starter wooden tools, backpacks, and horses may use credit after wallet gold. Buying from your own shop, banking, ordinary supplies and treatment require wallet gold. |
 | Wage tracking | Each active tick accrues the wage for the job actually held, divided by the full day/night duration. Dawn pays the funded whole-gold amount plus accrued performance and repair bonuses; changing jobs cannot reprice earlier participation. |
 | Council and steward | Starting trade tax is 5%; Guard and Priest wage policies start at 25. Wages, trade tax, land-tax base and export priority can be proposed. A deterministic steward examines need and reserves and explains its decision; approved changes are rechecked at dawn. |
-| Merchant | Visits begin on day 3, then every other morning for the day. Limited iron, coal and arrows are available to residents. The steward exports only a safe surplus of wheat, timber and stone and never imports those basics. |
+| Merchant | Visits begin on day 3, then every other morning for the day. Limited iron, coal and arrows are available to residents. The steward exports surplus of all six Resource Exchange materials and never imports basic resources. |
 
 ## Accepted game rules
 
@@ -282,7 +286,7 @@ There is no player king. Current votes cover guard/priest wages, trade tax, land
 
 The current steward approves or vetoes with a concrete explanation. Automatically suggesting revised counterproposals remains a future extension. A role majority cannot award itself unsustainable pay. A temporary shortage may justify a temporary incentive rather than a permanent increase. Starting voting rules are a majority of active voters, ties keeping current policy, and accepted changes taking effect next morning. A solo resident can propose a policy directly, subject to the same steward evaluation.
 
-The steward does **not** buy basic raw resources from the traveling merchant. Dwarfs must gather them. It exports a percentage of each wheat, timber and stone surplus after reserving enough stock for food, repairs, defense, and expected consumption. Conserve sells 25% and keeps twice the usual reserves; Balanced (the default) sells 50%; Trade sells 100%. Each sale rounds down to whole units, with no fixed unit cap. Exports pay one treasury gold per wheat and two per timber or stone. Existing saved policy choices retain their names and gain the corresponding percentage on the next merchant visit; past visits are not rerun.
+The steward does **not** buy basic raw resources from the traveling merchant. Dwarfs must gather them. It exports a percentage of each wheat, timber, stone, iron, coal and sulfur surplus after reserving enough stock for food, repairs, defense, and expected consumption. Conserve sells 25% and keeps twice the usual reserves; Balanced (the default) sells 50%; Trade sells 100%. Each sale rounds down to whole units, with no fixed unit cap. Exports pay one treasury gold per wheat, two per timber, stone, coal or sulfur, and three per iron. There is no additional reserve for iron, coal or sulfur. Existing saved policy choices retain their names and gain the corresponding percentage on the next merchant visit; past visits are not rerun.
 
 ## Merchant, food, and transport
 

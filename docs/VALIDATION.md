@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 30 hotfix: all-resource merchant exports
+
+Validated September 18, 2026: **891/891 tests pass** with `npm test`, with no failures, cancellations or skips. The final focused economy suite passes **29/29** after refining its private-plot/civic-storage fixture. All three changed runtime modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.
+
+Six additional economy tests and expanded existing cases verify all six Resource Exchange materials, exact fixed treasury bids, each25/50/100% policy, whole-unit rounding, quantities above120, unchanged food/repair reserves, and all-resource policy changes before dawn. Tests also cover exporting ores even when absent from the merchant's player wares, defaulting missing saved ore stocks to zero, preventing repeated exports on saved-dawn reload, preserving private inventories/plot storage/civic depots and crafted/unknown public goods, and rejecting the complete mixed shipment when ore proceeds would overflow the treasury or safe integer range. The existing dawn transaction and persistence path are unchanged. Independent review found no implementation blocker.
+
+This hotfix keeps the Build30 marker and takes effect at the next scheduled merchant arrival. No interactive browser playtest or manual production player mutation is claimed.
+
 ## Build 30: worker tool purchases and bank replacement
 
 Validated September 18, 2026: **885/885 tests pass** with `npm test`, without failures, cancellations or skips. All five changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.

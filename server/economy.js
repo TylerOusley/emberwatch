@@ -3,10 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
 import { carryCapacity, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount } from '../shared/content.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE } from '../shared/market.js';
-import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, merchantExportPercent, foodQuote, maxSaleQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
+import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, MERCHANT_EXPORT_PRICES, merchantExportPercent, foodQuote, maxSaleQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 
 const materials = Object.keys(RESOURCE_MARKET);
-const basics = ['wheat', 'timber', 'stone'];
 const own = (object, key) => typeof key === 'string' && Object.hasOwn(object, key);
 const whole = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
 const near = (p, id) => canUseBuilding(p, BUILDINGS.find(building => building.id === id));
@@ -254,8 +253,8 @@ export function economyDawn(sim, v) {
   v.merchant.prices = Object.fromEntries(offered.map((id, index) => [id, Math.max(1, Math.floor(MERCHANT_PRICES[id] * (index ? .8 : .7)))]));
   const reserves = exportReserves(v), percent = merchantExportPercent(v.policies.exportPriority);
   // These policies divide by 4, 2 or 1, avoiding an overflowing stock × percent.
-  const shipment = basics.map(id => ({ id, amount: Math.floor(Math.max(0, v.stock[id] - reserves[id]) / (100 / percent)) })).filter(item => item.amount > 0);
-  const gold = shipment.reduce((sum, { id, amount }) => sum + amount * (id === 'wheat' ? 1 : 2), 0);
+  const shipment = materials.map(id => ({ id, amount: Math.floor(Math.max(0, v.stock[id] - (reserves[id] ?? 0)) / (100 / percent)) })).filter(item => item.amount > 0);
+  const gold = shipment.reduce((sum, { id, amount }) => sum + amount * MERCHANT_EXPORT_PRICES[id], 0);
   // Check the entire shipment before moving supplies; there is no unit cap.
   const canExport = whole(gold) && whole(v.treasury) && gold <= Number.MAX_SAFE_INTEGER - v.treasury;
   if (canExport) {
