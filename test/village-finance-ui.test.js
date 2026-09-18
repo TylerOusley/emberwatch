@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createVillageFinanceUI, tavernQuote, tavernResult } from '../public/src/village-finance-ui.js';
 import { BUILDINGS } from '../shared/world.js';
 import { buildingEntrance } from '../shared/access.js';
+import { TAVERN_GAMES } from '../shared/village-finance.js';
 
 function memory() { const values=new Map();return {values,getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)}; }
 function fixture(options={}) {
@@ -220,4 +221,115 @@ test('poker play requires its extra wager and reconnect resumes a hand then show
   assert.equal(f.button('Play · 100g').disabled, true); assert.equal(f.button('Fold').disabled, false); assert.match(f.html, /32 village seconds/);
   f.state.tavern.history.unshift({ kind: 'tavern_bet', requestId: '00000000-0000-4000-8000-000000000102', game: 'three_card_poker', status: 'settled', roundId: round.id, stake: 100, payout: 0, outcome: 'Fold', cards: round.cards, dealer: [13, 28, 42] });
   f.state.tavern.round = null; f.ui.update(); assert.match(f.html, /Fold · You lost 100 gold/); assert.equal(f.buttons.some(button => button.label === 'Fold'), false);
+});
+
+function bettingRecord(totals = {}, byGame = {}) {
+  const empty = { bets: 0, wins: 0, losses: 0, pushes: 0, wagered: '0', returned: '0', won: '0', lost: '0', net: '0' };
+  return { totals: { ...empty, ...totals }, byGame: Object.fromEntries(Object.keys(TAVERN_GAMES).map(id => [id, { ...empty, ...byGame[id] }])) };
+}
+
+test('betting stats are readable anywhere and missing authoritative totals are not shown as zero', () => {
+  const f = fixture();
+  f.me.hp = 0; f.me.downed = true; f.me.x = 0; f.me.z = 0; f.state.status = 'fallen';
+  f.ui.showTavernStats();
+  assert.match(f.html, /class="village-finance vf-tavern-stats"/);
+  assert.match(f.html, /Loading your record/);
+  assert.doesNotMatch(f.html, /0g|Visit .*entrance|Stand on foot|Place bet/);
+  assert.equal(f.button('All villages').disabled, false);
+  assert.equal(f.button('This village').disabled, false);
+  assert.equal(f.button('Back to tavern').disabled, false);
+  f.state.tavern.stats = { lifetime: bettingRecord(), village: bettingRecord() }; f.ui.update();
+  assert.doesNotMatch(f.html, /Loading your record/);
+  assert.match(f.html, /No finished bets in this view yet/);
+  assert.match(f.html, /Only your own results are shown/);
+  assert.match(f.html, /Unfinished hands are excluded/);
+  assert.equal(f.sent.length, 0, 'reading totals never sends a betting action');
+});
+
+test('betting stats preserve exact lifetime gold strings and distinguish profits, losses, and returned stakes', () => {
+  const f = fixture(), won = 9007199254740993007n, lost = 225n;
+  const totals = { bets: 9, wins: 4, losses: 3, pushes: 2, won: String(won), lost: String(lost), net: String(won - lost), wagered: '1000', returned: String(1000n + won - lost) };
+  f.state.tavern.stats = { lifetime: bettingRecord(totals, { roulette: totals }), village: bettingRecord({ bets: 1, losses: 1, wagered: '125', lost: '125', net: '-125' }) };
+  f.ui.showTavernStats();
+  assert.match(f.html, /9,007,199,254,740,993,007g/);
+  assert.match(f.html, /\+9,007,199,254,740,992,782g/);
+  assert.match(f.html, /9,007,199,254,740,993,782g/);
+  assert.match(f.html, /Gold won is profit after your stake is returned/);
+  assert.match(f.html, /Gold lost is the part of a stake you did not get back/);
+  assert.match(f.html, /<dt>Draws<\/dt><dd>2<\/dd>/);
+  assert.match(f.html, /4 wins · 3 losses · 2 draws/);
+  assert.match(f.html, /aria-pressed="true">All villages/);
+  for (const label of Object.values(TAVERN_GAMES)) assert.ok(f.html.includes(label), label);
+  f.click('This village');
+  assert.match(f.html, /aria-pressed="true">This village/);
+  assert.match(f.html, /<span>Net profit<\/span><strong>-125g<\/strong>/);
+  assert.doesNotMatch(f.html, /9,007,199/);
+  f.click('All villages'); assert.match(f.html, /9,007,199,254,740,993,007g/);
+});
+
+test('betting stats refresh from live totals, preserve tab clicks, and label disconnected data', () => {
+  const f = fixture(); f.state.tavern.stats = { lifetime: bettingRecord(), village: bettingRecord() }; f.ui.showTavernStats();
+  const initialRenders = f.renders;
+  f.state.treasury += 100; f.me.wallet += 100; f.state.finance.earnings += 10; f.ui.update();
+  assert.equal(f.renders, initialRenders, 'unrelated world and account balances cannot repeatedly redraw the stats table');
+  const held = f.press('This village');
+  f.state.tavern.stats.lifetime = bettingRecord({ bets: 1, wins: 1, wagered: '10', returned: '20', won: '10', net: '10' }); f.ui.update();
+  assert.equal(f.button('This village'), held, 'incoming totals preserve an in-progress scope click');
+  f.release(held); assert.match(f.html, /aria-pressed="true">This village/);
+  f.click('All villages'); assert.match(f.html, /<span>Net profit<\/span><strong>\+10g<\/strong>/);
+  f.setConnected(false); assert.match(f.html, /These are your last received totals/);
+  f.setConnected(true); assert.doesNotMatch(f.html, /These are your last received totals/);
+  f.state.tavern.stats.lifetime = bettingRecord({ bets: 2, wins: 1, losses: 1, wagered: '30', returned: '20', won: '10', lost: '20', net: '-10' }); f.ui.update();
+  assert.match(f.html, /<span>Net profit<\/span><strong>-10g<\/strong>/);
+  assert.match(f.html, /<dt>Finished bets<\/dt><dd>2<\/dd>/);
+  assert.equal(f.sent.length, 0);
+});
+
+test('stats navigation preserves pending receipts and accepting a result there never places another bet', () => {
+  const f = fixture(); f.visit('merchant'); f.state.tavern.stats = { lifetime: bettingRecord(), village: bettingRecord() }; f.ui.showTavern();
+  f.click('Place bet'); const action = f.sent[0];
+  f.click('Betting stats');
+  assert.match(f.html, /Your bet is awaiting its saved result/);
+  assert.match(f.html, /<dt>Finished bets<\/dt><dd>0<\/dd>/);
+  f.click('Back to tavern'); f.click('Recover pending action'); assert.deepEqual(f.sent[1], action);
+  f.click('Betting stats');
+  f.receipt({ game: 'coinflip', status: 'settled', stake: 10, payout: 20, outcome: 'heads', net: 10 });
+  assert.doesNotMatch(f.html, /awaiting its saved result|vf-coin spinning/);
+  assert.equal(f.timers.size, 0, 'no reveal timer runs while the dashboard is open');
+  assert.match(f.html, /<dt>Finished bets<\/dt><dd>0<\/dd>/, 'the UI waits for authoritative totals instead of adding a result optimistically');
+  f.state.tavern.stats = { lifetime: bettingRecord({ bets: 1, wins: 1, wagered: '10', returned: '20', won: '10', net: '10' }), village: bettingRecord() }; f.ui.update();
+  assert.match(f.html, /<dt>Finished bets<\/dt><dd>1<\/dd>/);
+  f.click('Back to tavern'); assert.match(f.html, /Heads · You won 10 gold profit/);
+  assert.equal(f.sent.length, 2, 'only the original action and its identical recovery were sent');
+  assert.ok(![...f.storage.values.keys()].some(key => key.endsWith(':pending')));
+});
+
+test('opening betting stats after a reload preserves the original pending action for recovery', () => {
+  const f = fixture(); f.visit('merchant'); f.ui.showTavern(); f.click('Place bet'); const original = f.sent[0];
+  const reload = fixture({ storage: f.storage }); reload.visit('merchant');
+  reload.state.tavern.stats = { lifetime: bettingRecord(), village: bettingRecord() }; reload.ui.showTavernStats();
+  assert.match(reload.html, /Your bet is awaiting its saved result/); assert.equal(reload.sent.length, 0);
+  reload.click('Back to tavern'); reload.click('Recover pending action');
+  assert.deepEqual(reload.sent[0], original);
+});
+
+test('betting stats preserve an active poker hand and returning to the table retains its actions', () => {
+  const f = fixture(); f.visit('merchant');
+  const round = { id: '00000000-0000-4000-8000-000000000101', game: 'three_card_poker', stake: 100, totalStake: 100, cards: [0, 15, 30], dealer: [null, null, null], hand: 'High card', secondsRemaining: 32 };
+  f.state.tavern.round = round; f.state.tavern.stats = { lifetime: bettingRecord(), village: bettingRecord() }; f.ui.showTavern();
+  f.click('Betting stats'); assert.match(f.html, /Your card hand is still in progress/);
+  f.click('This village'); assert.match(f.html, /<dt>Finished bets<\/dt><dd>0<\/dd>/);
+  f.click('Back to tavern'); assert.match(f.html, /32 village seconds remain/);
+  assert.equal(f.button('Play · 100g').disabled, false); assert.equal(f.button('Fold').disabled, false);
+  f.click('Play · 100g'); assert.equal(f.sent[0].roundId, round.id); assert.equal(f.sent[0].move, 'play');
+  assert.equal(f.sent.length, 1);
+});
+
+test('leaving a reveal for stats finishes that reveal once and never rerolls the saved outcome', () => {
+  const f = fixture(); f.visit('merchant'); f.state.tavern.stats = { lifetime: bettingRecord(), village: bettingRecord() }; f.ui.showTavern(); f.click('Place bet');
+  f.receipt({ game: 'coinflip', status: 'settled', stake: 10, payout: 0, outcome: 'tails', net: -10 });
+  assert.equal(f.timers.size, 1); assert.match(f.html, /vf-coin spinning/);
+  f.click('Betting stats'); assert.equal(f.timers.size, 0);
+  f.click('Back to tavern'); assert.match(f.html, /Tails · You lost 10 gold/);
+  assert.doesNotMatch(f.html, /vf-coin spinning/); assert.equal(f.sent.length, 1);
 });

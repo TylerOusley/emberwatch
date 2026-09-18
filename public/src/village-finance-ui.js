@@ -5,6 +5,14 @@ import { INVESTMENT_RULES, TAVERN_RULES, TAVERN_GAMES, SLOT_SYMBOLS, SLOT_TRIPLE
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const count = value => Math.max(0, Number.isFinite(Number(value)) ? Math.floor(Number(value)) : 0);
 const gold = value => count(value).toLocaleString('en-US');
+// Lifetime gold can exceed Number's exact integer range. Keep the server's
+// decimal strings intact through formatting rather than rounding them.
+const statsGold = (value, signed = false) => {
+  if (typeof value !== 'string' || !/^-?\d+$/.test(value)) return '—';
+  const amount = BigInt(value);
+  return `${signed && amount > 0n ? '+' : ''}${amount.toLocaleString('en-US')}g`;
+};
+const statsTone = value => typeof value === 'string' && /^-?\d+$/.test(value) ? BigInt(value) > 0n ? 'positive' : BigInt(value) < 0n ? 'negative' : 'neutral' : 'neutral';
 const estimate = value => Math.max(0, Number(value) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
 const color = n => rouletteColor(Number(n));
@@ -52,9 +60,9 @@ function fateArt(stop = null) {
 export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPanel, send, toast = () => {}, markWaypoint = () => {}, markTarget = markWaypoint, isConnected = () => true,
   document: doc = globalThis.document, storage = safeStorage(), makeRequestId = () => globalThis.crypto.randomUUID(), reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
   schedule = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
-  let view = 'investments', game = 'coinflip', coinChoice = 'heads', rouletteChoice = 'red', number = 1, stake = '10', deposit = '10', withdrawal = '10';
+  let view = 'investments', statsScope = 'lifetime', game = 'coinflip', coinChoice = 'heads', rouletteChoice = 'red', number = 1, stake = '10', deposit = '10', withdrawal = '10';
   let context = null, pending = null, result = null, resultVisible = true, error = '', message = '', handlers = [], controls = new Map(), signature = '', timer = null, lastReceiptId = null, pressedButton = null, pressTimer = null;
-  const active = () => ['investments', 'tavern'].includes(getActivePanel());
+  const active = () => ['investments', 'tavern', 'tavern-stats'].includes(getActivePanel());
   const state = () => getState() || {};
   const me = () => getMe() || {};
   const finance = () => state().finance || {};
@@ -94,10 +102,10 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     if (kind === 'reinvest') return count(finance().earnings) > 0 && count(finance().principal) < count(finance().limits?.maxPrincipal ?? INVESTMENT_RULES.maxPrincipal);
     return false;
   }
-  function button(label, callback, { disabled = false, control = null, className = 'vf-button', ariaLabel = null } = {}) {
+  function button(label, callback, { disabled = false, control = null, className = 'vf-button', ariaLabel = null, pressed = null } = {}) {
     const index = handlers.push(callback) - 1;
     if (control) controls.set(control, index);
-    return `<button type="button" class="${className}" data-vf-action="${index}"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ''}${disabled ? ' disabled' : ''}>${label}</button>`;
+    return `<button type="button" class="${className}" data-vf-action="${index}"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ''}${pressed !== null ? ` aria-pressed="${Boolean(pressed)}"` : ''}${disabled ? ' disabled' : ''}>${label}</button>`;
   }
   function clearPress() { cancel(pressTimer); pressTimer = null; pressedButton = null; }
   function beginPress(node) { clearPress(); if (!node.disabled) pressedButton = node; }
@@ -195,6 +203,31 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     const stop = result?.game === 'wheel' ? Number(result.outcome) : null, rest = stop === null ? 0 : -stop * 18;
     return `<section class="vf-roulette-stage"><div class="vf-wheel"><span class="vf-wheel-pointer" aria-hidden="true"></span><div class="vf-wheel-disc${spinning ? ' spinning' : ''}" style="--wheel-end:${1800 + rest}deg;--wheel-rest:${rest}deg">${fateArt(stop)}</div></div><div><p class="vf-kicker">TWENTY STOPS · ONE TURN OF FATE</p><h3>Wheel of Fate</h3><p>Spin the village's carved fortune wheel. Every stop is equally likely.</p></div></section><section class="vf-rules"><h3>Wheel returns</h3><p>12 stops return nothing; 4 return 1×; 2 return 2×; 1 returns 4×; and 1 returns 6× your stake. Returns include your original stake. A return occurs 40% of the time and a profit 20%. Average return: 90% over many spins.</p></section>`;
   }
+  function tavernStatsView() {
+    const record = tavern().stats?.[statsScope], totals = record?.totals;
+    const scopeLabel = statsScope === 'lifetime' ? 'All villages' : 'This village';
+    const header = `<section class="vf-betting-header"><div><p class="vf-kicker">YOUR TAVERN RECORD</p><h2>Betting stats</h2><p>Your gold won, gold lost, and results across every game.</p></div>${button('Back to tavern', () => show('tavern'))}</section>
+      <nav class="vf-betting-scopes" aria-label="Betting stats scope">${[['lifetime', 'All villages'], ['village', 'This village']].map(([id, label]) => button(label, () => { statsScope = id; render(); }, { pressed: statsScope === id, className: `vf-button ${statsScope === id ? 'selected' : ''}` })).join('')}</nav>`;
+    if (!totals) return `${header}<section class="vf-card vf-betting-empty" role="status"><h3>Loading your record</h3><p>Your saved betting totals will appear here.</p></section>`;
+    const handPending = Boolean(currentRound()), betPending = pending?.kind === 'tavern_bet';
+    const notices = `${!isConnected() ? '<p class="vf-notice" role="status">Reconnecting. These are your last received totals.</p>' : ''}${handPending || betPending ? `<p class="vf-notice" role="status">${handPending ? 'Your card hand is still in progress.' : 'Your bet is awaiting its saved result.'} It counts once it finishes. Return to the tavern to ${handPending ? 'finish your hand' : 'recover the pending bet'}.</p>` : ''}`;
+    const metric = (label, value, note, tone = '') => `<div class="vf-betting-metric ${tone}"><span>${label}</span><strong>${statsGold(value, label === 'Net profit')}</strong><small>${note}</small></div>`;
+    const gameRows = Object.entries(TAVERN_GAMES).map(([id, label]) => {
+      const row = record.byGame?.[id];
+      if (!row) return `<tr><th scope="row">${esc(label)}</th><td colspan="4" class="vf-betting-unavailable">No totals available</td></tr>`;
+      return `<tr${row.bets === 0 ? ' class="vf-betting-unused"' : ''}><th scope="row">${esc(label)}<small>${gold(row.wins)} wins · ${gold(row.losses)} losses · ${gold(row.pushes)} draws</small></th><td data-label="Finished bets">${gold(row.bets)}</td><td data-label="Gold won">${statsGold(row.won)}</td><td data-label="Gold lost">${statsGold(row.lost)}</td><td data-label="Net profit" class="${statsTone(row.net)}">${statsGold(row.net, true)}</td></tr>`;
+    }).join('');
+    return `${header}${notices}<section class="vf-betting-overview" aria-label="Gold won and lost">
+      ${metric('Gold won', totals.won, 'Profit from winning bets', 'positive')}
+      ${metric('Gold lost', totals.lost, 'Losses from losing bets', 'negative')}
+      ${metric('Net profit', totals.net, 'Gold won minus gold lost', statsTone(totals.net))}
+      </section><p class="vf-betting-explainer">Gold won is profit after your stake is returned. Gold lost is the part of a stake you did not get back. A draw returns exactly your stake.</p>
+      <dl class="vf-betting-counts">${[['Finished bets', totals.bets], ['Wins', totals.wins], ['Losses', totals.losses], ['Draws', totals.pushes]].map(([label, value]) => `<div><dt>${label}</dt><dd>${gold(value)}</dd></div>`).join('')}</dl>
+      <dl class="vf-betting-flow"><div><dt>Total wagered</dt><dd>${statsGold(totals.wagered)}</dd></div><div><dt>Total returned <small>Includes returned stakes</small></dt><dd>${statsGold(totals.returned)}</dd></div></dl>
+      ${totals.bets === 0 ? '<p class="vf-notice">No finished bets in this view yet. Your first completed bet will appear here.</p>' : ''}
+      <section class="vf-betting-breakdown"><div class="vf-betting-section-title"><h3>By game</h3><span>${scopeLabel}</span></div><table class="vf-betting-table" aria-label="Your results by game"><thead><tr><th scope="col">Game</th><th scope="col">Finished bets</th><th scope="col">Gold won</th><th scope="col">Gold lost</th><th scope="col">Net profit</th></tr></thead><tbody>${gameRows}</tbody></table></section>
+      <p class="vf-footer">Only your own results are shown. Totals include all your saved finished bets, not just recent results. Each completed card hand counts once, including any extra poker wager. Unfinished hands are excluded.</p>`;
+  }
   function tavernView() {
     const hand = currentRound(); if (hand) game = hand.game;
     const locked = Boolean(pending) || !resultVisible || Boolean(hand), spinning = !resultVisible && result?.game === game;
@@ -204,9 +237,10 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     if (game === 'coinflip') table = `<section class="vf-coin-table"><div class="vf-coin-stage"><div class="vf-coin${spinning ? ' spinning' : ''}" style="--coin-end:${1800+coinRest}deg;--coin-rest:${coinRest}deg"><div class="vf-coin-front">${coinArt('heads')}</div><div class="vf-coin-back">${coinArt('tails')}</div></div></div><div class="vf-side-choices">${['heads','tails'].map(side => button(`${coinArt(side)}<strong>${side === 'heads' ? 'Heads' : 'Tails'}</strong>`, () => { if(locked)return;coinChoice=side;render(); }, { disabled: locked, className: `vf-side ${coinChoice === side ? 'selected' : ''}`, ariaLabel: `Choose ${side}` })).join('')}</div></section>`;
     else if (game === 'roulette') table = `<section class="vf-roulette-stage"><div class="vf-wheel"><span class="vf-wheel-pointer" aria-hidden="true"></span><div class="vf-wheel-disc${spinning ? ' spinning' : ''}" style="--wheel-end:${end.toFixed(3)}deg;--wheel-rest:${rest.toFixed(3)}deg">${wheelArt()}</div></div><div class="vf-roulette-instructions"><p class="vf-kicker">ONE GREEN ZERO · 37 POCKETS</p><h3>Make your selection.</h3><p>A single number pays 36× total. Red, black, even, or odd pays 2× total. There is no double zero.</p><strong id="vf-selection">${rouletteChoice === 'number' ? `Number ${number}` : esc(rouletteChoice.replace(/^./, c => c.toUpperCase()))} selected</strong></div></section><div class="vf-number-scroll"><div class="vf-roulette-table">${button('0', () => { if(locked)return;rouletteChoice='number';number=0;render(); }, { disabled: locked, className:`vf-number zero ${rouletteChoice === 'number' && number === 0 ? 'selected' : ''}`, ariaLabel:'Bet on number 0' })}<div class="vf-number-grid">${[3,2,1].flatMap(row => Array.from({length:12},(_,i)=>row+i*3)).map(n => button(String(n), () => { if(locked)return;rouletteChoice='number';number=n;render(); }, { disabled:locked,className:`vf-number ${color(n)} ${rouletteChoice === 'number' && number === n ? 'selected' : ''}`,ariaLabel:`Bet on number ${n}` })).join('')}</div></div></div><div class="vf-outside-bets">${['red','black','even','odd'].map(choice => button(choice.toUpperCase(),()=>{if(locked)return;rouletteChoice=choice;render();},{disabled:locked,className:`vf-button outside ${choice} ${rouletteChoice === choice ? 'selected' : ''}`})).join('')}</div>`;
     else table = extendedTable(spinning);
-    return `<section class="vf-hero vf-tavern-hero"><div><p class="vf-kicker">THE WAYFARER · OPEN DAY & NIGHT</p><h2>A turn of fortune.</h2><p>A quiet corner of the inn, a gold coin, and the village’s own gaming table.</p></div><span class="vf-inn-mark" aria-hidden="true">${coinArt('heads')}</span></section><div class="vf-stats"><div><span>YOUR WALLET</span><strong>${gold(wallet())}g</strong></div><div><span>VILLAGE TREASURY</span><strong>${gold(state().treasury)}g</strong></div><div><span>BET LIMIT</span><strong>${gold(TAVERN_RULES.minStake)}–${gold(TAVERN_RULES.maxStake)}g</strong></div></div>${status()}<nav class="vf-game-tabs" style="flex-wrap:wrap" aria-label="Tavern game">${Object.entries(TAVERN_GAMES).map(([id, label]) => button(label, () => { if (locked) return; game = id; render(); }, { disabled: locked, className: `vf-button ${game === id ? 'selected' : ''}` })).join('')}</nav>${table}${resultView()}${wagerControls()}<p class="vf-footer">Every bet uses virtual wallet gold. Bank savings, loans, and crate credits are not used. The maximum changes with available funds; the server checks again before accepting.</p>`;
+    return `<section class="vf-hero vf-tavern-hero"><div><p class="vf-kicker">THE WAYFARER · OPEN DAY & NIGHT</p><h2>A turn of fortune.</h2><p>A quiet corner of the inn, a gold coin, and the village’s own gaming table.</p><div class="vf-actions vf-tavern-links">${button('Betting stats', () => show('tavern-stats'))}</div></div><span class="vf-inn-mark" aria-hidden="true">${coinArt('heads')}</span></section><div class="vf-stats"><div><span>YOUR WALLET</span><strong>${gold(wallet())}g</strong></div><div><span>VILLAGE TREASURY</span><strong>${gold(state().treasury)}g</strong></div><div><span>BET LIMIT</span><strong>${gold(TAVERN_RULES.minStake)}–${gold(TAVERN_RULES.maxStake)}g</strong></div></div>${status()}<nav class="vf-game-tabs" style="flex-wrap:wrap" aria-label="Tavern game">${Object.entries(TAVERN_GAMES).map(([id, label]) => button(label, () => { if (locked) return; game = id; render(); }, { disabled: locked, className: `vf-button ${game === id ? 'selected' : ''}` })).join('')}</nav>${table}${resultView()}${wagerControls()}<p class="vf-footer">Every bet uses virtual wallet gold. Bank savings, loans, and crate credits are not used. The maximum changes with available funds; the server checks again before accepting.</p>`;
   }
   function refreshControls() {
+    if (view === 'tavern-stats') return;
     const nodes = content()?.querySelectorAll('[data-vf-action]') || [];
     for (const [kind, index] of controls) if(nodes[index])nodes[index].disabled=!enabled(kind);
     const q=quote(),limit=doc.getElementById('vf-stake-limit');if(limit)limit.textContent=gold(q.maximum)+'g';
@@ -222,7 +256,7 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     const focused=doc.activeElement,focusId=content()?.contains?.(focused)?focused.id:null,start=focused?.selectionStart,end=focused?.selectionEnd;
     handlers=[];controls=new Map();
     const scroll=doc.getElementById('panel-dialog')?.scrollTop||0;
-    openPanel(`<div class="village-finance vf-${view}">${view === 'tavern' ? tavernView() : investmentView()}</div>`,view);
+    openPanel(`<div class="village-finance vf-${view}">${view === 'tavern' ? tavernView() : view === 'tavern-stats' ? tavernStatsView() : investmentView()}</div>`,view);
     const dialog=doc.getElementById('panel-dialog');if(dialog)dialog.scrollTop=scroll;
     for(const node of content()?.querySelectorAll('[data-vf-action]')||[]){
       const handler=handlers[Number(node.dataset.vfAction)];
@@ -237,7 +271,12 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     }
     for(const input of content()?.querySelectorAll('[data-vf-input]')||[])input.oninput=()=>{if(input.dataset.vfInput==='stake')stake=input.value;else if(input.dataset.vfInput==='deposit')deposit=input.value;else withdrawal=input.value;refreshControls();};
     if(focusId){const target=doc.getElementById(focusId);target?.focus?.({preventScroll:true});if(Number.isInteger(start))try{target?.setSelectionRange?.(start,end);}catch{}}
-    signature=JSON.stringify([finance(),tavern(),wallet(),state().treasury,state().status,local(view),isConnected()]);
+    signature=viewSignature();
+  }
+  function viewSignature() {
+    return JSON.stringify(view === 'tavern-stats'
+      ? [tavern().stats, statsScope, isConnected(), pending?.kind === 'tavern_bet' ? pending.requestId : null, currentRound()?.id]
+      : [finance(), tavern(), wallet(), state().treasury, state().status, local(view), isConnected()]);
   }
   function update() {
     if(!ensureContext())return;
@@ -251,12 +290,12 @@ export function createVillageFinanceUI({ getState, getMe, getActivePanel, openPa
     }
     if(!active())return;
     refreshControls();
-    const next=JSON.stringify([finance(),tavern(),wallet(),state().treasury,state().status,local(view),isConnected()]);
+    const next=viewSignature();
     const editing=content()?.contains?.(doc.activeElement)&&['INPUT','SELECT','TEXTAREA'].includes(doc.activeElement?.tagName);
     // Preserve the native click target while still validating live funds/access.
     if(resultVisible&&!editing&&!pressedButton&&next!==signature)render();
   }
   function show(type) { if(!ensureContext())return; view=type;if(!resultVisible)finish();error='';message='';render();update(); }
-  function clear() { clearPress();cancel(timer);timer=null;context=null;pending=null;result=null;resultVisible=true;error='';message='';signature='';lastReceiptId=null;handlers=[];controls=new Map(); }
-  return {showInvestments:()=>show('investments'),showTavern:()=>show('tavern'),update,receive,clear};
+  function clear() { statsScope='lifetime';clearPress();cancel(timer);timer=null;context=null;pending=null;result=null;resultVisible=true;error='';message='';signature='';lastReceiptId=null;handlers=[];controls=new Map(); }
+  return {showInvestments:()=>show('investments'),showTavern:()=>show('tavern'),showTavernStats:()=>show('tavern-stats'),update,receive,clear};
 }

@@ -1,5 +1,15 @@
 # Emberwatch build validation
 
+## Build 30 hotfix: personal betting dashboard
+
+Validated September 18, 2026: **928/928 tests pass** with `npm test`, without failures, cancellations or skips. All five changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes. Independent review found no unresolved implementation issue.
+
+Eleven new real SQLite stats cases verify complete history beyond twenty receipts, all six games, account privacy, current-village versus all-village totals, legacy receipts, exact gold beyond the safe Number range, partial-return losses and draws, unfinished-hand exclusion, completed-card deduplication, real poker ante/play stakes, request replay, restart, cross-connection appends and timeout settlement rollback. Query-plan and read-count checks verify indexed incremental reads rather than repeated history scans. Nested rollback discards provisional aggregates while ordinary rejected wagers and unrelated failed actions preserve other players' warmed caches.
+
+The finance UI suite passes **29/29**, including seven new dashboard cases for loading/empty states, remote and fallen-village access, exact large and signed totals, scope switching, live refresh, disconnected labeling, pressed controls, pending recovery/reload, unfinished poker and saved-result reveal navigation. Totals remain authoritative rather than being guessed from recent receipts. New menu navigation and responsive cards/table are scoped to the existing finance interface.
+
+This is a read-only reporting feature; betting odds, stakes, payouts, funding and receipt retention are unchanged. The Build 30 marker remains. No interactive browser playtest or manual production player mutation is claimed.
+
 ## Build 30 hotfix: bandages and roulette green audit
 
 Validated September 18, 2026: **910/910 tests pass** with `npm test`, without failures, cancellations or skips. All seven changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes. Independent review found no release blocker.

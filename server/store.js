@@ -7,11 +7,14 @@ import { STARTER_GOLD } from '../shared/equipment.js';
 import { freshProgression, normalizeProgression } from '../shared/progression.js';
 import { emptyLoadout } from '../shared/crates.js';
 import { TEST_GOLD, TEST_ADMIN_ACCOUNT_IDS } from './admin.js';
+import { createTavernStats, addTavernStatsRow, tavernStatsSnapshot } from './tavern-stats.js';
 const scrypt = promisify(scryptCallback);
 const digest = token => createHash('sha256').update(token).digest('hex');
 
 export class Store {
   #testAdminAccountIds;
+  #tavernStats = new Map();
+  #tavernStatsReads = [];
   constructor(directory, { testAdminAccountIds = TEST_ADMIN_ACCOUNT_IDS } = {}) {
     if ((!Array.isArray(testAdminAccountIds) && !(testAdminAccountIds instanceof Set)) || [...testAdminAccountIds].some(id => typeof id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id))) throw new Error('Testing administrators must be configured using exact account UUIDs.');
     this.#testAdminAccountIds = new Set(testAdminAccountIds);
@@ -34,6 +37,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS test_admin_bank_grants(account_id TEXT PRIMARY KEY REFERENCES accounts(id),granted_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS village_finance_positions(village_id TEXT NOT NULL REFERENCES villages(id),account_id TEXT NOT NULL REFERENCES accounts(id),state TEXT NOT NULL,PRIMARY KEY(village_id,account_id));
       CREATE TABLE IF NOT EXISTS village_finance_receipts(village_id TEXT NOT NULL REFERENCES villages(id),account_id TEXT NOT NULL REFERENCES accounts(id),request_id TEXT NOT NULL,kind TEXT NOT NULL,receipt TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(village_id,account_id,request_id));
+      CREATE INDEX IF NOT EXISTS village_finance_receipts_tavern_account ON village_finance_receipts(account_id) WHERE kind='tavern_bet';
       CREATE INDEX IF NOT EXISTS village_finance_receipts_tavern_recent ON village_finance_receipts(village_id,account_id,created DESC) WHERE kind='tavern_bet';
       CREATE INDEX IF NOT EXISTS village_finance_receipts_investment_recent ON village_finance_receipts(village_id,account_id,created DESC) WHERE kind<>'tavern_bet';
       CREATE TABLE IF NOT EXISTS village_finance_dawns(village_id TEXT NOT NULL REFERENCES villages(id),day INTEGER NOT NULL,report TEXT NOT NULL,PRIMARY KEY(village_id,day));`);
@@ -55,12 +59,13 @@ export class Store {
     } catch (error) { this.db.close(); throw error; }
   }
   transaction(fn) {
-    const depth = this.transactionDepth++, savepoint = `nested_${depth}`;
+    const depth = this.transactionDepth++, savepoint = `nested_${depth}`, statsReads = new Set();
+    this.#tavernStatsReads.push(statsReads);
     try {
       this.db.exec(depth ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE');
       try { const result = fn(); this.db.exec(depth ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT'); return result; }
-      catch (error) { this.db.exec(depth ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK'); if (depth) this.db.exec(`RELEASE SAVEPOINT ${savepoint}`); throw error; }
-    } finally { this.transactionDepth--; }
+      catch (error) { for (const id of statsReads) this.#tavernStats.delete(id); this.db.exec(depth ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK'); if (depth) this.db.exec(`RELEASE SAVEPOINT ${savepoint}`); throw error; }
+    } finally { this.#tavernStatsReads.pop(); this.transactionDepth--; }
   }
   async authenticate(mode, name, password) {
     if (!['register', 'login'].includes(mode)) throw new Error('Choose register or login.');
@@ -233,6 +238,28 @@ export class Store {
     return row ? JSON.parse(row.receipt) : null;
   }
   saveFinanceReceipt(villageId, accountId, receipt) { this.db.prepare('INSERT INTO village_finance_receipts(village_id,account_id,request_id,kind,receipt,created) VALUES(?,?,?,?,?,?)').run(villageId, accountId, receipt.requestId, receipt.kind, JSON.stringify(receipt), receipt.createdAt); }
+  tavernStats(villageId, accountId) {
+    if (!this.account(accountId)) return null;
+    let stats = this.#tavernStats.get(accountId);
+    let advanced = false;
+    const markRead = () => {
+      if (advanced) return;
+      advanced = true;
+      // An inner commit is still provisional until every enclosing transaction
+      // commits. Unchanged cache reads never need rollback invalidation.
+      for (const reads of this.#tavernStatsReads) reads.add(accountId);
+    };
+    if (!stats) { stats = createTavernStats(); markRead(); }
+    // Receipts are append-only. Load historical records once, then read only
+    // later rowids using the account index, including writes from other Store
+    // connections. Rollback evicts only cursors advanced in that transaction.
+    const rows = this.db.prepare("SELECT rowid,village_id,receipt FROM village_finance_receipts WHERE account_id=? AND kind='tavern_bet' AND rowid>? ORDER BY rowid");
+    rows.setReadBigInts(true);
+    for (const row of rows.iterate(accountId, stats.cursor)) { markRead(); addTavernStatsRow(stats, row); }
+    this.#tavernStats.delete(accountId); this.#tavernStats.set(accountId, stats);
+    if (this.#tavernStats.size > 256) this.#tavernStats.delete(this.#tavernStats.keys().next().value);
+    return tavernStatsSnapshot(stats, villageId);
+  }
   financeReceipts(villageId, accountId, tavern = false) {
     const comparison = tavern ? '=' : '<>';
     return this.db.prepare(`SELECT receipt FROM village_finance_receipts WHERE village_id=? AND account_id=? AND kind ${comparison} 'tavern_bet' ORDER BY created DESC,rowid DESC LIMIT 20`).all(villageId, accountId).map(row => JSON.parse(row.receipt));

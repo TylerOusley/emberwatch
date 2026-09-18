@@ -8,6 +8,8 @@ The approved gameplay systems described below have playable implementations. Thi
 
 ## Latest playtest improvements
 
+The Build 30 betting dashboard is available to every resident from **Village menu → Betting stats**, or inside the tavern. See your own gold won, gold lost, net result, total wagered and total returned, with wins/losses/draws and a breakdown of all six games. Switch between all villages and this village. Totals include earlier saved bets, beyond the recent-history limit; unfinished card hands count only after settlement. Gold won and lost measure profit and loss after the stake, while returned gold includes returned stakes.
+
 The Build 30 bandage hotfix adds first aid to **Oak & Iron**, the backpack shop: 250 wallet gold per bandage, one weight each. Use a bandage from **Pack** to restore 25% of your current maximum HP, capped at full health. Every role can use them while alive; full-health use consumes nothing. Bank savings and purchase credit are not charged. Roulette green-zero odds were audited and remain 1/37 (2.70%); the table now explains that each spin is independent.
 
 The Build 30 merchant hotfix expands percentage surplus exports to all six Resource Exchange materials: wheat, timber, stone, iron, coal and sulfur. Existing food/repair reserves and Conserve (25%), Balanced (50%) and Trade (100%) rules remain, with no unit cap. This takes effect on the next scheduled merchant arrival.

@@ -182,7 +182,7 @@ function updateInteraction(){
 function interact(){heldGather?.stop();updateInteraction();if(!interaction)return;if(['dropPlayer','dismountHorse'].includes(interaction.kind)){action(interaction.kind);return;}if(interaction.kind==='mountHorse'){action('mountHorse',{targetId:interaction.id});return;}if(['repair','gather'].includes(interaction.kind)){useTool();return;}if(interaction.kind==='noticeboard'){requests.show();return;}if(interaction.kind==='carry'){action('carryPlayer',{targetId:interaction.id});return;}const panels={bank:'bank',market:'market',shop:'tools',food:'food',church:'church',barracks:'barracks',stable:'stable',merchant:'merchant',keep:'policies',plot:'plot',horse:'horse',cart:'cart'};if(panels[interaction.kind])settlement.show(panels[interaction.kind],interaction.id);}
 let lastToast='',lastToastAt=0;
 function toast(message,error=false){if(!message)return;const now=performance.now();if(message===lastToast&&now-lastToastAt<4500)return;lastToast=message;lastToastAt=now;const e=document.createElement('div');e.className='toast'+(error?' error':'');e.textContent=message;$('toast-area').append(e);while($('toast-area').children.length>2)$('toast-area').firstChild.remove();setTimeout(()=>e.remove(),4500);}
-function openPanel(content,panel=null){chat.close();resumeMouseAfterPanel=joined&&connection.status==='connected';activePanel=panel;dialog.classList.toggle('settlement-dialog',['settlement','requests','guard-orders','progression','trading','crates','investments','tavern','village-menu','graphics','academy','civic'].includes(panel));keys.clear();desired.x=desired.z=0;sendInput();cameraLook?.stop();$('panel-content').innerHTML=content;if(!dialog.open)dialog.showModal();}
+function openPanel(content,panel=null){chat.close();resumeMouseAfterPanel=joined&&connection.status==='connected';activePanel=panel;dialog.classList.toggle('settlement-dialog',['settlement','requests','guard-orders','progression','trading','crates','investments','tavern','tavern-stats','village-menu','graphics','academy','civic'].includes(panel));keys.clear();desired.x=desired.z=0;sendInput();cameraLook?.stop();$('panel-content').innerHTML=content;if(!dialog.open)dialog.showModal();}
 function panelAction(id,kind,extra={},refresh=null){$(id).onclick=()=>{send({type:'action',kind,...extra});if(refresh)setTimeout(refresh,160);};}
 function showInventory(){settlement.show('inventory');}
 function showBank(){settlement.show('bank');}
@@ -201,6 +201,7 @@ function showMenu(){
  ${villageMenuCard('menu-workers','Your workers','Equip and direct your personal crew and plot staff',itemArt('pickaxe'))}
  ${villageMenuCard('menu-investments','Village investments','Invest, collect dividends or reinvest',itemArt('gold'))}
  ${villageMenuCard('menu-tavern','The Wayfarer tavern','Six games · Cards, reels, wheel and more',buildingArt('house'))}
+ ${villageMenuCard('menu-tavern-stats','Betting stats','Your wins, losses and net gold across all six games',itemArt('gold'))}
  ${villageMenuCard('menu-academy','Role skill trees','Learn new abilities and attune your staff',buildingArt('arcane_academy'))}
  ${villageMenuCard('menu-civic','Village projects','Fund shared defenses and deliver freight',buildingArt('barracks'))}
  ${villageMenuCard('menu-atlas','Village atlas','Find resources and manage up to eight plots',buildingArt('mine'))}
@@ -215,7 +216,7 @@ function showMenu(){
  $('sound-toggle').onclick=()=>{muted=!muted;gameAudio.setMuted(muted);showMenu();};
  $('menu-help').onclick=showHelp;$('menu-graphics').onclick=()=>graphicsUI.show();$('build-status').onclick=showBuildStatus;$('menu-pack').onclick=showInventory;
  $('menu-crates').onclick=()=>crates.show();$('menu-trading').onclick=()=>trading.show();$('menu-workers').onclick=()=>settlement.show('workers');
- $('menu-investments').onclick=()=>villageFinance.showInvestments();$('menu-tavern').onclick=()=>villageFinance.showTavern();
+ $('menu-investments').onclick=()=>villageFinance.showInvestments();$('menu-tavern').onclick=()=>villageFinance.showTavern();$('menu-tavern-stats').onclick=()=>villageFinance.showTavernStats();
  $('menu-academy').onclick=()=>skills.show();$('menu-civic').onclick=()=>civic.show();if($('activate-ward'))$('activate-ward').onclick=()=>action('ember_ward');
  $('menu-role').onclick=()=>settlement.show('roles');$('menu-atlas').onclick=()=>settlement.show('atlas');
  $('menu-requests').onclick=()=>requests.findBoard();$('menu-orders').onclick=()=>guardOrders.show();
@@ -227,6 +228,7 @@ function showMenu(){
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
  openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 30</p><h2>A village worth building together.</h2><p>New callings, communal defenses, deeper mines and a full tavern games collection.</p></div><span>${buildingArt('arcane_academy')}</span></header><div class="build-feature-grid">
+ ${feature(itemArt('gold'),'Your betting stats','Open Betting stats from the village menu or tavern to see your gold won, gold lost and net result, plus a breakdown of all six games. Switch between all villages and this village. Earlier saved bets count too; unfinished hands wait until they settle.')}
  ${feature(itemArt('bandage'),'Bandages at Oak & Iron',`Buy bandages for ${BANDAGE.price} wallet gold each at the backpack shop. Use one from your pack to restore ${BANDAGE.healFraction * 100}% of your maximum health, up to full health.`)}
  ${feature(itemArt('pickaxe'),'Buy worker tools directly','Stone worker tools cost 30 wallet gold; iron costs 100. Turn on auto-replacement to buy the same tier from your bank whenever it breaks. No carried tools, materials or repair budgets are needed.')}
  ${feature(itemArt('pickaxe'),'A clearer crew overview','Manage large crews from a compact roster. Search by name, resource or building, filter workers needing attention, and select one worker for Orders, Tools or Training. Unapplied orders stay saved while you switch workers.')}

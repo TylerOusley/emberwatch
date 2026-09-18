@@ -234,6 +234,7 @@ export function villageFinanceSnapshot(sim, village, viewerId) {
     tavern: { minStake: TAVERN_RULES.minStake, maxStake: TAVERN_RULES.maxStake, reserve: TREASURY_RESERVE, coinflipMaximumStake: Math.min(TAVERN_RULES.maxStake, available), evenMoneyMaximumStake: Math.min(TAVERN_RULES.maxStake, available), rouletteNumberMaximumStake: Math.min(TAVERN_RULES.maxStake, Math.floor(available / 35)),
       blackjackMaximumStake: Math.min(TAVERN_RULES.maxStake, Math.floor((available * 2 + 1) / 3)), pokerMaximumAnte: Math.min(TAVERN_RULES.pokerMaxAnte, Math.floor(available / 7)), slotsMaximumStake: Math.min(TAVERN_RULES.maxStake, Math.floor(available / 29)), wheelMaximumStake: Math.min(TAVERN_RULES.maxStake, Math.floor(available / 5)),
       round: viewer ? privateRound(village.villageFinance?.rounds?.[viewerId], village.clock) : null,
+      stats: viewer ? store.tavernStats?.(village.id, viewerId) ?? null : null,
       history: viewer ? store.financeReceipts?.(village.id, viewerId, true) ?? [] : [] }
   };
 }

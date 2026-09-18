@@ -1,5 +1,11 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 30 hotfix: personal betting dashboard
+
+Every resident can open Betting stats from the village menu or tavern, anywhere in the village. The dashboard shows only the viewer's own results, with all-village and current-village scopes and a breakdown across all six games. It includes all retained settled betting receipts, including older coin-flip/roulette receipts, rather than only the twenty recent results. A card hand counts once after settlement; poker includes both ante and play wagers. Gold won is the sum of positive net profits, gold lost is the sum of negative net losses, and net equals returned minus wagered. A partial payout below the stake is a loss and an equal payout is a draw, regardless of historical win flags.
+
+Gold aggregates use exact integer arithmetic and decimal-string snapshot fields. Per-account indexed receipt cursors cache prior aggregation, advance only through new receipts, and invalidate on database rollback. Restart rebuilds totals from durable receipts. The dashboard is read-only; betting rules, odds, payouts and funding requirements are unchanged.
+
 ## Build 30 hotfix: bandages and roulette odds audit
 
 Oak & Iron sells bandages for 250 wallet gold each. Each bandage weighs one and can be used from Pack by any living role, restoring 25% of the player's current maximum HP with fractional health preserved and healing capped at full. Full-health or downed players cannot consume one; bandages do not revive, repair shields, refill mana or feed hunger. Purchases and consumption use the existing action transaction, and bandages follow normal saved inventory, storage, trade and death rules. They are ordinary supplies, so neither purchase credit nor bank savings funds them.
