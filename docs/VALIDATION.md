@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 30: worker tool purchases and bank replacement
+
+Validated September 18, 2026: **885/885 tests pass** with `npm test`, without failures, cancellations or skips. All five changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.
+
+Fourteen new real Simulation/SQLite integration tests verify exact wallet-only prices, remote purchases without carried tools/materials, ownership and invalid requests, duplicate usable-tier rejection, worker-only gear, exact bank-only same-tier replacement, repeated breakage/restart, insufficient savings and later deposits, enabling/disabling, offline owners, empty villages, paused/inactive/suspended/unfunded crews, multiple workers sharing a bank without overdraft, and manual/automatic save-failure rollback. A two-worker failure regression verifies that the first committed replacement survives while only the unpaid second replacement retries. Legacy tools and conditions persist, old wallet/material maintenance stays off, and replacement settings are owner-private. Converted plot transporters can still disable bank spending.
+
+The fourteen existing equipment/Manager tests retain wage, crew-limit, offline and yield coverage under the new purchase model. The 28 worker UI tests cover direct purchase controls, wallet and bank updates, current tool durability, toggle-only updates, inactive/transporter restrictions, legacy recovery (including converted transporters), reviewed dismissal and the prior roster/draft/click safeguards. No interactive browser playtest or manual production player mutation is claimed.
+
 ## Build 29 hotfix: worker management
 
 Validated September 18, 2026: **867/867 tests pass** with `npm test`, without failures, cancellations or skips. The **24 worker UI tests** cover existing hiring, orders, tool transfers/repairs, maintenance, training, collection and dismissal, plus large rosters with one editor, search/type/status filters, empty results, stable worker identity after reordering, per-worker drafts across selection/tab/snapshot changes, UI reset, pointer/keyboard press protection and detached controls. Percentage editing preserves the Apply button through blur; transporter training offers movement/carrying and displays delivery progress. All three changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.

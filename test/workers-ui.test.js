@@ -40,25 +40,116 @@ test('worker management shows the active Manager cap, wage rate and trained carg
   f.player.role = 'villager'; f.ui.refresh(); assert.match(f.html, /1 \/ 5 personal workers/); assert.match(f.html, /1 gold \/ 30 working seconds/);
 });
 
-test('actual worker equipment controls send supplied-tool choices and refresh after durability changes', t => {
-  const f = fixture(t); Object.assign(f.worker, { x: f.player.x, z: f.player.z });
-  f.player.tiers.pickaxe = 'iron'; f.player.durability.pickaxe = 91;
-  f.ui.show('workers'); f.click('Tools'); f.click('Supply your iron pickaxe');
-  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_equip', workerId: f.worker.id, tool: 'pickaxe', tier: 'iron' });
-  f.worker.equipment = { pickaxe: { tier: 'iron', durability: 91, maxDurability: 200 } }; f.player.durability.pickaxe = 0; f.ui.refresh();
-  assert.match(f.html, /91 \/ 200 durability/); f.click('Recover tool');
-  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_unequip', workerId: f.worker.id, tool: 'pickaxe' });
-  f.worker.equipment.pickaxe.durability = 0; f.ui.refresh(); assert.match(f.html, /using wooden fallback/);
-  f.click('Repair · 20g + materials'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_repair', workerId: f.worker.id, tool: 'pickaxe' });
+test('worker tool purchases work remotely without player equipment and submit explicit tool and tier choices', t => {
+  const f = fixture(t);
+  Object.assign(f.worker, { x: 60, z: 60 });
+  f.player.inventory = {}; f.player.tiers = {}; f.player.durability = {};
+  f.ui.show('workers'); f.click('Tools');
+  for (const tool of ['axe', 'pickaxe', 'scythe']) {
+    for (const [tier, cost] of [['stone', 30], ['iron', 100]]) {
+      f.click(`Buy ${tier} ${tool} · ${cost}g`);
+      assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_buy_tool', workerId: f.worker.id, tool, tier });
+    }
+  }
+  assert.match(f.html, /wallet/i);
+  assert.match(f.html, /without a refund/i);
+  assert.doesNotMatch(f.html, /Supply your|Carry a crafted|Repair ·|repair materials|gold remaining|g budget/i);
 });
 
-test('automatic worker maintenance controls submit an owned supply plot and bounded budget', t => {
-  const f = fixture(t), plotId = PLOTS[0].id;
-  f.state.plots = [{ id: plotId, ownerId: 'alice', building: 'house', hp: 300 }]; f.ui.show('workers'); f.click('Tools'); f.click('Enable 100g budget');
-  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_maintenance', workerId: f.worker.id, enabled: true, budgetGold: 100, plotId });
-  f.worker.maintenanceEnabled = true; f.worker.maintenanceBudgetGold = 80; f.worker.maintenancePlotId = plotId; f.ui.refresh();
-  assert.match(f.html, /80 gold remaining/); f.click('Disable automatic repairs');
-  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_maintenance', workerId: f.worker.id, enabled: false });
+test('purchase controls refresh for wallet, equipped tier and broken-tool snapshots', t => {
+  const f = fixture(t);
+  f.player.wallet = 29; f.player.bank = 1000;
+  f.ui.show('workers'); f.click('Tools'); f.ui.refresh();
+  assert.equal(f.button('Buy stone axe · 30g').disabled, true);
+  assert.equal(f.button('Buy iron axe · 100g').disabled, true);
+  f.player.wallet = 30; f.ui.refresh();
+  assert.equal(f.button('Buy stone axe · 30g').disabled, false);
+  assert.equal(f.button('Buy iron axe · 100g').disabled, true);
+  f.player.wallet = 100; f.ui.refresh();
+  assert.equal(f.button('Buy iron axe · 100g').disabled, false);
+  f.worker.equipment = { axe: { tier: 'stone', durability: 60, maxDurability: 100, workerOnly: true } };
+  f.ui.refresh();
+  assert.match(f.html, /60 \/ 100 durability/);
+  const equipped = f.buttons.find(button => /stone axe equipped/i.test(button.text));
+  assert.ok(equipped, 'the equipped tier is clearly marked'); assert.equal(equipped.disabled, true);
+  assert.equal(f.button('Buy iron axe · 100g').disabled, false);
+  f.worker.equipment.axe.durability = 0; f.ui.refresh();
+  assert.match(f.html, /using wooden fallback/);
+  assert.equal(f.button('Buy stone axe · 30g').disabled, false, 'a broken matching tier can be replaced');
+});
+
+test('automatic replacement uses bank savings and can be enabled before enough funds are available', t => {
+  const f = fixture(t);
+  Object.assign(f.worker, { x: 60, z: 60, equipment: { axe: { tier: 'iron', durability: 0, maxDurability: 200, workerOnly: true } } });
+  f.player.wallet = 0; f.player.bank = 12;
+  f.ui.show('workers'); f.click('Tools'); f.ui.refresh();
+  assert.match(f.html, /Auto-replacement/);
+  assert.match(f.html, /Bank|bank/); assert.match(f.html, /12/);
+  f.click('Enable auto-replacement');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_auto_replace', workerId: f.worker.id, enabled: true });
+  f.worker.autoReplaceEnabled = true; f.ui.refresh();
+  assert.match(f.html, /waiting|not enough|insufficient/i);
+  assert.equal(f.button('Disable auto-replacement').disabled, false);
+  const opens = f.opens;
+  f.player.bank = 1234; f.ui.refresh();
+  assert.equal(f.opens, opens + 1, 'bank-only updates refresh the current tools view');
+  assert.match(f.html, /1,234|1234/);
+  f.click('Disable auto-replacement');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_auto_replace', workerId: f.worker.id, enabled: false });
+  f.worker.autoReplaceEnabled = false; f.ui.refresh();
+  assert.equal(f.button('Enable auto-replacement').disabled, false, 'a toggle-only snapshot refreshes the control');
+  assert.equal(f.state.plots.length, 0, 'automatic replacement does not require a supply building');
+});
+
+test('inactive workers cannot buy or enable replacement but can always switch it off', t => {
+  const f = fixture(t); f.ui.show('workers'); f.click('Tools');
+  for (const flag of ['staffRetired', 'roleLimitPaused']) {
+    f.worker[flag] = true; f.worker.autoReplaceEnabled = false; f.ui.refresh();
+    assert.equal(f.button('Buy stone axe · 30g').disabled, true);
+    assert.equal(f.button('Buy iron pickaxe · 100g').disabled, true);
+    assert.equal(f.button('Enable auto-replacement').disabled, true);
+    f.worker.autoReplaceEnabled = true; f.ui.refresh(); f.click('Disable auto-replacement');
+    assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_auto_replace', workerId: f.worker.id, enabled: false });
+    f.worker[flag] = false;
+  }
+  Object.assign(f.worker, { staffRole: 'transporter', x: f.player.x, z: f.player.z, equipment: { pickaxe: { tier: 'iron', durability: 91, maxDurability: 200 }, axe: { tier: 'stone', durability: 60, maxDurability: 100, workerOnly: true } } });
+  f.player.durability = {}; f.ui.refresh();
+  assert.match(f.html, /Transporters move stored goods/);
+  assert.match(f.html, /91 \/ 200 durability/);
+  assert.doesNotMatch(f.html, /60 \/ 100 durability/, 'purchased gathering gear stays hidden for transporters');
+  assert.equal(f.buttons.filter(button => button.text === 'Recover tool').length, 1);
+  f.click('Recover tool');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_unequip', workerId: f.worker.id, tool: 'pickaxe' });
+  assert.equal(f.buttons.some(button => /^Buy (?:stone|iron) /.test(button.text)), false);
+  f.click('Disable auto-replacement');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_auto_replace', workerId: f.worker.id, enabled: false });
+  f.worker.autoReplaceEnabled = false; f.ui.refresh();
+  assert.equal(f.buttons.some(button => button.text === 'Enable auto-replacement'), false, 'transporters cannot enable automatic tool purchases');
+});
+
+test('purchased worker tools cannot be recovered but older player-supplied gear retains recovery', t => {
+  const f = fixture(t);
+  Object.assign(f.worker, { x: f.player.x, z: f.player.z, equipment: { pickaxe: { tier: 'iron', durability: 91, maxDurability: 200, workerOnly: true } } });
+  f.ui.show('workers'); f.click('Tools');
+  assert.equal(f.buttons.some(button => button.text === 'Recover tool'), false);
+  delete f.worker.equipment.pickaxe.workerOnly; f.ui.refresh();
+  f.click('Recover tool');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_unequip', workerId: f.worker.id, tool: 'pickaxe' });
+  f.worker.x += 30; f.ui.refresh(); assert.equal(f.button('Recover tool').disabled, true);
+  f.worker.x = f.player.x; f.player.durability.pickaxe = 15; f.ui.refresh();
+  assert.equal(f.button('Recover tool').disabled, true, 'recovery still requires an empty matching player slot');
+});
+
+test('dismissal reviews purchased-tool loss while protecting previously supplied gear', t => {
+  const f = fixture(t);
+  f.worker.equipment = { axe: { tier: 'stone', durability: 60, maxDurability: 100, workerOnly: true } };
+  f.ui.show('workers'); f.click('Dismiss worker');
+  assert.match(f.html, /Purchased worker tools are discarded without a refund/);
+  assert.equal(f.sent.length, 0, 'opening the review does not dismiss the worker');
+  f.click('Confirm change');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_dismiss', workerId: f.worker.id });
+  delete f.worker.equipment.axe.workerOnly; f.ui.show('workers');
+  assert.equal(f.button('Dismiss worker').disabled, true, 'older player-owned gear must be recovered before dismissal');
 });
 
 test('worker management is discoverable from the pack and treasury and shows only the owner’s crew', t => {
@@ -223,7 +314,7 @@ test('a large crew has one order editor and keeps tools and training behind sele
   assert.equal(f.buttons.filter(button => button.dataset.workerId).length, 28);
   assert.equal([...f.fields.keys()].filter(id => /^worker-\d+-resource$/.test(id)).length, 1);
   assert.equal(f.buttons.filter(button => button.text === 'Apply orders').length, 1);
-  assert.equal(f.buttons.some(button => /Supply your|\+1 rank|Enable 100g budget/.test(button.text)), false);
+  assert.equal(f.buttons.some(button => /Buy (?:stone|iron)|\+1 rank|Enable auto-replacement/.test(button.text)), false);
   assert.equal(f.roster(f.worker.id).ariaPressed, 'true');
   f.choose('crew-18'); assert.equal(f.roster('crew-18').ariaPressed, 'true');
   assert.equal(f.roster(f.worker.id).ariaPressed, 'false'); assert.ok(f.fields.has('worker-18-resource'));

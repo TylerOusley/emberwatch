@@ -23,8 +23,10 @@ function fixture(role = 'villager') {
   const tick = () => { v.clock += .1; workersTick(sim, v, .1); };
   const harvest = (w, count = 1) => { for (let n = 0; n < count; n++) { atNode(w); w.gatherProgress = workerStats(w, owner).gatherSeconds - .1; tick(); } };
   const supply = (w, tier, durability = 100, tool = 'pickaxe') => {
-    Object.assign(owner, { x: w.x, z: w.z }); owner.tiers[tool] = tier; owner.durability[tool] = durability; owner.maxDurability[tool] = tier === 'iron' ? 200 : 150;
-    act({ kind: 'worker_equip', workerId: w.id, tool, tier });
+    // Existing saved workers can still carry gear supplied before the purchase system.
+    Object.assign(owner, { x: w.x, z: w.z });
+    w.equipment[tool] = { tier, durability, maxDurability: tier === 'iron' ? 200 : 150 };
+    ensureWorkers(v);
   };
   const house = () => { const plot = v.plots[0]; Object.assign(plot, { building: 'house', ownerId: owner.id, hp: 500, maxHp: 500 }); ensureOwnership(v); return plot; };
   return { v, owner, resident, act, hire, node, state, atNode, assign, tick, harvest, supply, house };
@@ -71,26 +73,29 @@ test('offline Managers fund work at their role rate, while an empty village pres
   assert.deepEqual(w, before); assert.equal(f.owner.wallet, wallet);
 });
 
-test('supplying crafted tools transfers actual durability and swaps the previous tool without duplication', () => {
+test('legacy supplied tools preserve actual durability and can still be recovered without duplication', () => {
   const f = fixture(), w = f.hire(); f.supply(w, 'stone', 71);
-  assert.equal(f.owner.durability.pickaxe, 0); assert.deepEqual(w.equipment.pickaxe, { tier: 'stone', durability: 71, maxDurability: 150 });
-  f.supply(w, 'iron', 93); assert.equal(f.owner.tiers.pickaxe, 'stone'); assert.equal(f.owner.durability.pickaxe, 71);
-  assert.equal(w.equipment.pickaxe.durability, 93);
+  assert.deepEqual(w.equipment.pickaxe, { tier: 'stone', durability: 71, maxDurability: 150, workerOnly: false });
+  f.owner.durability.pickaxe = 10;
   assert.throws(() => f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' }), /slot is occupied/);
   f.owner.durability.pickaxe = 0;
   f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' });
-  assert.equal(f.owner.durability.pickaxe, 93); assert.equal(f.owner.tiers.pickaxe, 'iron'); assert.equal(w.equipment.pickaxe, undefined);
+  assert.equal(f.owner.durability.pickaxe, 71); assert.equal(f.owner.tiers.pickaxe, 'stone'); assert.equal(w.equipment.pickaxe, undefined);
+  assert.throws(() => f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' }), /standard wooden/);
 });
 
-test('tool supply validates ownership, proximity, real tier and unbound equipment before transfer', () => {
-  const f = fixture(), w = f.hire(); Object.assign(f.owner, { x: w.x, z: w.z });
-  f.owner.tiers.pickaxe = 'iron'; f.owner.durability.pickaxe = 100;
-  assert.throws(() => f.act({ kind: 'worker_equip', workerId: w.id, tool: 'pickaxe', tier: 'iron' }, f.resident), /own workers/);
-  f.owner.x += 10; assert.throws(() => f.act({ kind: 'worker_equip', workerId: w.id, tool: 'pickaxe', tier: 'iron' }), /Stand next/); f.owner.x = w.x;
-  assert.throws(() => f.act({ kind: 'worker_equip', workerId: w.id, tool: 'pickaxe', tier: 'stone' }), /selected tier/);
-  f.owner.boundKitTools = { pickaxe: true };
-  assert.throws(() => f.act({ kind: 'worker_equip', workerId: w.id, tool: 'pickaxe', tier: 'iron' }), /Crate-bound/);
-  assert.equal(f.owner.durability.pickaxe, 100); assert.deepEqual(w.equipment, {});
+test('tool purchases validate ownership and price but do not require proximity or carried tools', () => {
+  const f = fixture(), w = f.hire(); f.owner.x = w.x + 10;
+  const buy = { kind: 'worker_buy_tool', workerId: w.id, tool: 'pickaxe', tier: 'stone' };
+  assert.throws(() => f.act(buy, f.resident), /own workers/);
+  f.owner.wallet = 29; assert.throws(() => f.act(buy), /30 wallet gold/);
+  assert.deepEqual(w.equipment, {});
+  f.owner.wallet = 130; f.act(buy);
+  assert.equal(f.owner.wallet, 100); assert.deepEqual(w.equipment.pickaxe, { tier: 'stone', durability: 150, maxDurability: 150, workerOnly: true });
+  assert.throws(() => f.act(buy), /already has a usable/);
+  f.act({ ...buy, tier: 'iron' }); assert.equal(f.owner.wallet, 0); assert.equal(w.equipment.pickaxe.durability, 200);
+  assert.throws(() => f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' }), /cannot be recovered/);
+  assert.deepEqual(f.owner.durability, {});
 });
 
 for (const [tier, count, expected] of [['stone', 4, 5], ['iron', 4, 6]]) test(`${tier} tools add the exact worker yield bonus while consuming one finite node unit and durability per harvest`, () => {
@@ -108,37 +113,34 @@ test('broken gear falls back to wood and earned fractional yield survives changi
   f.supply(w, 'iron', 1); f.harvest(w); assert.equal(w.cargo.stone, 4); assert.equal(w.toolYieldRemainders.stone, 0);
 });
 
-test('manual repairs consume real unbound materials and wallet gold only after all costs pass', () => {
+test('obsolete equipment and maintenance commands reject stale clients without spending or moving tools', () => {
   const f = fixture(), w = f.hire(); f.supply(w, 'iron', 1);
-  f.owner.inventory.iron = 4; f.owner.inventory.coal = 2; f.owner.inventory.timber = 1;
   const wallet = f.owner.wallet, treasury = f.v.treasury;
-  assert.throws(() => f.act({ kind: 'worker_repair', workerId: w.id, tool: 'pickaxe' }), /2 unbound timber/);
-  assert.equal(f.owner.wallet, wallet); assert.equal(f.owner.inventory.iron, 4); assert.equal(w.equipment.pickaxe.durability, 1);
-  f.owner.inventory.timber = 2; f.owner.boundInventory = { iron: 1 };
-  assert.throws(() => f.act({ kind: 'worker_repair', workerId: w.id, tool: 'pickaxe' }), /4 unbound iron/);
-  f.owner.boundInventory = {};
-  f.act({ kind: 'worker_repair', workerId: w.id, tool: 'pickaxe' });
-  assert.equal(f.owner.wallet, wallet - 20); assert.equal(f.v.treasury, treasury + 20); assert.equal(f.owner.inventory.iron, 0); assert.equal(w.equipment.pickaxe.durability, 200);
+  for (const kind of ['worker_equip', 'worker_repair', 'worker_maintenance']) {
+    assert.throws(() => f.act({ kind, workerId: w.id, tool: 'pickaxe', tier: 'iron', enabled: true, budgetGold: 100 }), /Refresh the game/);
+  }
+  assert.equal(f.owner.wallet, wallet); assert.equal(f.v.treasury, treasury); assert.equal(w.equipment.pickaxe.durability, 1);
 });
 
-test('automatic maintenance honors the chosen storage and budget without spending the next wage or remote pack materials', () => {
-  const f = fixture(), w = f.hire(), plot = f.house(); f.assign(w); f.supply(w, 'iron', 1); f.harvest(w);
+test('old capped wallet maintenance never migrates into bank spending and the replacement switch requires a boolean', () => {
+  const f = fixture(), w = f.hire(), plot = f.house(); f.assign(w); f.supply(w, 'iron', 1);
   Object.assign(plot.storage, { iron: 8, coal: 4, timber: 4 }); f.owner.inventory.iron = 777;
-  f.act({ kind: 'worker_maintenance', workerId: w.id, enabled: true, budgetGold: 20, plotId: plot.id });
-  w.paidWorkSeconds = 0; f.owner.wallet = 20; f.harvest(w);
-  assert.equal(w.equipment.pickaxe.durability, 0); assert.equal(plot.storage.iron, 8); assert.equal(f.owner.wallet, 19, 'maintenance keeps enough for the next wage');
-  f.owner.wallet = 20; f.harvest(w); assert.equal(w.equipment.pickaxe.durability, 199);
-  assert.equal(f.owner.wallet, 0); assert.equal(plot.storage.iron, 4); assert.equal(w.maintenanceBudgetGold, 0); assert.equal(f.owner.inventory.iron, 777);
-  w.equipment.pickaxe.durability = 0; f.owner.wallet = 100; f.harvest(w);
-  assert.equal(w.equipment.pickaxe.durability, 0); assert.equal(plot.storage.iron, 4, 'an exhausted budget cannot repair again');
+  Object.assign(w, { maintenanceEnabled: true, maintenanceBudgetGold: 100, maintenancePlotId: plot.id });
+  ensureWorkers(f.v);
+  assert.equal(w.autoReplaceEnabled, false); assert.equal(w.maintenanceEnabled, undefined); assert.equal(w.maintenanceBudgetGold, undefined); assert.equal(w.maintenancePlotId, undefined);
+  f.harvest(w, 2);
+  assert.equal(w.equipment.pickaxe.durability, 0); assert.equal(plot.storage.iron, 8); assert.equal(f.owner.inventory.iron, 777);
+  assert.throws(() => f.act({ kind: 'worker_auto_replace', workerId: w.id, enabled: 'true' }), /whether/);
+  f.act({ kind: 'worker_auto_replace', workerId: w.id, enabled: true }); assert.equal(w.autoReplaceEnabled, true);
+  f.act({ kind: 'worker_auto_replace', workerId: w.id, enabled: false }); assert.equal(w.autoReplaceEnabled, false);
 });
 
-test('owner snapshots expose maintenance and supplied tools while other players receive only visible tiers', () => {
+test('owner snapshots expose replacement settings and tools while other players receive only visible tiers', () => {
   const f = fixture('manager'), w = f.hire(); f.supply(w, 'stone', 37);
   const mine = f.v.plots[1]; Object.assign(mine, { building: 'mine', ownerId: f.owner.id, hp: 400, level: 1 });
   const own = workersSnapshot(f.v, f.owner.id).workers.find(worker => worker.id === w.id), other = workersSnapshot(f.v, f.resident.id).workers.find(worker => worker.id === w.id);
   assert.equal(own.equipment.pickaxe.durability, 37); assert.equal(own.employment.wageSeconds, 60); assert.equal(other.tiers.pickaxe, 'stone');
-  assert.equal(other.equipment, undefined); assert.equal(other.maintenanceBudgetGold, undefined);
+  assert.equal(own.autoReplaceEnabled, false); assert.equal(other.equipment, undefined); assert.equal(other.autoReplaceEnabled, undefined); assert.equal(own.maintenanceBudgetGold, undefined);
   const restored = JSON.parse(JSON.stringify(f.v)); ensureWorkers(restored); assert.deepEqual(restored.workers[0].equipment, w.equipment);
 });
 

@@ -2,7 +2,8 @@ import { roleSkills } from './skills.js';
 import { equippedItem } from './crates.js';
 
 // Employment costs are paid from the owner's wallet. Hired hands never spend
-// protected savings, purchase credit, or the village's treasury.
+// purchase credit or the village's treasury. Opted-in tool replacement is the
+// separate exception that spends the owner's bank savings.
 export const WORKER_RULES = Object.freeze({
   maxPerPlayer: 5, hireCost: 75, wageGold: 1, wageSeconds: 30,
   carryCapacity: 40, gatherSeconds: 4, speed: 3,
@@ -12,8 +13,8 @@ export const WORKER_RESOURCES = Object.freeze(['wheat', 'timber', 'stone', 'iron
 export const WORKER_TOOLS = Object.freeze({ wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', sulfur: 'pickaxe' });
 export const WORKER_EQUIPMENT = Object.freeze({
   wood: Object.freeze({ multiplier: 1 }),
-  stone: Object.freeze({ multiplier: 1.25, repairGold: 10, repair: Object.freeze({ stone: 5, timber: 2 }) }),
-  iron: Object.freeze({ multiplier: 1.5, repairGold: 20, repair: Object.freeze({ iron: 4, coal: 2, timber: 2 }) })
+  stone: Object.freeze({ multiplier: 1.25, purchaseGold: 30 }),
+  iron: Object.freeze({ multiplier: 1.5, purchaseGold: 100 })
 });
 export function workerEmployment(player = {}) {
   const skills = roleSkills(player);

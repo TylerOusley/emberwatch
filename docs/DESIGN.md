@@ -1,5 +1,13 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 30: worker tool purchases and automatic replacement
+
+Owners buy stone axes, pickaxes or scythes for 30 wallet gold, or iron for 100, directly from worker management at any distance. No personal tool, materials or purchase credit are required. Purchased tools have 150/200 durability and the existing 1.25/1.5 output multipliers. One durability is spent per completed harvest. A usable tool cannot be repurchased at the same tier; buying another tier replaces the existing tool without refund. Purchases are a gold sink, like worker hiring.
+
+Each worker has an optional auto-replacement toggle. When its gathering tool breaks on an actual harvest, the same tier is bought for 30/100 bank gold. A previously broken tool retries during active gathering when savings become sufficient. There is no wallet fallback, loan use, materials bill or repair budget. Unfunded workers use wooden tools. Wages remain wallet-funded. Offline owners still fund their active crew while another player is present; paused, retired, role-limited, transporting, blocked and empty-village workers do not spend bank savings on replacements.
+
+Bank debit, actual harvest, resource depletion, tool replacement and village persistence commit atomically and roll back together on failure. Replacement checks query the bank only at harvest completion when the active tool is broken or about to break. Newly purchased/replacement tools belong to the worker and cannot become personal equipment. Dismissal discards them after the existing review. Previously supplied personal tools retain their condition and can be recovered under the existing proximity/capacity rules before replacement, including from converted plot staff. Saved wallet/material repair budgets do not authorize the new bank spending: auto-replacement defaults off. Obsolete client repair/transfer commands request a refresh.
+
 ## Build 29 hotfix: worker management
 
 Worker management presents a compact roster beside one selected worker. Search names, resources, statuses and buildings; filter personal hires, plot gatherers or transporters, and all/on-duty/paused/needs-attention states. Existing authoritative status text remains visible. Retired or role-limited staff and blocked/funding/supply waits are marked for attention; stocked transporters remain on duty.
@@ -22,7 +30,7 @@ Each cast requires only its mana cost, plus a short firing delay: fire/frost 15 
 
 Six role trees: Villager packing/provisions; Guard health/shield/command; Priest healing/revival; Manager logistics/staffing; Tinker efficiency/repair; Wizard focus/frost/lightning. Lessons are resident-per-village and remain learned when inactive; only the current role grants bonuses. Academy commission is 25g per lesson. All material costs round up, so batch crafting realizes fractional Tinker savings without free core ingredients. Wizards receive one starter staff per resident; role cycling cannot refill it.
 
-Manager personal cap8→10, wage1g/60 worked seconds. Other roles remain5 and1g/30 seconds. Paid wage buckets survive role changes; surplus workers pause while retaining equipment/cargo. Stone/iron worker tool yield multipliers are1.25/1.5 with deterministic fractional remainder, one durability per completed harvest. Maintenance requires a chosen owned store and a capped wallet budget.
+Manager personal cap8→10, wage1g/60 worked seconds. Other roles remain5 and1g/30 seconds. Paid wage buckets survive role changes; surplus workers pause while retaining equipment/cargo. Stone/iron worker tool yield multipliers are1.25/1.5 with deterministic fractional remainder, one durability per completed harvest. Build 30 supersedes the original material repairs with direct tool purchases and optional bank-funded replacement; see the current rules above.
 
 Wizard tower level1:34 damage,24m,3s,1sulfur. Level2 lightning:42 base, at most3 targets,5m between targets,0.65 damage falloff, same sulfur/cooldown. Cannon and archers retain their distinct roles. Guard command gives up to2 additional barracks slots beyond3/6.
 
