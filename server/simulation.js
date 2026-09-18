@@ -40,7 +40,7 @@ const FINANCE_ACTIONS = new Set(['investment_deposit', 'investment_withdraw', 'i
 const IMMEDIATE_ACTIONS = new Set(['ember_ward', 'civic_select', 'civic_donate', 'civic_supply', 'academy_learn', 'academy_reclaim_staff', 'staff_element', 'cartRescueUnload', 'cartRescueTreat', 'cartPlotLoad', 'cartPlotUnload', 'dropPlayer', 'churchLeave', 'dismountHorse', 'plot_deposit', 'plot_withdraw', 'cartDeposit', 'cartWithdraw', 'deposit', 'withdraw', 'trade_invite', 'trade_accept', 'trade_offer', 'trade_confirm', 'trade_cancel', 'crate_open', 'crate_loadout', 'phoenix_revive', 'investment_deposit', 'investment_withdraw', 'investment_claim', 'investment_reinvest', 'tavern_bet']);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, sulfur: 0, gunpowder: 0, musket_ammo: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, musket: 0, cart: 0 });
+const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, sulfur: 0, gunpowder: 0, musket_ammo: 0, food: 0, good_food: 0, best_food: 0, bandage: 0, arrows: 0, bow: 0, musket: 0, cart: 0 });
 const durability = () => ({ sword: 0, axe: 0, pickaxe: 0, scythe: 0, hammer: 0, bow: 0, musket: 0 });
 const ensureCombatRewards = player => {
   const saved = player.combatRewards ?? {};

@@ -332,6 +332,53 @@ test('backpack shop uses equipped capacity, offers only upgrades, and accepts pu
   assert.ok(!f.buttons.some(b => b.text === 'Equip · 100g'));
 });
 
+test('Oak & Iron sells an illustrated 250 gold bandage with its healing and carried count visible', t => {
+  const f = fixture(t); f.player.inventory.bandage = 3; f.visit('tools');
+  const card = f.html.match(/<article[^>]*data-shop-item="bandage"[\s\S]*?<\/article>/)?.[0];
+  assert.match(card, /data-item="bandage"/); assert.match(card, /25% maximum HP/);
+  assert.match(card, /<dt>Carried<\/dt><dd>3<\/dd>/); assert.match(card, /250 wallet gold each/);
+  assert.match(card, /<dt>Carrying weight<\/dt><dd>1 each<\/dd>/); assert.match(card, /Pack → First aid/);
+  f.click('Buy bandage · 250g');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyBandage' });
+});
+
+test('bandage purchase requires enough wallet gold and one free carrying weight', t => {
+  const f = fixture(t); f.player.wallet = 249; f.state.loan.credit = 1000; f.player.bank = 1000; f.visit('tools');
+  const buy = () => f.buttons.find(b => b.text === 'Buy bandage · 250g');
+  assert.equal(buy().disabled, true); assert.match(f.html, /Not enough wallet gold/);
+  f.player.wallet = 250; f.ui.refresh(); assert.equal(buy().disabled, false);
+  f.player.inventory = { wheat: 100 }; f.player.durability = {}; f.ui.refresh();
+  assert.equal(buy().disabled, true, 'a full pack cannot buy another bandage');
+  f.player.inventory.wheat = 99; f.ui.refresh(); assert.equal(buy().disabled, false, 'exactly one free weight is enough');
+  f.click('Buy bandage · 250g'); assert.equal(f.sent.at(-1).kind, 'buyBandage');
+});
+
+test('Pack first aid uses one bandage and disables use when empty, full health, downed, mounted or in bed', t => {
+  const f = fixture(t); f.player.inventory.bandage = 2; f.ui.show('inventory');
+  const use = () => f.buttons.find(b => b.text === 'Use bandage');
+  assert.match(f.html, /One bandage restores 25% of your maximum HP/);
+  assert.match(f.html, /Bandages carried<\/span><strong>2<\/strong>/); assert.match(f.html, /Up to 25 HP/);
+  assert.match(f.html, /data-supply="bandage"/);
+  f.click('Use bandage'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'useBandage' });
+  f.player.hp = 100; f.ui.refresh(); assert.equal(use().disabled, true);
+  f.player.hp = 70; f.player.inventory.bandage = 0; f.ui.refresh(); assert.equal(use().disabled, true);
+  f.player.inventory.bandage = 2; f.player.hp = 0; f.ui.refresh(); assert.equal(use().disabled, true);
+  f.player.hp = 70; f.player.downed = true; f.ui.refresh(); assert.equal(use().disabled, true);
+  f.player.downed = false; f.player.mountedHorseId = 'horse'; f.ui.refresh(); assert.equal(use().disabled, true);
+  f.player.mountedHorseId = null; f.ui.refresh(); assert.equal(use().disabled, false);
+  f.player.bedPlotId = 'church'; f.ui.refresh(); assert.equal(use().disabled, true); assert.match(f.html, /Leave the bed to use a bandage/);
+  f.player.bedPlotId = null; f.ui.refresh(); assert.equal(use().disabled, false);
+  assert.equal(f.sent.length, 1, 'refreshing disabled controls never sends a consume action');
+});
+
+test('bandage healing information and availability refresh when maximum health alone changes', t => {
+  const f = fixture(t); f.player.hp = 100; f.player.inventory.bandage = 1; f.ui.show('inventory'); f.ui.refresh();
+  assert.equal(f.buttons.find(b => b.text === 'Use bandage').disabled, true);
+  f.player.maxHp = 200; f.ui.refresh();
+  assert.match(f.html, /Up to 50 HP/); assert.match(f.html, /100 \/ 200/);
+  assert.equal(f.buttons.find(b => b.text === 'Use bandage').disabled, false);
+});
+
 test('resource purchase controls allow upgraded backpack capacity and stop at its actual limit', t => {
   const f = fixture(t);
   f.player.inventory = { wheat: 150 }; f.player.durability = {}; f.player.backpackTier = 1;

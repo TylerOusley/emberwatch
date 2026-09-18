@@ -8,6 +8,8 @@ The approved gameplay systems described below have playable implementations. Thi
 
 ## Latest playtest improvements
 
+The Build 30 bandage hotfix adds first aid to **Oak & Iron**, the backpack shop: 250 wallet gold per bandage, one weight each. Use a bandage from **Pack** to restore 25% of your current maximum HP, capped at full health. Every role can use them while alive; full-health use consumes nothing. Bank savings and purchase credit are not charged. Roulette green-zero odds were audited and remain 1/37 (2.70%); the table now explains that each spin is independent.
+
 The Build 30 merchant hotfix expands percentage surplus exports to all six Resource Exchange materials: wheat, timber, stone, iron, coal and sulfur. Existing food/repair reserves and Conserve (25%), Balanced (50%) and Trade (100%) rules remain, with no unit cap. This takes effect on the next scheduled merchant arrival.
 
 Build 30 lets owners buy worker axes, pickaxes and scythes directly from **Pack → Manage workers → Tools**: stone costs 30 wallet gold and iron costs 100. No carried tool or materials are required. Optional auto-replacement buys the same tier from bank savings when it breaks; insufficient savings leave the worker using wood until funding returns. Existing tools are preserved and the new bank-funded setting starts off.
@@ -251,13 +253,16 @@ Principal can be withdrawn only to the extent the current treasury can preserve 
 
 ## The Wayfarer tavern
 
-Visit The Wayfarer entrance at any time, even while its traveling merchant is away. Bet 1–1,000 **wallet gold** on the illustrated coin or roulette table. The server resolves and saves each result before the reveal animation; Skip or reduced motion reveals the same saved result.
+Visit The Wayfarer entrance at any time, even while its traveling merchant is away. Bet 1–10,000 **wallet gold** on the illustrated coin or roulette table. The server resolves and saves each result before the reveal animation; Skip or reduced motion reveals the same saved result.
 
 | Game / bet | Winning chance | Total returned on a win | Net profit on a win |
 | --- | --- | --- | --- |
 | Coin flip: heads or tails | 1/2 | 2× stake | 1× stake |
-| European roulette: one number, 0–36 | 1/37 | 36× stake | 35× stake |
+| European roulette: green (0) | 1/37 (2.70%) | 36× stake | 35× stake |
+| European roulette: one number, 1–36 | 1/37 (2.70%) | 36× stake | 35× stake |
 | Roulette: red, black, even or odd | 18/37 | 2× stake | 1× stake |
+
+Every roulette spin independently selects one of the 37 numbers, 0–36, using the server’s cryptographic random generator. Green is only zero, not one third of the wheel. Losing 125 consecutive green bets has probability `(36/37)^125`, about 3.26%; earlier losses do not change the next spin. A 2,000-gold green win returns 72,000 total, including the stake (70,000 profit). The September 18 audit found no outcome-range, zero-selection, payout or reveal bug; this does not independently verify any particular player’s reported history.
 
 Zero loses all outside roulette bets. A lost stake goes to the village treasury; a win pays the net profit from that treasury. Before accepting any stake, the treasury must cover the maximum possible win while preserving its emergency reserve. Bank savings, loans and investment earnings are not wagered. The interface distinguishes total return, profit, loss and currently affordable stakes.
 

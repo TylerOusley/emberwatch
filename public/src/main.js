@@ -34,7 +34,7 @@ import { buildingArt } from './build-carousel.js';
 import { createCrateEquipmentWorld } from './crate-equipment-world.js';
 import { chooseInteraction, choosePlotInteraction, nearestGatherable, nearestHealingTarget, directCompanionInteraction } from './interactions.js';
 import { CONFIG, BUILDINGS, ROAD, RESOURCES, TOOLS, WALLS, PLOTS, WORLD_BOUNDS, caveAreaAt, caveDepthAt, groundHeight, resolveResource, plotSolids, moveWithCollision } from '/shared/world.js';
-import { TOOL_TIERS, carryCapacity, inventoryWeight } from '/shared/content.js';
+import { TOOL_TIERS, BANDAGE, carryCapacity, inventoryWeight } from '/shared/content.js';
 import { productionHarvest } from '/shared/production.js';
 import { MUSKET } from '/shared/firearms.js';
 import { ZOMBIE_BOUNTY_GOLD } from '/shared/enemies.js';
@@ -227,6 +227,7 @@ function showMenu(){
 function showBuildStatus(){
  const feature=(art,title,copy)=>`<article class="build-feature"><span>${art}</span><div><h3>${title}</h3><p>${copy}</p></div></article>`;
  openPanel(`<div class="village-menu"><header class="village-menu-heading"><div><p class="eyebrow">FIRST LIGHT · BUILD 30</p><h2>A village worth building together.</h2><p>New callings, communal defenses, deeper mines and a full tavern games collection.</p></div><span>${buildingArt('arcane_academy')}</span></header><div class="build-feature-grid">
+ ${feature(itemArt('bandage'),'Bandages at Oak & Iron',`Buy bandages for ${BANDAGE.price} wallet gold each at the backpack shop. Use one from your pack to restore ${BANDAGE.healFraction * 100}% of your maximum health, up to full health.`)}
  ${feature(itemArt('pickaxe'),'Buy worker tools directly','Stone worker tools cost 30 wallet gold; iron costs 100. Turn on auto-replacement to buy the same tier from your bank whenever it breaks. No carried tools, materials or repair budgets are needed.')}
  ${feature(itemArt('pickaxe'),'A clearer crew overview','Manage large crews from a compact roster. Search by name, resource or building, filter workers needing attention, and select one worker for Orders, Tools or Training. Unapplied orders stay saved while you switch workers.')}
  ${feature(itemArt('gold'),'100 gold for every kill or assist',`Every role earns ${ZOMBIE_BOUNTY_GOLD} gold for each zombie it damages before the kill. Your towers and guards count for you. Each contributing player gets a full bounty, once per zombie, with no nightly cap. Paid immediately with normal loan repayments. Your pack tracks credited kills, assists and total bounty gold.`)}

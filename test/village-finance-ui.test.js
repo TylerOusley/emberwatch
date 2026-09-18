@@ -26,6 +26,7 @@ test('quotes expose exact win chance, total return versus profit, and wallet/liq
   const tavern={maxStake:1000,coinflipMaximumStake:900,rouletteNumberMaximumStake:20,evenMoneyMaximumStake:400};
   assert.deepEqual(tavernQuote('coinflip','heads','10',tavern,200),{maximum:200,valid:true,stake:10,multiplier:2,total:20,profit:10,odds:'1 in 2 · 50%'});
   assert.equal(tavernQuote('roulette','number','20',tavern,200).total,720);assert.equal(tavernQuote('roulette','number','20',tavern,200).profit,700);
+  assert.equal(tavernQuote('roulette','number','20',tavern,200).odds,'1 in 37 · 2.70%');
   assert.equal(tavernQuote('roulette','red','10',tavern,200).odds,'18 in 37 · 48.65%');
   for(const amount of ['0','-1','1.5','1e2','1001','', '21'])assert.equal(tavernQuote('roulette','number',amount,tavern,200).valid,false,amount);
   assert.equal(tavernQuote('coinflip','heads','10',{},200).valid,false,'missing authoritative liquidity never enables a bet');
@@ -142,6 +143,20 @@ test('roulette offers all 37 numbers, precise straight-number stake limits and z
   f.click('Bet on number 0');f.type('stake','41');assert.equal(f.button('Place bet').disabled,true);f.type('stake','40');f.click('Place bet');assert.deepEqual({...f.sent.at(-1),requestId:'id'},{type:'action',kind:'tavern_bet',requestId:'id',game:'roulette',stake:40,choice:'number',number:0});
   f.receipt({game:'roulette',outcome:0,color:'green',stake:40,payout:1440,walletAfter:1900,win:true});assert.equal(f.timers.size,0);assert.match(f.html,/0 green · You won 1,400 gold profit/);
   f.click('RED');f.type('stake','10');f.click('Place bet');f.receipt({game:'roulette',outcome:0,color:'green',stake:10,payout:0,walletAfter:1890,win:false});assert.match(f.html,/0 green · You lost 10 gold/);
+});
+
+test('a 2,000g green bet explains its odds and the animated wheel reveals the saved zero and payout',()=>{
+  const f=fixture();f.visit('merchant');f.me.wallet=250000;Object.assign(f.state.tavern,{maxStake:10000,rouletteNumberMaximumStake:10000});f.ui.showTavern();f.click('European roulette');
+  f.click('Bet on number 0');
+  assert.match(f.html,/1 in 37 · 2.70%/);assert.match(f.html,/Green is only zero: 1 in 37 \(2.70%\) each spin/);
+  assert.match(f.html,/Earlier spins do not change the odds/);
+  f.type('stake','2000');assert.match(f.fields.get('vf-bet-quote').innerHTML,/72,000g/);assert.match(f.fields.get('vf-bet-quote').innerHTML,/\+70,000g/);
+  f.click('Place bet');assert.equal(f.sent[0].number,0);assert.equal(f.sent[0].stake,2000);
+  f.receipt({game:'roulette',outcome:0,color:'green',stake:2000,payout:72000,net:70000,win:true});
+  assert.match(f.html,/vf-wheel-disc spinning/);assert.match(f.html,/--wheel-end:1800.000deg;--wheel-rest:0.000deg/);
+  assert.equal(f.timers.size,1);f.click('Skip reveal');
+  assert.match(f.html,/0 green · You won 70,000 gold profit/);assert.match(f.html,/total returned 72,000g/);
+  assert.equal(f.timers.size,0);assert.equal(f.sent.length,1,'revealing the zero never starts another spin');
 });
 
 test('same pending receipt survives reconnect/reload and an old direct receipt restores without a second debit',()=>{

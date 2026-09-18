@@ -1,5 +1,11 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 30 hotfix: bandages and roulette odds audit
+
+Oak & Iron sells bandages for 250 wallet gold each. Each bandage weighs one and can be used from Pack by any living role, restoring 25% of the player's current maximum HP with fractional health preserved and healing capped at full. Full-health or downed players cannot consume one; bandages do not revive, repair shields, refill mana or feed hunger. Purchases and consumption use the existing action transaction, and bandages follow normal saved inventory, storage, trade and death rules. They are ordinary supplies, so neither purchase credit nor bank savings funds them.
+
+The roulette audit confirms green is the single zero on the 37-number European wheel, at 1/37 per independent cryptographic server draw. A winning straight-number bet returns 36 times its stake, including that stake. No odds or payout change was required. The table explicitly explains green odds and independence; a claimed 125-spin losing streak has an approximately 3.26% probability under these rules but was not verified against that resident's historical receipts.
+
 ## Build 30 hotfix: export all Resource Exchange materials
 
 Merchant arrivals export wheat, timber, stone, iron, coal and sulfur from village stock using the current council percentage. Food/repair reserves remain unchanged; iron, coal and sulfur use a zero reserve. Exports pay 1g per wheat, 2g per timber/stone/coal/sulfur and 3g per iron. These treasury export bids are independent of the merchant's limited player wares. No personal inventory, plot stock, civic depot or crafted goods are included. Existing saved policies take effect on the next scheduled arrival, without repeating prior dawns.

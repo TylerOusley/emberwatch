@@ -1,6 +1,6 @@
 import { canUseBuilding, canUsePlot } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES, resolveResource, clearResourceSegment, plotSolids } from '../shared/world.js';
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, SHOP_PRICE_LIMIT, SHOP_CRAFT_BATCH_LIMIT, shopPrice, carryCapacity, inventoryWeight, resourceWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, BANDAGE, SHOP_PRICE_LIMIT, SHOP_CRAFT_BATCH_LIMIT, shopPrice, carryCapacity, inventoryWeight, resourceWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
 import { LOANS } from '../shared/transport.js';
 import { TOWER_STATS } from '../shared/defense.js';
@@ -14,7 +14,7 @@ import { ensureSkills } from './skills.js';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-const kinds = new Set(['plot_buy', 'plot_build', 'plot_demolish', 'plot_access', 'plot_deposit', 'plot_withdraw', 'craft_buy', 'craft_stock', 'shop_price', 'role_change', 'gather', 'buyBackpack', 'upgradeProduction']);
+const kinds = new Set(['plot_buy', 'plot_build', 'plot_demolish', 'plot_access', 'plot_deposit', 'plot_withdraw', 'craft_buy', 'craft_stock', 'shop_price', 'role_change', 'gather', 'buyBackpack', 'buyBandage', 'useBandage', 'upgradeProduction']);
 const resourceTool = { timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', sulfur: 'pickaxe', wheat: 'scythe' };
 const yieldRemainder = (plot, type) => Number.isInteger(plot.splitRemainders?.[type]) ? plot.splitRemainders[type] : 0;
 const maxHarvests = type => type === 'wheat' ? 1 : type === 'timber' ? 5 : 8;
@@ -93,6 +93,27 @@ function removeBuilding(village, plot) {
 export function ownershipAction(sim, village, player, action) {
   if (!kinds.has(action.kind)) return null;
   ensureOwnership(village);
+  if (action.kind === 'buyBandage') {
+    const shop = BUILDINGS.find(building => building.id === 'tools');
+    if (!canUseBuilding(player, shop)) throw new Error('Visit Oak & Iron’s front counter to buy a bandage.');
+    if (!Number.isSafeInteger(player.inventory.bandage) || player.inventory.bandage < 0 || !Number.isSafeInteger(player.inventory.bandage + 1)) throw new Error('Your pack cannot hold another bandage.');
+    checkCapacity(player, 'bandage', 1);
+    if (!Number.isSafeInteger(player.wallet) || player.wallet < 0) throw new Error('Your wallet cannot pay for this purchase.');
+    if (!Number.isSafeInteger(village.treasury + BANDAGE.price)) throw new Error('The village treasury cannot accept this purchase.');
+    chargePurchase(sim, village, player, BANDAGE.price);
+    village.treasury += BANDAGE.price;
+    player.inventory.bandage++;
+    return 'Bandage purchased. Use it from your Pack to restore 25% of your maximum health.';
+  }
+  if (action.kind === 'useBandage') {
+    if (player.downed || !Number.isFinite(player.hp) || !Number.isFinite(player.maxHp) || player.hp <= 0 || player.maxHp <= 0) throw new Error('Only a living dwarf can use a bandage.');
+    if (player.hp >= player.maxHp) throw new Error('You are already at full health.');
+    if (!Number.isSafeInteger(player.inventory.bandage) || player.inventory.bandage < 1) throw new Error('Buy a bandage at Oak & Iron first.');
+    const restored = Math.min(player.maxHp - player.hp, player.maxHp * BANDAGE.healFraction);
+    player.inventory.bandage--;
+    player.hp += restored;
+    return `Bandage used: restored ${Number(restored.toFixed(2))} HP.`;
+  }
   if (action.kind === 'buyBackpack') {
     const shop = BUILDINGS.find(building => building.id === 'tools');
     if (!canUseBuilding(player, shop)) throw new Error('Visit Oak & Iron’s front counter to buy a backpack.');

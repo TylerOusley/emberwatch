@@ -68,6 +68,9 @@ function backpack(level) {
 function bread() {
   return ellipse(118,139,62,10,'#382e20','opacity=".14"')+path('M55 115Q40 83 76 64Q118 34 162 61Q190 80 182 115Q122 151 55 115Z','#a16431')+path('M55 105Q53 80 79 67Q119 43 159 64Q182 80 179 102Q119 134 55 105Z','#ddb265')+path('M61 104Q115 127 177 99L172 112Q115 140 59 113Z','#c18d46')+[0,1,2].map(i=>path(`M${85+i*28} ${65-i*2}Q${68+i*28} ${83-i*2} ${91+i*28} ${96-i*2}Q${78+i*28} ${79-i*2} ${94+i*28} ${66-i*2}Z`,'#f5d793')).join('')+[0,1,2,3,4,5].map(i=>ellipse(71+i*18,103+(i%2)*5,1.5,1,'#efd3a0')).join('');
 }
+function bandage() {
+  return path('M108 99Q128 106 143 96L187 126L169 149Q130 144 101 126Z','#c4ba95') + path('M112 103Q130 109 143 101L180 128L166 140Q131 137 106 121Z','#e8dfbe') + group('rotate(-23 108 94)',rect(75,62,65,70,'#d1c8a7','rx="18"') + path('M82 69Q108 57 135 69V117Q109 133 80 119Z','#eee5c8') + [77,90,103,116].map(y=>path(`M82 ${y}Q107 ${y+9} 135 ${y-1}`,'none','stroke="#b9ae88" stroke-width="2"')).join('') + ellipse(107,66,33,16,'#f5ebca') + ellipse(107,66,23,10,'#c4b795') + ellipse(107,66,15,6,'#eee4c3') + ellipse(107,66,7,3,'#8d8368') + path('M135 78L140 80V118L133 125Z','#afa382')) + line(149,113,174,132,'#b4a984',2) + line(140,122,164,139,'#b4a984',2);
+}
 function meal(feast=false) {
   return ellipse(118,136,75,19,'#b9b8a0')+ellipse(118,128,75,19,'#e2dcc1')+ellipse(118,128,63,14,'#77794e')+(feast?path('M91 117Q71 76 113 65Q159 53 169 94L178 113Q147 144 91 117Z','#925130')+path('M94 100Q89 72 120 69Q150 67 159 93L167 111Q134 126 100 111Z','#c48141')+path('M95 93Q112 74 141 84L146 93Q120 87 108 104Z','#e0a35a')+path('M157 103L182 85L185 90L166 115Z','#ae794b')+ellipse(184,85,8,6,'#ede0ba')+ellipse(188,91,6,7,'#ede0ba'):path('M67 101Q116 125 165 100L157 129Q116 157 76 129Z','#8b6b42')+ellipse(116,100,49,16,'#c29b61')+ellipse(116,100,42,12,'#69462d')+ellipse(117,101,36,9,'#b27836')+[0,1,2,3,4,5].map(i=>ellipse(90+(i%3)*23,98+Math.floor(i/3)*7,6,3,['#dbaa55','#c48442','#819356'][i%3])).join(''))+[0,1,2].map(i=>group(`translate(${feast?64+i*14:174} ${feast?115+i%2*9:106+i*10}) rotate(${i*32})`,ellipse(0,0,14,6,'#698456')+line(-8,0,10,0,'#a5b277',1))).join('')+(feast?group('translate(-14 61) scale(.42)',bread()):line(178,72,175,126,'#c0b18b',5)+ellipse(179,66,6,10,'#b8b7a4'));
 }
@@ -100,7 +103,7 @@ function gold() {
   art+=group('rotate(13 151 83)',ellipse(151,83,25,31,'#95703b')+ellipse(149,82,23,29,'#e4be61')+ellipse(149,82,18,24,'none','stroke="#ae873e" stroke-width="2"')+poly('149,65 159,71 157,85 149,96 141,86 139,71','#b38a3e')+path('M149 70L153 78L147 82L151 88L146 91L143 80Z','#f4d786'));
   return art;
 }
-const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','sulfur','gold']);
+const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','bandage','horse','wheat','timber','stone','iron','coal','sulfur','gold']);
 
 /** Decorative catalog illustration. Callers provide accessible item names outside the SVG. */
 export function itemArt(itemId, options = {}) {
@@ -111,7 +114,7 @@ export function itemArt(itemId, options = {}) {
   const tier = own(TIERS,safe.tier) ? safe.tier : 'wood', t=TIERS[tier];
   const rawLevel=typeof safe.level==='number'?safe.level:typeof safe.tier==='number'?safe.tier:0;
   const level=Number.isFinite(rawLevel)?Math.max(0,Math.min(3,Math.floor(rawLevel))):0;
-  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,musket,gunpowder:powder,musket_ammo:musketShots,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal'),sulfur:()=>ore('sulfur'),gold})[id]();
+  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,musket,gunpowder:powder,musket_ammo:musketShots,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),bandage,horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal'),sulfur:()=>ore('sulfur'),gold})[id]();
   return `<svg xmlns="http://www.w3.org/2000/svg" class="shop-item-illustration" viewBox="0 0 240 180" width="240" height="180" aria-hidden="true" focusable="false" data-item="${id}" data-tier="${id==='backpack'?level:tier}">${ellipse(120,157,55,6,'#1a302a','opacity=".10"')}${drawing}</svg>`;
 }
 

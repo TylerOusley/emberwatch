@@ -1,5 +1,15 @@
 # Emberwatch build validation
 
+## Build 30 hotfix: bandages and roulette green audit
+
+Validated September 18, 2026: **910/910 tests pass** with `npm test`, without failures, cancellations or skips. All seven changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes. Independent review found no release blocker.
+
+**Bandages:** Eleven new real SQLite integration cases verify the exact 250 wallet-gold price, one item per purchase, treasury payment, front-counter access, carrying capacity, unchanged bank/credit/debt, all six roles, current maximum-health scaling (including 31.25 HP for a 125-HP Priest and 32.5 HP for a 130-HP Guard), clamping/full-health no-consumption, invalid or downed states, mounted/bed restrictions, old inventory migration, saved purchases/consumption and rollback after injected post-write failures. The focused settlement UI and item-art suite passes 54/54, including four new cases for wallet-only affordability, capacity, buy/use commands, no-consumption states, bed/mount restrictions and max-health refresh. Artwork is a native SVG bandage illustration using the existing shop renderer.
+
+**Roulette:** The focused finance/server/UI suites pass 46/46. Three new server/shared tests exhaust all 37 outcomes against every straight-number choice, verify the server requests a 37-value random range, settle a 2,000-gold green-zero win as 72,000 total, preserve zero through saved receipt/restart/replay without rerolling, and reject invalid generator outputs without debiting funds. One new UI case verifies animated green-zero reveal and the 72,000 total/70,000 profit presentation. Production continues to use `crypto.randomInt(37)`; no outcome or payout change was necessary. Green probability is 1/37, approximately 2.70%. The probability of 125 consecutive independent misses is `(36/37)^125 = 0.03255345493661636`, approximately 3.26%. This code audit does not verify the particular friend's reported historical bets.
+
+The Build 30 marker remains. No interactive browser playtest or manual production player mutation is claimed.
+
 ## Build 30 hotfix: all-resource merchant exports
 
 Validated September 18, 2026: **891/891 tests pass** with `npm test`, with no failures, cancellations or skips. The final focused economy suite passes **29/29** after refining its private-plot/civic-storage fixture. All three changed runtime modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.

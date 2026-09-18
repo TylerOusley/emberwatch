@@ -6,6 +6,7 @@ import { roleSkills } from './skills.js';
 export const MAX_PLOTS = 8;
 export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800, 1100, 1450, 1850]);
 export const CARRY_CAPACITY = 100;
+export const BANDAGE = Object.freeze({ price: 250, healFraction: .25 });
 export const BACKPACKS = Object.freeze([
   Object.freeze({ tier: 0, name: 'Pockets', capacity: CARRY_CAPACITY, price: 0 }),
   Object.freeze({ tier: 1, name: 'Simple backpack', capacity: 200, price: 40 }),
@@ -72,7 +73,7 @@ export function shopPrice(plot, recipeId) {
   const saved = plot.shopPrices?.[recipeId];
   return Number.isSafeInteger(saved) && saved >= 1 && saved <= SHOP_PRICE_LIMIT ? saved : recipe.price;
 }
-export const RESOURCE_WEIGHTS = Object.freeze({ timber: 2, stone: 3, wheat: 1, iron: 3, coal: 2, sulfur: 2, gunpowder: .2, musket_ammo: .2, food: 1, good_food: 1, best_food: 1, arrows: .1, cart: 12 });
+export const RESOURCE_WEIGHTS = Object.freeze({ timber: 2, stone: 3, wheat: 1, iron: 3, coal: 2, sulfur: 2, gunpowder: .2, musket_ammo: .2, food: 1, good_food: 1, best_food: 1, bandage: 1, arrows: .1, cart: 12 });
 export const TOOL_WEIGHTS = Object.freeze({ sword: 2, axe: 3, pickaxe: 3, scythe: 2, hammer: 2, bow: 2, musket: 5, staff: 3 });
 export function resourceWeight(player, id) {
   return (RESOURCE_WEIGHTS[id] ?? 1) * (equippedItem(player, 'utility')?.weights?.[id] ?? 1);

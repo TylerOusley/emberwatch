@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { itemArt, shopInterior } from '../public/src/shop-display.js';
 
-const items=['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','horse','wheat','timber','stone','iron','coal','sulfur','gold'];
+const items=['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','bandage','horse','wheat','timber','stone','iron','coal','sulfur','gold'];
 const themes=['tools','weapons','tinker','food','merchant','stable','bank','market'];
 function safeSVG(svg) {
   assert.match(svg,/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);

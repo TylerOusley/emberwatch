@@ -124,6 +124,60 @@ test('coinflip and European roulette pay the stated total returns, with zero los
   }
 });
 
+test('every roulette straight-number bet, including green zero, wins exactly one of the 37 outcomes', () => {
+  for (let number = 0; number <= 36; number++) {
+    const bet = normalizeTavernBet({ game: 'roulette', choice: 'number', number, stake: 2000 });
+    const payouts = Array.from({ length: 37 }, (_, outcome) => tavernPayout(bet, outcome));
+    assert.deepEqual(payouts.flatMap((payout, outcome) => payout > 0 ? [outcome] : []), [number]);
+    assert.equal(payouts[number], 72000, 'a 2,000g straight win returns 72,000g including the stake');
+    assert.equal(payouts.reduce((total, payout) => total + payout, 0), 72000);
+  }
+});
+
+test('roulette requests the exclusive RNG bound 37, settles green at 2,000g and never rerolls a saved zero', async t => {
+  const { directory, village, first, account, near, act, store, total } = await fixture(t); near('merchant');
+  village.treasury = 500000; first.wallet = 300000;
+  const initial = total(); let calls = 0, green;
+  // Visit every possible outcome, placing zero after all 36 nonzero losses.
+  for (const outcome of [...Array.from({ length: 36 }, (_, i) => i + 1), 0]) {
+    const before = { wallet: first.wallet, treasury: village.treasury };
+    const result = act({ kind: 'tavern_bet', game: 'roulette', choice: 'number', number: 0, stake: 2000 }, first, limit => {
+      assert.equal(limit, 37, 'crypto.randomInt(limit) includes zero and excludes this upper bound');
+      calls++; return outcome;
+    });
+    const payout = outcome === 0 ? 72000 : 0, net = payout - 2000;
+    assert.equal(result.receipt.outcome, outcome); assert.equal(result.receipt.number, 0);
+    assert.equal(result.receipt.payout, payout); assert.equal(result.receipt.net, net);
+    assert.equal(result.receipt.win, outcome === 0); assert.equal(result.receipt.color === 'green', outcome === 0);
+    assert.equal(first.wallet, before.wallet + net); assert.equal(village.treasury, before.treasury - net);
+    assert.equal(total(), initial, 'every result transfers the exact amount between player and treasury');
+    if (outcome === 0) green = result;
+  }
+  assert.equal(calls, 37, 'one draw per newly accepted spin');
+  const before = { wallet: first.wallet, treasury: village.treasury };
+  assert.deepEqual(act({ ...green.request, number: 36 }, first, () => assert.fail('a replay must not reroll')).receipt, green.receipt);
+  assert.deepEqual({ wallet: first.wallet, treasury: village.treasury }, before);
+  const reopened = new Store(directory, { testAdminAccountIds: [] });
+  try {
+    const recovered = new Simulation(reopened), player = recovered.join(village.id, account), v = recovered.villages.get(village.id);
+    assert.deepEqual(reopened.financeReceipt(v.id, player.id, green.request.requestId), green.receipt);
+    assert.equal(player.wallet, before.wallet); assert.equal(v.treasury, before.treasury);
+    assert.equal(villageFinanceSnapshot(recovered, v, player.id).tavern.history[0].outcome, 0);
+  } finally { reopened.close(); }
+});
+
+test('invalid roulette RNG output cannot debit a stake or persist a result', async t => {
+  const { village, first, near, act, store } = await fixture(t); near('merchant');
+  village.treasury = 500000;
+  const before = { wallet: first.wallet, treasury: village.treasury };
+  for (const outcome of [-1, 37, 1.5, NaN, Infinity, '0', undefined]) {
+    const requestId = randomUUID();
+    assert.throws(() => act({ kind: 'tavern_bet', requestId, game: 'roulette', choice: 'number', number: 0, stake: 2000 }, first, () => outcome), /could not determine a result/);
+    assert.deepEqual({ wallet: first.wallet, treasury: village.treasury }, before);
+    assert.equal(store.financeReceipt(village.id, first.id, requestId), null);
+  }
+});
+
 test('the treasury must fund maximum possible win before RNG runs and client odds/results cannot change payouts', async t => {
   const { village, first, near, act, store, sim } = await fixture(t); near('merchant');
   village.treasury = TREASURY_RESERVE + 349;
