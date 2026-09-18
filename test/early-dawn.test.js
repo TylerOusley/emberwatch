@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Store } from '../server/store.js';
 import { Simulation } from '../server/simulation.js';
 import { createEnemy, nightIsCleared } from '../server/enemies.js';
+import { ZOMBIE_BOUNTY_GOLD } from '../shared/enemies.js';
 
 function fixture() {
   const saved = new Map(), account = { id: 'defender', name: 'Defender', bank: 0 };
@@ -41,8 +42,8 @@ test('the final sword cleave starts dawn immediately and pays accrued wages, bon
   const wallet = player.wallet, treasury = village.treasury, wage = Math.floor(player.wageAccrued);
   sim.action(village.id, player.id, { kind: 'attack' });
   assert.equal(village.phase, 'day'); assert.equal(village.day, 2); assert.equal(village.phaseRemaining, sim.daySeconds);
-  assert.equal(player.wallet, wallet + wage + 3 + 2 + 2); assert.equal(player.durability.sword, 4);
-  assert.equal(village.treasury, treasury + 1000 - wage - 2, 'only actual wage accrual is paid, with one hidden night grant');
+  assert.equal(player.wallet, wallet + wage + 3 + 2 + 2 * ZOMBIE_BOUNTY_GOLD); assert.equal(player.durability.sword, 4);
+  assert.equal(village.treasury, treasury + 1000 - wage, 'only actual wage accrual is funded by the treasury; combat bounties do not spend it');
   assert.equal(player.wageAccrued, 0); assert.equal(player.jobBonus, 0); assert.equal(player.repairBonus, 0);
   assert.equal(player.accountProgression.nights, 1, 'short night honors use actual observed participation');
   assert.deepEqual([village.spawned, village.waveCount, village.nextSpawn], [0, 0, 0]);
@@ -61,8 +62,9 @@ test('guard cleaves and archer towers can finish a fully spawned night in the sa
     a.hp = 1; if (b) b.hp = 1;
     if (mode === 'guard') village.guards = [{ id: 'cleaver', ownerId: player.id, x: 0, z: 29.5, yaw: 0, hp: 160, maxHp: 160, roadIndex: 3, cooldown: 0 }];
     else Object.assign(village.plots.find(p => p.id === 'outpost-1'), { ownerId: player.id, building: 'archer_tower', hp: 500, maxHp: 500, level: 1, storage: {} });
-    const wallet = player.wallet; sim.tick(.05);
-    assert.equal(village.phase, 'day', mode); assert.equal(village.day, 2); assert.equal(player.wallet, wallet + (b ? 2 : 1) - village.economy.lastTaxes);
+    const wallet = player.wallet, treasury = village.treasury; sim.tick(.05);
+    assert.equal(village.phase, 'day', mode); assert.equal(village.day, 2); assert.equal(player.wallet, wallet + (b ? 2 : 1) * ZOMBIE_BOUNTY_GOLD - village.economy.lastTaxes);
+    assert.equal(village.treasury, treasury + 1000 + village.economy.lastTaxes, 'owned defense bounties leave village funds intact');
     assert.equal(village.zombies.filter(z => z.hp > 0).length, 0);
     assert.equal(sim.notices.filter(n => /Dawn breaks early/.test(n.message)).length, 1);
   }
@@ -97,7 +99,7 @@ test('a failed final-kill dawn rolls the complete action back and a retry pays o
   assert.throws(() => sim.action(village.id, player.id, { kind: 'attack' }), /Dawn save failed/);
   assert.deepEqual(village, before); assert.deepEqual(sim.notices, notices);
   store.saveVillage = original; sim.action(village.id, player.id, { kind: 'attack' });
-  assert.equal(village.day, 2); assert.equal(player.durability.sword, 1); assert.equal(player.wallet, before.players[player.id].wallet + 1);
+  assert.equal(village.day, 2); assert.equal(player.durability.sword, 1); assert.equal(player.wallet, before.players[player.id].wallet + ZOMBIE_BOUNTY_GOLD);
   assert.equal(sim.notices.filter(n => /Dawn breaks early/.test(n.message)).length, 1);
 });
 

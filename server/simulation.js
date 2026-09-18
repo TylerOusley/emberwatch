@@ -12,7 +12,7 @@ import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight, acquiredToolD
 import { ensureRoleStats, tickRoleStats, absorbDamage } from './roles.js';
 import { STARTER_GOLD, FOOD_IDS, canEquip } from '../shared/equipment.js';
 import { canUseBuilding } from '../shared/access.js';
-import { ENEMY_TYPES, MELEE, inMeleeArc, enemyKind } from '../shared/enemies.js';
+import { ZOMBIE_BOUNTY_GOLD, MELEE, inMeleeArc } from '../shared/enemies.js';
 import { ensureEnemies, spawnWaveEnemy, splitEnemy, enemySnapshot, cancelZombieWindup, attackZombieStructure, beginZombieAttack, tickZombieAttack, nightIsCleared } from './enemies.js';
 import { ensureRequests, requestsTick, requestsSnapshot, requestsAction, requestsBeforeAction, requestsAfterAction } from './requests.js';
 import { ensureProgression, joinProgression, progressionNight, progressionTick, progressionDawn, progressionAction, recordProgressionAction, progressionSnapshot } from './progression.js';
@@ -42,6 +42,11 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const emptyInventory = () => ({ timber: 0, stone: 0, wheat: 0, iron: 0, coal: 0, sulfur: 0, gunpowder: 0, musket_ammo: 0, food: 0, good_food: 0, best_food: 0, arrows: 0, bow: 0, musket: 0, cart: 0 });
 const durability = () => ({ sword: 0, axe: 0, pickaxe: 0, scythe: 0, hammer: 0, bow: 0, musket: 0 });
+const ensureCombatRewards = player => {
+  const saved = player.combatRewards ?? {};
+  player.combatRewards = Object.fromEntries(['kills', 'assists', 'gold'].map(key => [key, Number.isSafeInteger(saved[key]) && saved[key] >= 0 ? saved[key] : 0]));
+  return player.combatRewards;
+};
 const makeResource = resource => ({ id: resource.id, available: true, remaining: resource.type === 'wheat' ? 1 : resource.type === 'timber' ? 5 : 8, regrowAt: 0 });
 const building = id => BUILDINGS.find(b => b.id === id);
 const nearStructure = (player, id, range = 3.5) => {
@@ -74,6 +79,7 @@ function ensureVillage(village) {
   ensureVillageFinance(village);
   ensureEnvironment(village); ensureCivic(village);
   for (const player of Object.values(village.players)) {
+    ensureCombatRewards(player);
     ensureSkills(player); ensureRoleStats(player, { clock: village.clock });
     ensureCrateEffects(village, player);
     player.inventory = { ...emptyInventory(), ...player.inventory };
@@ -184,7 +190,7 @@ export class Simulation {
       environment: environmentSnapshot(village),
       players: Object.values(village.players).map(p => ({ id: p.id, name: p.name, role: p.role, x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, online: p.online, downed: p.downed, respawnAvailable: p.respawnAvailable, tool: p.tool, anim: p.anim,
         lastShot: p.lastShot, y: p.y, verticalSpeed: p.verticalSpeed, grounded: p.grounded, jumpHeld: p.jumpHeld, rescueCartId: p.rescueCartId, rescueSlot: p.rescueSlot, emberWard: p.emberWard, emberWardUntil: p.emberWardUntil, staffElement: p.staffElement,
-        ...(p.id === viewerId ? { environmentYieldRemainders: p.environmentYieldRemainders, skills: p.skills, mana: p.mana, manaMax: p.manaMax, staffOwned: p.staffOwned, staffReadyAt: p.staffReadyAt ?? 0, emberWardStatus: emberWardStatus(village,p) } : {}),
+        ...(p.id === viewerId ? { combatRewards: p.combatRewards, environmentYieldRemainders: p.environmentYieldRemainders, skills: p.skills, mana: p.mana, manaMax: p.manaMax, staffOwned: p.staffOwned, staffReadyAt: p.staffReadyAt ?? 0, emberWardStatus: emberWardStatus(village,p) } : {}),
         tiers: p.tiers, backpackTier: p.backpackTier, crateEquipment: p.crateEquipment ?? {}, mountedHorseId: p.mountedHorseId, carryingId: p.carryingId, carriedBy: p.carriedBy, bedPlotId: p.bedPlotId,
         ...(p.id === viewerId ? { testAdmin: this.store.isTestAdmin?.(p.id) ?? false, inventory: p.inventory, boundInventory: p.boundInventory ?? {}, boundKitTools: p.boundKitTools ?? {}, maxDurability: p.maxDurability ?? {}, shield: p.shield, maxShield: p.maxShield, wallet: p.wallet, bank: this.store.account(p.id)?.bank ?? 0, durability: p.durability, repairBonus: p.repairBonus, jobBonus: p.jobBonus, hunger: Math.floor(p.hunger ?? 100), carryWeight: inventoryWeight(p), carryCapacity: carryCapacity(p), wageAccrued: Math.floor(p.wageAccrued ?? 0), healRemaining: p.healing ? Math.max(0, Math.ceil(p.healing.until - village.clock)) : 0, lastStandWard: p.lastStandWardUntil > village.clock ? p.lastStandWard ?? 0 : 0, phoenixProtectionRemaining: Math.max(0, (p.phoenixProtectedUntil ?? 0) - village.clock) } : {}) })),
       siegeNight: village.siegeNight,
@@ -391,19 +397,35 @@ export class Simulation {
     if (zombie.hp <= 0 || !Number.isFinite(damage) || damage <= 0) return;
     const dealt = damage * (1 - clamp(zombie.armor ?? 0, 0, .8));
     const actual = Math.min(zombie.hp, dealt);
-    if (player?.online && player.role === 'guard') {
-      zombie.contributors ??= {};
-      zombie.contributors[player.id] = (zombie.contributors[player.id] ?? 0) + actual;
-    }
-    zombie.hp = Math.max(0, zombie.hp - dealt);
-    if (zombie.hp <= 0) {
+    if (!Number.isFinite(actual) || actual <= 0) return;
+    const resident = player?.id && Object.hasOwn(village.players, player.id) ? village.players[player.id] : null;
+    const applyHit = () => {
+      if (resident) {
+        zombie.contributors ??= {};
+        const prior = zombie.contributors[resident.id];
+        zombie.contributors[resident.id] = (Number.isFinite(prior) && prior > 0 ? prior : 0) + actual;
+      }
+      zombie.hp = Math.max(0, zombie.hp - actual);
+    };
+    // Ordinary damage stays in the normal village save cycle. A death also
+    // changes account loan balances, so persist its wallet credit, dead enemy
+    // and any brood children in the same transaction, including NPC attacks.
+    if (actual < zombie.hp) { applyHit(); return; }
+    const checkpoint = structuredClone(village), noticeCount = this.notices.length;
+    try { this.store.transaction(() => {
+      applyHit();
       cancelZombieWindup(zombie);
       for (const [id, contribution] of Object.entries(zombie.contributors ?? {})) {
-        const contributor = village.players[id];
-        if (contributor?.online && contributor.role === 'guard' && (contribution >= zombie.maxHp * .15 || id === player?.id)) this.awardJob(village, contributor, ENEMY_TYPES[enemyKind(zombie)].reward);
+        if (!Object.hasOwn(village.players, id) || !Number.isFinite(contribution) || contribution <= 0) continue;
+        const contributor = village.players[id], rewards = ensureCombatRewards(contributor);
+        this.awardIncome(village, contributor, ZOMBIE_BOUNTY_GOLD);
+        rewards[id === resident?.id ? 'kills' : 'assists']++;
+        rewards.gold += ZOMBIE_BOUNTY_GOLD;
       }
       splitEnemy(village, zombie);
-    }
+      this.store.saveVillage(village);
+    }); }
+    catch (error) { restoreState(village, checkpoint); this.notices.length = noticeCount; throw error; }
   }
   cancelZombieWindup(zombie) { cancelZombieWindup(zombie); }
   attackZombieStructure(village, zombie, structure, targetId, targetKind) { return attackZombieStructure(village, zombie, structure, targetId, targetKind); }

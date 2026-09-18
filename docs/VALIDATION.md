@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 29: uncapped zombie bounties
+
+Validated September 18, 2026: **858/858 tests pass** with `npm test`, with no failures, cancellations or skips. All **120 runtime JavaScript modules** pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.
+
+The new real Simulation/SQLite suite verifies all six roles, positive-damage assists below the old threshold, 60 same-night kills with an empty treasury, owner deduplication across direct/tower/troop damage, actual cannon splash and wizard lightning chains, ranged and melee troops, offline owners, burns, downed/daytime assists, splitter offspring, private saved totals, restart persistence and duplicate-death protection. Loan repayment and injected save failures verify atomic wallet, account debt, death and offspring updates, including rollback through an outer player attack transaction.
+
+Existing enemy and early-dawn tests now expect immediate 100-gold bounties separately from accrued wages and service/repair bonuses. Treasury assertions verify that bounties do not spend public funds; early dawn and retry protection remain intact. The pack UI test covers all six roles, gross totals, no-cap/loan wording and refreshing when only bounty totals change. No interactive browser playtest or production player mutation is claimed.
+
 ## Build 28 hotfix: surplus proposals
 
 Validated September 17, 2026: **68/68 focused settlement UI and economy tests pass**, runtime syntax and `git diff --check` pass, and **93 browser modules** link with the real imports/exports.

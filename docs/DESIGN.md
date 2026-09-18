@@ -1,5 +1,11 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 29: uncapped zombie bounties
+
+Every resident who deals positive actual damage to a zombie earns 100 gross gold when it dies, regardless of role, connection state or whether they are downed. Direct hits, spell burns, owned towers and owned troops share their resident owner identity. Each contributing player receives the full amount once per zombie, without splitting the bounty or imposing a damage threshold or nightly cap. Unowned defenders can finish a zombie and still pay its player contributors. Brood husks and each offspring are separate enemies; offspring do not inherit parent contributions.
+
+Bounties create new income instead of spending the treasury. Existing loan repayment rules apply before the wallet receives the net amount. The previous capped Guard kill bonus is replaced; already accrued service bonuses, Priest performance, repair pay and dawn wages remain intact. Private saved combat totals record kills, assists and gross bounty gold for the village run. The pack and help screen explain these rules. Lethal damage, wallet credits, account debt changes and brood offspring persist together in a transaction so reloads cannot repeat a payment or lose its credited death. Empty villages still pause.
+
 ## Build 28: Wizard staff recovery and casting
 
 Staff ownership is an explicit saved boolean, independent of ordinary tool durability. Existing Build 27 staff records, including broken staffs, migrate once. Initial Wizard selection grants one staff; role changes cannot refresh mana or replace a subsequently lost staff. Ordinary respawn loses the staff with other equipment; revival retains it. Living Wizards can reclaim one missing staff for free at a working, resident-owned Arcane Academy entrance, provided the pack has room for 3 weight. Repeated recovery creates no duplicate and never refills mana, resets the firing timer or changes learned skills. The tinker-shop staff recipe remains an alternative purchase.
@@ -42,7 +48,7 @@ The first event starts after 10–15 active minutes; later starts are 45–75 mi
 
 The five personal hire limit excludes plot staff. A built production plot grants one gatherer per level (1–3), while tool/tinker/sword shops, towers, cannon, barracks and churches grant transporters by level. Empty or destroyed buildings grant no active staff. New staff are paused and free to hire; ordinary active wages still come from the owner wallet. Transporters physically collect from another owned store and fill the selected resource to 1–100% of their destination's storage weight capacity, respecting all other stored goods and cargo already in flight. Reconciliation preserves existing identities, experience, cargo and prepaid wages; retired staff remain recoverable. Plot staff park at their building instead of crowding the treasury.
 
-Sulfur adds eight public cave nodes and one node per private mine, preserving prior node IDs, rolls and depletion. Tinker recipes are 5 powder for 2 sulfur + 1 coal, 8 musket shots for 4 stone + 2 powder, and a musket for 14 iron + 16 timber. Powder and ammunition can be manufactured into storage and sold from ready stock. Each shop recipe has an owner-set integer price of 1–10,000 gold with current quote validation. The musket deals 64 base damage at up to 38m, has a 1.6-second authoritative reload, consumes one shot and durability, and follows existing aiming, obstruction and guard bonus rules.
+Sulfur adds eight public cave nodes and one node per private mine, preserving prior node IDs, rolls and depletion. Tinker recipes are 5 powder for 2 sulfur + 1 coal, 8 musket shots for 4 stone + 2 powder, and a musket for 14 iron + 16 timber. Powder and ammunition can be manufactured into storage and sold from ready stock. Each shop recipe has an owner-set integer price of 1–10,000 gold with current quote validation. The musket deals 64 base damage at up to 38m, has a 1.6-second authoritative reload, consumes one shot and durability, and follows existing aiming and obstruction rules, with the shared zombie bounty for every role.
 
 Owned barracks have three shared recruitment slots at level 1 and six at level 2. Each swordsman, archer or musketeer can be trained to veteran independently; saved replacements retain that training. Archers fire at 22m for 18/25 damage with a 1.8-second interval; musketeers fire at 30m for 48/64 damage with a 3.3-second interval. They consume actual ammunition from their barracks. Empty units continue orders and can make weak defensive melee attacks. Existing upgraded swordsmen migrate without losing their trained strength.
 
@@ -234,7 +240,7 @@ A guard may own at most two barracks. Each supports three recruited slots includ
 
 Each living deployed troop consumes **one wheat per night from its own barracks stock**. A replacement deployed that night also needs one wheat. Partial supply feeds a corresponding number of soldiers; unfed soldiers deal 25% less damage. Delivering wheat during the night can feed an unfed soldier without charging a fed soldier twice. Other residents may donate supplies. Owner withdrawals require permission.
 
-An offline owner's troops still defend and consume supplies while other residents keep the village active. They do not generate an offline owner's performance bonus. A completely empty village pauses these activities.
+An offline owner's troops still defend, consume supplies and earn zombie bounties for their owner while other residents keep the village active. A completely empty village pauses these activities.
 
 Exterior archer towers and cannon defenses require construction resources and repair. Archer towers need no ammunition; cannons consume stone and coal. They can be destroyed. Starting construction examples are 200 gold, 60 timber, and 40 stone for an archer tower, and 500 gold, 40 timber, 100 stone and 20 iron for a later cannon. Cannon ammunition and upgrade recipes are still to be balanced.
 
@@ -246,11 +252,11 @@ Each new village starts with **20,000 gold in a public treasury**, once per run 
 | --- | --- | --- |
 | Guard base wage | 25 gold per active day/night cycle, prorated participation | Dawn |
 | Priest base wage | 25 gold per active day/night cycle, prorated participation | Dawn |
-| Guard performance | 1 per Shambler, Grave runner or Grave mite; 2 per Brood husk; 3 per Ironbound; 5 per Gravebreaker; up to 25 extra total | With dawn wages |
+| Zombie bounties, every role | 100 gross gold per kill or positive-damage assist, once per contributor per zombie, no cap | Immediately on death, subject to loan repayment |
 | Priest performance | 1 per 50 meaningful HP healed; 5 per eligible revival; up to 25 extra | With dawn wages |
 | Repairs, every job | 1 per successful repair swing, up to 10 extra per cycle | Dawn |
 
-Guard credit includes meaningful assists and owned troop kills, with one credit per enemy per owner. Priest healing rewards actual damage recovery and revival rewards are limited per rescued player/night. Automatic paid church treatment produces service revenue for its owner rather than personal priest performance credit. Repair earnings are a separate ten-gold allowance covering the full day/night cycle, including daytime rebuilding.
+Bounty credit combines direct attacks and owned tower/troop damage, with one credit per enemy per owner, including offline owners. Any positive actual damage qualifies as an assist. Priest healing rewards actual damage recovery and revival rewards are limited per rescued player/night. Automatic paid church treatment produces service revenue for its owner rather than personal priest performance credit. Repair earnings are a separate ten-gold allowance covering the full day/night cycle, including daytime rebuilding.
 
 Village purchases use real public gold and real stocks. Scarcity raises resource prices and surplus lowers them, with minimum/maximum prices, stock reserves, and a buying/selling spread. Bulk quotes must account for changing stock levels. Resource trading must not generate items or funds that the seller does not possess.
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../server/simulation.js';
 import { createEnemy, ensureEnemies, spawnWaveEnemy, splitEnemy } from '../server/enemies.js';
-import { ENEMY_TYPES, ENEMY_LIMITS, enemyForWave, enemyStats, emergenceProgress } from '../shared/enemies.js';
+import { ENEMY_TYPES, ENEMY_LIMITS, ZOMBIE_BOUNTY_GOLD, enemyForWave, enemyStats, emergenceProgress } from '../shared/enemies.js';
 import { ROAD, PLOTS, plotSolid, canStand, plotSolids } from '../shared/world.js';
 
 function fixture() {
@@ -66,8 +66,8 @@ test('runners are faster and fragile while armored enemies reduce actual damage 
   sim.hitZombie(village, armored, 20, player);
   assert.equal(armored.maxHp - armored.hp, 13); assert.equal(armored.contributors[player.id], 13);
   sim.hitZombie(village, armored, 10000, player);
-  assert.equal(player.jobBonus, ENEMY_TYPES.armored.reward);
-  sim.hitZombie(village, armored, 10000, player); assert.equal(player.jobBonus, ENEMY_TYPES.armored.reward);
+  assert.equal(player.combatRewards.gold, ZOMBIE_BOUNTY_GOLD);
+  sim.hitZombie(village, armored, 10000, player); assert.equal(player.combatRewards.gold, ZOMBIE_BOUNTY_GOLD);
 });
 
 test('a slain brood bursts into exactly three weak children once with independent credit and no recursive split', () => {
@@ -76,7 +76,7 @@ test('a slain brood bursts into exactly three weak children once with independen
   sim.hitZombie(village, parent, 10000, player);
   const children = village.zombies.filter(z => z.parentId === parent.id);
   assert.equal(children.length, 3); assert.equal(parent.splitDone, true);
-  assert.equal(player.jobBonus, 2); assert.equal(village.treasury, treasury - 2);
+  assert.equal(player.combatRewards.gold, ZOMBIE_BOUNTY_GOLD); assert.equal(village.treasury, treasury);
   for (const child of children) {
     assert.equal(child.kind, 'splinter'); assert.equal(child.birth, 'split'); assert.equal(child.anim, 'burst'); assert.equal(child.roadIndex, 4);
     assert.ok(child.z >= 18, 'a brood cannot spawn through the intact gate');
@@ -91,7 +91,7 @@ test('a slain brood bursts into exactly three weak children once with independen
   sim.hitZombie(village, parent, 10000, player); splitEnemy(village, parent);
   assert.equal(village.zombies.filter(z => z.parentId === parent.id).length, 3);
   for (const child of children) { sim.hitZombie(village, child, 100, player); sim.hitZombie(village, child, 100, player); }
-  assert.equal(player.jobBonus, 5); assert.equal(village.zombies.filter(z => z.hp > 0).length, 0);
+  assert.equal(player.combatRewards.gold, 4 * ZOMBIE_BOUNTY_GOLD); assert.equal(village.zombies.filter(z => z.hp > 0).length, 0);
 });
 
 test('cannon splash splits a brood only once, spends one shot and credits its guard owner', () => {
@@ -101,7 +101,7 @@ test('cannon splash splits a brood only once, spends one shot and credits its gu
   const parent = ready(village, 'splitter', 0, 31); parent.hp = 1;
   sim.tick(.05);
   assert.equal(parent.hp, 0); assert.equal(village.zombies.filter(z => z.parentId === parent.id).length, 3);
-  assert.equal(player.jobBonus, 2); assert.equal(plot.storage.coal, 1);
+  assert.equal(player.combatRewards.gold, ZOMBIE_BOUNTY_GOLD); assert.equal(plot.storage.coal, 1);
   assert.ok(village.zombies.filter(z => z.parentId === parent.id).every(z => z.hp > 0), 'children cannot be hit by a splash iteration captured before their birth');
 });
 
@@ -187,7 +187,7 @@ test('player sword cleaves the full forward arc once while excluding rear, dista
   const behind = ready(village, 'shambler', 0, 36), side = ready(village, 'shambler', 3, 39), far = ready(village, 'shambler', 0, 42);
   a.hp = b.hp = 1;
   sim.action(village.id, player.id, { kind: 'attack' });
-  assert.equal(a.hp, 0); assert.equal(b.hp, 0); assert.equal(player.jobBonus, 2); assert.equal(player.durability.sword, 4);
+  assert.equal(a.hp, 0); assert.equal(b.hp, 0); assert.equal(player.combatRewards.gold, 2 * ZOMBIE_BOUNTY_GOLD); assert.equal(player.durability.sword, 4);
   for (const enemy of [behind, side, far]) assert.equal(enemy.hp, enemy.maxHp);
   assert.throws(() => sim.action(village.id, player.id, { kind: 'attack' }), /next action/); assert.equal(player.durability.sword, 4);
   village.clock += 1; Object.assign(player, { x: 0, z: 17, yaw: 0 });
@@ -207,7 +207,7 @@ test('guard troops cleave multiple enemies with one cooldown and bow shots stay 
   village.guards = [guard];
   const a = ready(village, 'shambler', -.2, 39), b = ready(village, 'shambler', .8, 39.4), rear = ready(village, 'shambler', 0, 35.1);
   a.hp = b.hp = 1; sim.tick(.05);
-  assert.equal(a.hp, 0); assert.equal(b.hp, 0); assert.equal(rear.hp, rear.maxHp); assert.equal(player.jobBonus, 2); assert.equal(guard.cooldown, 1.05);
+  assert.equal(a.hp, 0); assert.equal(b.hp, 0); assert.equal(rear.hp, rear.maxHp); assert.equal(player.combatRewards.gold, 2 * ZOMBIE_BOUNTY_GOLD); assert.equal(guard.cooldown, 1.05);
   sim.tick(.05); assert.equal(rear.hp, rear.maxHp, 'turning toward another target does not reset a sword cooldown');
   village.guards = []; village.zombies = [];
   Object.assign(player, { x: 0, z: 38, yaw: 0, tool: 'bow' }); player.inventory.bow = 1; player.inventory.arrows = 3; player.durability.bow = 5;
@@ -232,7 +232,7 @@ test('a sword that kills a brood cannot also strike its newly created offspring 
   const brood = ready(village, 'splitter', 0, 40); brood.hp = 1;
   sim.action(village.id, player.id, { kind: 'attack' });
   const children = village.zombies.filter(z => z.parentId === brood.id);
-  assert.equal(children.length, 3); assert.ok(children.every(z => z.hp === z.maxHp)); assert.equal(player.jobBonus, 2); assert.equal(player.durability.sword, 0);
+  assert.equal(children.length, 3); assert.ok(children.every(z => z.hp === z.maxHp)); assert.equal(player.combatRewards.gold, ZOMBIE_BOUNTY_GOLD); assert.equal(player.durability.sword, 0);
   village.clock += 1; assert.throws(() => sim.action(village.id, player.id, { kind: 'attack' }), /broken/);
 });
 
@@ -281,7 +281,7 @@ test('windup damage respects obstacles at impact and death cancels every pending
   village.zombies = [next]; sim.tick(due - village.clock + .1); assert.equal(player.hp, hp);
 });
 
-test('failed sword persistence rolls back damage, brood births, durability and bonus together', () => {
+test('failed sword persistence rolls back damage, brood births, durability and bounty together', () => {
   const { sim, store, village, player } = fixture();
   Object.assign(player, { x: 0, z: 38, yaw: 0, tool: 'sword' }); player.durability.sword = 3;
   ready(village, 'splitter', 0, 40).hp = 1;
@@ -290,7 +290,7 @@ test('failed sword persistence rolls back damage, brood births, durability and b
   assert.throws(() => sim.action(village.id, player.id, { kind: 'attack' }), /disk failure/);
   assert.deepEqual(village, before); assert.deepEqual(sim.notices, notices);
   store.saveVillage = save; sim.action(village.id, player.id, { kind: 'attack' });
-  assert.equal(player.durability.sword, 2); assert.equal(player.jobBonus, 2); assert.equal(village.zombies.filter(z => z.kind === 'splinter').length, 3);
+  assert.equal(player.durability.sword, 2); assert.equal(player.combatRewards.gold, ZOMBIE_BOUNTY_GOLD); assert.equal(village.zombies.filter(z => z.kind === 'splinter').length, 3);
 });
 
 test('failed dawn persistence restores watch awards, payroll, requests and phase for a safe retry', () => {

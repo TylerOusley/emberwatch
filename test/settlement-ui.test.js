@@ -771,3 +771,25 @@ test('illustrated treasury service links invoke their supplied panels and retain
   f.fields.get('bank-amount').value = '10'; f.fields.get('bank-amount').oninput(); f.click('Deposit');
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'deposit', amount: 10 });
 });
+
+
+test('every role sees immediate uncapped zombie bounties separately from dawn service pay', t => {
+  const f = fixture(t);
+  f.player.combatRewards = { kills: 30, assists: 2, gold: 3200 };
+  for (const role of ['villager', 'guard', 'priest', 'manager', 'tinker', 'wizard']) {
+    f.player.role = role; f.ui.show('inventory');
+    assert.match(f.html, /Your zombie bounties/);
+    assert.match(f.html, /Every role earns 100 gold/);
+    assert.match(f.html, /Damage from your towers and guards counts for you/);
+    assert.match(f.html, /no nightly cap/);
+    assert.match(f.html, /Paid immediately; normal loan repayments apply/);
+    assert.match(f.html, /Kills credited<\/span><strong>30<\/strong>/);
+    assert.match(f.html, /Assists credited<\/span><strong>2<\/strong>/);
+    assert.match(f.html, /3,200 gold before loan repayments/);
+    assert.match(f.html, /Zombie bounties are already paid and do not use these limits/);
+  }
+  f.ui.refresh(); const renders = f.openCount;
+  f.player.combatRewards = { kills: 30, assists: 3, gold: 3300 }; f.ui.refresh();
+  assert.equal(f.openCount, renders + 1, 'new reward credit refreshes even if other balances stay the same');
+  assert.match(f.html, /3,300 gold before loan repayments/);
+});

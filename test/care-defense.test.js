@@ -15,7 +15,6 @@ function fixture(building = 'church', id = 'west-1') {
   const sim = { inputs: new Map(), store: { saveVillage(v) { saved.push(v.id); } }, notice() {}, awardIncome(v, p, amount) { p.wallet += amount; }, hitZombie(v, zombie, damage, player) {
     hits.push({ id: zombie.id, playerId: player?.id, damage });
     zombie.hp = Math.max(0, zombie.hp - damage);
-    if (!zombie.hp && player?.online && player.role === 'guard') player.jobBonus++;
   }, stepNpc(entity, destination, speed, dt) {
     const dx = destination.x - entity.x, dz = destination.z - entity.z, length = Math.hypot(dx, dz);
     const amount = Math.min(length, speed * dt);
@@ -130,11 +129,12 @@ test('archer towers fire without ammunition and pass the authentic owner to comb
   village.zombies = [{ id: 'zombie', x: site.x + 10, z: site.z, hp: 15 }];
   careTick(sim, village, .05);
   assert.equal(plot.storage.arrows, 0); assert.equal(village.zombies[0].hp, 0);
-  assert.equal(hits[0].playerId, owner.id); assert.equal(owner.jobBonus, 1);
+  assert.equal(hits[0].playerId, owner.id, 'online tower damage is attributed to its owner');
   village.zombies.push({ id: 'second', x: site.x + 10, z: site.z, hp: 15 });
   owner.online = false;
   careTick(sim, village, 5);
-  assert.equal(hits.length, 2); assert.equal(owner.jobBonus, 1, 'offline ownership does not earn a bonus');
+  assert.equal(hits.length, 2);
+  assert.equal(hits[1].playerId, owner.id, 'offline tower damage retains the same owner for combat rewards');
   assert.equal(plot.storage.arrows, 0, 'empty arrow storage never prevents a shot');
 });
 

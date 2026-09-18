@@ -2,11 +2,13 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — Wizard staff repair build 28.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — Zombie bounties build 29.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Build 29 pays every contributing resident 100 gold immediately when a zombie dies. Any positive damage counts, regardless of role, including damage from owned towers and guards while their owner is offline. Each player receives one full bounty per zombie, with no nightly cap or treasury funding requirement. Normal loan repayments apply. The pack tracks kills, assists and gross bounty gold for the current village run.
 
 Build 28 makes Wizard staffs unbreakable and restores existing broken staffs during saved-game migration. Wizards can reclaim a lost staff for free at any working Arcane Academy entrance with room for its 3 weight. Recovery preserves mana, spell cooldown and learned skills. Fire/frost spend 15 mana with a 0.6-second delay; lightning spends 22 with a 0.8-second delay. You can keep casting below full mana until you cannot afford the next spell.
 
@@ -157,8 +159,9 @@ These are tunable implementation values, not a claim that the economy is already
 | Crafting | Stone/iron tools require a stocked player tool shop. All crafted sword tiers require materials; sword damage is 10 / 15 / 20 at the same attack speed. Tinker shops make bows, arrows, and carts. |
 | Repairs | Hammers restore up to 35 / 55 / 80 health. Gate repair consumes one village timber; keep and plot repair consume one timber and one stone. Valid repair swings earn one gold, capped at ten per cycle and paid at dawn. |
 | Food | Food / good food / best food restore 25 / 60 / 100 hunger when eaten and consume 2 / 4 / 6 village wheat when bought. Prices follow the wheat value plus a preparation fee. |
-| Wages | Guard and Priest each start at 25 gold per active 12-minute cycle, accrued by role and participation, funded by the treasury, and paid at dawn. Performance pay adds up to 25; repair pay is separate. |
-| Job performance | Guards receive kill or meaningful-assist credit, including owned defenders while the owner is online. Priests receive one gold per 50 meaningful HP healed and five per eligible revival, within the cycle cap. |
+| Wages | Guard and Priest each start at 25 gold per active 12-minute cycle, accrued by role and participation, funded by the treasury, and paid at dawn. Priest service pay adds up to 25; repair pay and immediate zombie bounties are separate. |
+| Zombie bounties | Every role earns 100 gold per kill or positive-damage assist, including owned towers and troops. One full payment per contributing player per zombie; paid immediately, with no nightly cap. Normal loan repayments apply. |
+| Priest performance | Priests receive one gold per 50 meaningful HP healed and five per eligible revival, within the 25-gold cycle cap. |
 | Field care | Priest healing channels for two seconds and restores 30 HP. Revival channels for five seconds and restores 45 HP. |
 | Church beds | Two beds, upgradeable to four. Healing costs eight gold for ten seconds; revival costs twenty gold for twenty seconds and returns the dwarf at 45 HP. |
 | Barracks | At most two per Guard, three recruited slots each, counting living and pending replacements. Recruitment costs 35 gold plus five timber and two iron in barracks storage. Each troop consumes one wheat per night; unfed troops deal 25% less damage. A fallen recruited guard returns after 30 active seconds for one stored wheat, which covers that night’s ration. Empty wheat storage delays replacement. The public Watch follows the same replacement rule. |
