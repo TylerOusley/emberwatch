@@ -33,8 +33,8 @@ function fixture(t, options = {}) {
       fields.get(match[1]).value = (options.find(option => /\sselected(?:\s|$)/.test(option[1])) || options[0])?.[1].match(/\bvalue="([^"]*)"/)?.[1] || '';
     }
     for (const match of html.matchAll(/<(p|span|strong)\b[^>]*\bid="([^"]+)"[^>]*>(.*?)<\/\1>/gs)) fields.set(match[2], { tagName: match[1].toUpperCase(), textContent: match[3] });
-    details = [...html.matchAll(/<details\b([^>]*)>/g)].map(match => ({ tagName: 'DETAILS', dataset: { shopInspect: match[1].match(/data-shop-inspect="([^"]+)"/)[1] }, open: /\sopen(?:\s|$)/.test(match[1]) }));
-    summaries = [...html.matchAll(/<summary\b([^>]*)>/g)].map(match => ({ tagName: 'SUMMARY', dataset: { shopFocus: match[1].match(/data-shop-focus="([^"]+)"/)[1] }, focus() { document.activeElement = this; } }));
+    details = [...html.matchAll(/<details\b([^>]*)>/g)].filter(match => /data-shop-inspect=/.test(match[1])).map(match => ({ tagName: 'DETAILS', dataset: { shopInspect: match[1].match(/data-shop-inspect="([^"]+)"/)[1] }, open: /\sopen(?:\s|$)/.test(match[1]) }));
+    summaries = [...html.matchAll(/<summary\b([^>]*)>/g)].filter(match => /data-shop-focus=/.test(match[1])).map(match => ({ tagName: 'SUMMARY', dataset: { shopFocus: match[1].match(/data-shop-focus="([^"]+)"/)[1] }, focus() { document.activeElement = this; } }));
     nodes = [...buttons, ...fields.values(), ...details, ...summaries];
   } });
   return { ui, player, state, sent, fields, timers, visit(kind, id = null) {

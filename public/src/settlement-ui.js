@@ -21,7 +21,7 @@ import { ownedCartCount } from '../../shared/cart-ownership.js';
 import { plotStorageCapacity } from '../../shared/production.js';
 import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionStats, productionUpgrade, productionYield } from '../../shared/production.js';
 
-import { workerEquipmentPanel } from './workers-ui.js';
+import { workerEquipmentPanel, workerActivity } from './workers-ui.js';
 import { cartTransportControls } from './transport-ui.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -50,6 +50,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     transferDrafts.set(renderedDraftKey, draft);
   }
   const workerDrafts = new Map();
+  let workerView = { selectedId: null, query: '', filter: 'all', type: 'all', tab: 'orders' };
   const inspections = new Set();
   const buildCarousel = createBuildCarousel({ button, onChange: () => render(), onBuild: buildSelected });
   const content = () => document.getElementById('panel-content');
@@ -135,8 +136,8 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function wire() {
     for (const b of content().querySelectorAll('[data-settlement-button]')) {
-      const council = current?.kind === 'policies', handler = handlers[Number(b.dataset.settlementButton)];
-      if (council) {
+      const guardedKind = ['policies', 'workers'].includes(current?.kind) ? current.kind : null, handler = handlers[Number(b.dataset.settlementButton)];
+      if (guardedKind) {
         b.onpointerdown = event => { if (event.button === 0) beginCouncilPress(b); };
         b.onpointerup = () => endCouncilPress(b, true);
         b.onpointercancel = () => endCouncilPress(b);
@@ -147,10 +148,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       }
       b.onclick = () => {
         try {
-          if (b.disabled || council && (current?.kind !== 'policies' || !content().contains(b))) return;
+          if (b.disabled || guardedKind && (current?.kind !== guardedKind || !content().contains(b))) return;
           if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
           handler?.();
-        } finally { if (council) endCouncilPress(b); }
+        } finally { if (guardedKind) endCouncilPress(b); }
       };
     }
     const policyInput=document.getElementById('policy-name');
@@ -169,14 +170,39 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const input = document.getElementById(`trade-amount-${resource}`);
       if (input) input.oninput = () => { tradeAmounts.set(resource, input.value); updateTrade(resource); };
     }
+    if (current?.kind === 'workers') {
+      const search = document.getElementById('worker-roster-search');
+      if (search) search.oninput = () => {
+        const start = search.selectionStart, end = search.selectionEnd;
+        workerView.query = search.value; render();
+        const replacement = document.getElementById('worker-roster-search');
+        replacement?.focus?.({ preventScroll: true });
+        if (start !== null && end !== null) replacement?.setSelectionRange?.(start, end);
+      };
+      for (const [id, key] of [['worker-roster-filter', 'filter'], ['worker-roster-type', 'type']]) {
+        const field = document.getElementById(id);
+        if (field) field.onchange = () => { workerView[key] = field.value; render(); document.getElementById(id)?.focus?.({ preventScroll: true }); };
+      }
+      const help = document.getElementById('worker-help');
+      if (help) help.ontoggle = () => { if (help.open) inspections.add('worker-help'); else inspections.delete('worker-help'); };
+    }
     if (current?.kind === 'workers') ownWorkers().forEach((worker, index) => {
       for (const field of ['resource', 'sourcePlotId', 'mode', 'destinationPlotId', 'targetPercent']) {
         const input = document.getElementById(`worker-${index}-${field}`);
-        if (input) input.onchange = () => {
-          const draft = workerDraft(worker);
-          draft.order[field] = field === 'targetPercent' ? Number(input.value) : input.value || null; draft.dirty = true;
-          render();
-        };
+        if (input) {
+          const change = () => {
+            const draft = workerDraft(worker), raw = input.value, next = field === 'targetPercent' ? Number(raw) : raw || null;
+            if (Object.is(draft.order[field], next)) return;
+            draft.order[field] = next; draft.dirty = true;
+            render();
+            const replacement = document.getElementById(`worker-${index}-${field}`);
+            if (field === 'targetPercent' && replacement) replacement.value = raw;
+            replacement?.focus?.({ preventScroll: true });
+          };
+          input.onchange = change;
+          // Update validity while typing; blur must not replace the Apply button.
+          if (field === 'targetPercent') input.oninput = change;
+        }
       }
     });
   }
@@ -226,17 +252,20 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (!body) return;
     const dialog = document.getElementById('panel-dialog'), theme = (!access || access.allowed) && shopTheme();
     const focus = content()?.contains?.(document.activeElement) ? document.activeElement?.dataset?.shopFocus : null;
-    const scroll = dialog.scrollTop;
+    const scroll = dialog.scrollTop, rosterScroll = document.getElementById('worker-roster-list')?.scrollTop || 0;
+    const workerFocus = current.kind === 'workers' && content()?.contains?.(document.activeElement) ? document.activeElement?.dataset?.workerFocus : null;
     openPanel(theme ? `<div class="settlement-panel storefront" data-shop-theme="${theme}"><div class="storefront-scene">${shopInterior(theme)}<span class="shop-scene-caption">${theme === 'bank' ? 'The vault · Your gold, kept safe' : 'Step inside · Browse the counter'}</span></div><div class="storefront-content">${body}</div></div>` : `<div class="settlement-panel">${body}</div>`, 'settlement');
     renderedDraftKey = draftKey();
     dialog.classList.add('settlement-dialog'); wire(); dialog.scrollTop = scroll;
     if (focus) content().querySelector?.(`[data-shop-focus="${focus}"]`)?.focus({ preventScroll: true });
+    const roster = document.getElementById('worker-roster-list'); if (roster) roster.scrollTop = rosterScroll;
+    if (workerFocus) [...(content().querySelectorAll('[data-worker-focus]') || [])].find(node => node.dataset.workerFocus === workerFocus)?.focus({ preventScroll: true });
   }
   function refresh() {
     if (!current || getActivePanel() !== 'settlement' || !document.getElementById('panel-dialog').open) return;
     // Leaving an entrance must invalidate service controls even while editing a quantity.
     if (accessMode(panelAccess()) !== renderedAccess) { render(); return; }
-    if (current.kind === 'policies' && councilPress && atCouncil()) return;
+    if (councilPress && (current.kind === 'workers' || current.kind === 'policies' && atCouncil())) return;
     // Network snapshots must not reset a quantity or selection while it is being edited.
     if (content().contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
       updateTransfers();
@@ -342,35 +371,80 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     if (selected && !options.some(([key]) => key === selected)) options.push([selected, `Unavailable · ${workerPlotName(selected)}`]);
     return `<label for="${id}">${esc(caption)} ${choices(id, options, selected || '')}</label>`;
   }
+  const workerType = worker => !worker.staffPlotId ? 'personal' : worker.staffRole === 'transporter' ? 'transporter' : 'gatherer';
+  const workerTypeLabel = worker => ({ personal: 'Personal hire', gatherer: 'Plot gatherer', transporter: 'Transporter' }[workerType(worker)]);
+  const workerName = (worker, index) => worker.name || `Worker ${index + 1}`;
+  function workerRoute(worker) {
+    const source = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : worker.staffRole === 'transporter' ? 'Choose a supply source' : 'Public gathering grounds';
+    const destination = worker.mode === 'store' ? worker.destinationPlotId ? workerPlotName(worker.destinationPlotId) : 'Choose a delivery building' : 'Sell to the village';
+    return `${source} → ${destination}`;
+  }
   function workers() {
     const p = me(), crew = ownWorkers(), destinations = owned().filter(plot => plot.building && plot.hp > 0);
     const personal = crew.filter(worker => !worker.staffPlotId).length, staff = crew.filter(worker => worker.staffPlotId && !worker.staffRetired).length;
     const employment = workerEmployment(p), nearBank = atTreasury(p), full = personal >= employment.limit;
-    let html = menuHero(workerPortrait(), 'HIRED HANDS', 'Build your village crew.', 'Choose a gathering ground, train each worker and decide where every haul goes.', `<span class="menu-tier">${personal} / ${employment.limit} personal workers · ${staff} plot staff</span>`) + stats([['Personal workers', `${personal} / ${employment.limit}`], ['Plot staff', staff], ['Hire cost', `${WORKER_RULES.hireCost} gold`], ['Wages', `${WORKER_RULES.wageGold} gold / ${employment.wageSeconds} working seconds`], ['Wallet', `${num(p.wallet)} gold`]]);
-    html += `<p>Workers start with ${WORKER_RULES.carryCapacity} cargo capacity and work day and night while anyone is online in this village, including after you leave. Hiring and wages use your wallet. Workers finish any prepaid work time, then stop if you cannot pay the next wage. An empty village pauses all work and wages. Sales follow village prices and tax, with proceeds paid to you. Every ${WORKER_RULES.xpPerPoint} completed harvests earns one upgrade point. Spend points below to train each worker.</p>`;
-    html += '<p>Production plots add one gatherer per building level, up to three. Shops, churches, barracks and defenses add transporters at the same rate. Plot staff are extra and arrive paused with no hiring fee; activate their orders when you are ready to pay wages. Empty or destroyed plots have no active staff.</p>';
+    const counts = { all: crew.length, attention: 0, working: 0, paused: 0 };
+    for (const worker of crew) counts[workerActivity(worker).state]++;
+    for (const id of workerDrafts.keys()) if (!crew.some(worker => worker.id === id)) workerDrafts.delete(id);
+    const query = workerView.query.trim().toLocaleLowerCase();
+    const visible = crew.filter((worker, index) => (workerView.filter === 'all' || workerActivity(worker).state === workerView.filter)
+      && (workerView.type === 'all' || workerType(worker) === workerView.type)
+      && (!query || `${workerName(worker, index)} ${worker.resource || ''} ${worker.status || ''} ${workerTypeLabel(worker)} ${workerRoute(worker)} ${worker.staffPlotId ? workerPlotName(worker.staffPlotId) : ''}`.toLocaleLowerCase().includes(query)));
+    if (!visible.some(worker => worker.id === workerView.selectedId)) { workerView.selectedId = visible[0]?.id || null; workerView.tab = 'orders'; }
+    let html = '<div class="worker-manager"><header class="worker-manager-heading"><div>' + head('HIRED HANDS', 'Manage your crew.', 'Select a worker to change orders, tools or training.') + `<p>${personal} / ${employment.limit} personal workers · ${staff} plot staff</p></div><div class="worker-hire-actions">`;
     html += command(full ? 'Worker limit reached' : `Hire a worker · ${WORKER_RULES.hireCost}g`, 'worker_hire', {}, full || !nearBank || wallet() < WORKER_RULES.hireCost, !nearBank ? 'Visit the Village Treasury entrance to hire a worker.' : wallet() < WORKER_RULES.hireCost ? 'Hiring uses wallet gold.' : '');
-    if (!nearBank) html += '<p>Visit the Village Treasury entrance to hire or dismiss workers.</p>' + button('Mark the treasury', () => markService('bank'));
-    if (!crew.length) html += '<p>Your hired workers will appear here. Manage their orders from your pack at any time.</p>';
-    crew.forEach((worker, index) => {
-      const transporter = worker.staffRole === 'transporter', gatherer = worker.staffRole === 'gatherer';
-      const resources = transporter ? Object.keys(RESOURCE_WEIGHTS) : gatherer ? WORKER_RESOURCES.filter(resource => workerSourcePlots(resource).some(plot => plot.id === worker.staffPlotId)) : WORKER_RESOURCES;
-      const draft = workerDraft(worker), order = draft.order, sources = transporter ? destinations.filter(plot => plot.id !== worker.staffPlotId) : workerSourcePlots(order.resource).filter(plot => !gatherer || plot.id === worker.staffPlotId);
-      const sourceValid = (!transporter && !gatherer && !order.sourcePlotId) || sources.some(plot => plot.id === order.sourcePlotId);
-      const destinationValid = (order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId)) && (!transporter || order.mode === 'store' && order.destinationPlotId === worker.staffPlotId && Number.isInteger(order.targetPercent) && order.targetPercent >= 1 && order.targetPercent <= 100);
-      const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker, p);
-      const room = carryCapacity(p) - inventoryWeight(p), canCollect = Object.keys(RESOURCE_WEIGHTS).some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
-      const cargoText = Object.keys(RESOURCE_WEIGHTS).filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
-      const currentSource = worker.sourcePlotId ? workerPlotName(worker.sourcePlotId) : 'Public gathering grounds';
-      const currentDestination = worker.mode === 'store' ? workerPlotName(worker.destinationPlotId) : 'Sell to the village';
-      html += `<section class="worker-card" data-worker-card="${esc(worker.id)}"><header class="worker-card-heading"><div class="worker-card-portrait">${workerPortrait(worker.color)}</div><div><span class="menu-tier">Level ${worker.level || 1} · ${worker.paused ? 'Paused' : 'On duty'}</span><h3>${esc(worker.name || `Worker ${index + 1}`)}</h3><p>${esc(worker.status || 'Waiting for orders')}</p><small>${esc(worker.resource ? `${label(worker.resource)} · ${currentSource} → ${currentDestination}` : 'No resource assigned yet.')}</small></div><div class="worker-assignment-art">${itemArt(worker.resource || 'timber')}</div></header>`;
-      html += '<div class="worker-card-body">' + row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`) + meter(weight, ability.carryCapacity, 'Worker cargo capacity');
-      if (worker.staffPlotId) html += row(worker.staffRetired ? 'Inactive plot staff' : transporter ? 'Plot transporter' : 'Plot gatherer', workerPlotName(worker.staffPlotId));
-      if (worker.staffRetired) html += '<p class="settlement-warning">This building no longer supports this worker. Cargo stays safe with them. Rebuild to reactivate this staff slot, or collect the cargo and dismiss them at the treasury.</p>';
-      html += stats([['Level', worker.level || 1], ['Upgrade points', worker.upgradePoints || 0], ['Next point', (worker.workXp || 0) >= WORKER_MAX_XP ? 'Training complete' : `${(worker.workXp || 0) % WORKER_RULES.xpPerPoint} / ${WORKER_RULES.xpPerPoint} harvests`]]);
-      html += workerEquipmentPanel({worker,player:p,plots:destinations,command,row,esc,plotName:workerPlotName});
+    if (!nearBank) html += button('Mark the treasury', () => markService('bank'));
+    html += '</div></header><div class="worker-overview">' + stats([['On duty', counts.working], ['Needs attention', counts.attention], ['Paused', counts.paused], ['Wallet', `${num(p.wallet)} gold`]]) + '</div>';
+    html += '<div class="worker-toolbar"><label for="worker-roster-search">Find a worker<input id="worker-roster-search" type="search" maxlength="120" placeholder="Name, resource or building" value="' + esc(workerView.query) + '"></label>';
+    html += '<label for="worker-roster-filter">Status' + choices('worker-roster-filter', [['all', `All statuses (${counts.all})`], ['attention', `Needs attention (${counts.attention})`], ['working', `On duty (${counts.working})`], ['paused', `Paused (${counts.paused})`]], workerView.filter) + '</label>';
+    html += '<label for="worker-roster-type">Crew type' + choices('worker-roster-type', [['all', 'All workers'], ['personal', 'Personal hires'], ['gatherer', 'Plot gatherers'], ['transporter', 'Transporters']], workerView.type) + '</label></div>';
+    html += '<div class="worker-workspace"><aside class="worker-roster" aria-label="Your workers"><h3>Your crew</h3><p class="worker-roster-count" role="status">Showing ' + visible.length + ' of ' + crew.length + '</p><div class="worker-roster-list" id="worker-roster-list">';
+    for (const worker of visible) {
+      const index = crew.indexOf(worker), activity = workerActivity(worker), selected = worker.id === workerView.selectedId;
+      const weight = inventoryWeight(worker.cargo || {}), ability = workerStats(worker, p), draft = workerDraft(worker);
+      const notes = [draft.dirty ? 'Unapplied orders' : '', worker.upgradePoints > 0 ? `${worker.upgradePoints} training point${worker.upgradePoints === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+      let control = button(workerName(worker, index), () => { workerView.selectedId = worker.id; workerView.tab = 'orders'; render(); }, false, '', 'worker-roster-item');
+      control = control.replace('<button ', `<button data-worker-id="${esc(worker.id)}" data-worker-focus="${esc(worker.id)}" aria-pressed="${selected}" aria-label="Manage ${esc(workerName(worker, index))}" `);
+      const name = esc(workerName(worker, index));
+      control = control.replace(`>${name}</button>`, `><span class="worker-roster-title"><strong>${name}</strong><span class="worker-status" data-state="${activity.state}">${esc(activity.label)}</span></span><span class="worker-roster-meta">${esc(workerTypeLabel(worker))} · Lv ${worker.level || 1} · ${num(weight)} / ${ability.carryCapacity} weight</span><span class="worker-roster-route"><strong>${esc(worker.resource ? label(worker.resource) : 'Unassigned')}</strong> · ${esc(workerRoute(worker))}</span><span class="worker-roster-meta">${esc(worker.status || 'Waiting for orders')}</span>${notes ? `<span class="worker-roster-note">${esc(notes)}</span>` : ''}</button>`);
+      html += control;
+    }
+    if (!visible.length) html += '<p class="worker-empty">' + (crew.length ? 'No workers match these filters.' : 'No workers yet. Hire at the Treasury or upgrade a production plot to add staff.') + '</p>';
+    html += '</div></aside><main class="worker-detail">';
+    const worker = visible.find(worker => worker.id === workerView.selectedId);
+    if (worker) html += workerDetail(worker, crew.indexOf(worker), destinations, nearBank);
+    else html += '<div class="worker-empty"><h3>' + (crew.length ? 'No matching workers' : 'Your crew starts here') + '</h3><p>' + (crew.length ? 'Try another name, resource or building, or clear the filters.' : 'Your hired workers will appear here. Manage their orders from your pack at any time.') + '</p>' + (crew.length ? button('Clear filters', () => { workerView.query = ''; workerView.filter = 'all'; workerView.type = 'all'; render(); }) : '') + '</div>';
+    html += '</main></div><details class="worker-help" id="worker-help" ' + (inspections.has('worker-help') ? 'open' : '') + '><summary>Wages, hiring &amp; plot staff</summary>';
+    html += `<p>${WORKER_RULES.wageGold} gold / ${employment.wageSeconds} working seconds per worker. Workers start with ${WORKER_RULES.carryCapacity} cargo capacity and work day and night while anyone is online in this village, including after you leave. Hiring and wages use your wallet. Workers finish any prepaid work time, then stop if you cannot pay the next wage. An empty village pauses all work and wages. Sales follow village prices and tax, with proceeds paid to you.</p>`;
+    html += `<p>Production plots add one gatherer per building level, up to three. Shops, churches, barracks and defenses add transporters at the same rate. Plot staff are extra and arrive paused with no hiring fee. Activate their orders when you are ready to pay wages. Empty or destroyed plots have no active staff. Every ${WORKER_RULES.xpPerPoint} completed harvests earns one upgrade point; transporters earn experience for deliveries. Visit the Village Treasury entrance to hire or dismiss workers.</p></details>`;
+    return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div></div>';
+  }
+  function workerDetail(worker, index, destinations, nearBank) {
+    const p = me();
+    const transporter = worker.staffRole === 'transporter', gatherer = worker.staffRole === 'gatherer';
+    const resources = transporter ? Object.keys(RESOURCE_WEIGHTS) : gatherer ? WORKER_RESOURCES.filter(resource => workerSourcePlots(resource).some(plot => plot.id === worker.staffPlotId)) : WORKER_RESOURCES;
+    const draft = workerDraft(worker), order = draft.order, sources = transporter ? destinations.filter(plot => plot.id !== worker.staffPlotId) : workerSourcePlots(order.resource).filter(plot => !gatherer || plot.id === worker.staffPlotId);
+    const sourceValid = (!transporter && !gatherer && !order.sourcePlotId) || sources.some(plot => plot.id === order.sourcePlotId);
+    const destinationValid = (order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId)) && (!transporter || order.mode === 'store' && order.destinationPlotId === worker.staffPlotId && Number.isInteger(order.targetPercent) && order.targetPercent >= 1 && order.targetPercent <= 100);
+    const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker, p);
+    const room = carryCapacity(p) - inventoryWeight(p), canCollect = Object.keys(RESOURCE_WEIGHTS).some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
+    const cargoText = Object.keys(RESOURCE_WEIGHTS).filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
+    const activity = workerActivity(worker);
+    let html = `<section class="worker-card" data-worker-card="${esc(worker.id)}"><header class="worker-card-heading"><div class="worker-card-portrait">${workerPortrait(worker.color)}</div><div><span class="worker-status" data-state="${activity.state}">${esc(activity.label)}</span><h3>${esc(workerName(worker, index))}</h3><p>${esc(worker.status || 'Waiting for orders')}</p><small>${esc(workerTypeLabel(worker))} · Level ${worker.level || 1}</small></div><div class="worker-assignment-art">${itemArt(worker.resource || 'timber')}</div></header>`;
+    html += '<div class="worker-quick-actions panel-actions">' + command(worker.paused ? 'Resume work' : worker.staffPlotId ? 'Pause & return to plot' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused }, worker.staffRetired || worker.roleLimitPaused && worker.paused || transporter && worker.paused && (!worker.resource || !worker.sourcePlotId), transporter && !worker.sourcePlotId ? 'Apply a supply route first.' : '');
+    html += button('Find worker', () => { const live = ownWorkers().find(w => w.id === worker.id); if (!live) return; waypoint = { kind: 'worker', id: live.id, name: live.name || 'Your worker', x: live.x, z: live.z }; toast('Your worker is marked on the minimap.'); }) + '</div>';
+    html += '<nav class="worker-detail-tabs" aria-label="Worker settings">';
+    for (const [tab, title] of [['orders', 'Orders'], ['tools', 'Tools'], ['training', 'Training']]) html += button(title, () => { workerView.tab = tab; render(); }).replace('<button ', `<button aria-pressed="${workerView.tab === tab}" data-worker-focus="tab-${tab}" `);
+    html += '</nav><div class="worker-card-body">';
+    if (worker.staffRetired) html += '<p class="settlement-warning">Inactive plot staff. This building no longer supports this worker. Cargo stays safe with them. Rebuild to reactivate this staff slot, or collect the cargo and dismiss them at the treasury.</p>';
+    if (worker.roleLimitPaused) html += '<p class="settlement-warning">This hire is suspended by your current role limit. Orders, cargo, equipment and prepaid wages stay safe. Manager training or dismissing another hire can reopen the slot.</p>';
+    if (workerView.tab === 'tools') {
+      html += transporter ? '<p>Transporters move stored goods and do not use harvesting tools. Train Movement or Carrying to improve deliveries.</p>' : workerEquipmentPanel({worker,player:p,plots:destinations,command,row,esc,plotName:workerPlotName});
+    } else if (workerView.tab === 'training') {
+      html += stats([['Level', worker.level || 1], ['Upgrade points', worker.upgradePoints || 0], ['Next point', (worker.workXp || 0) >= WORKER_MAX_XP ? 'Training complete' : `${(worker.workXp || 0) % WORKER_RULES.xpPerPoint} / ${WORKER_RULES.xpPerPoint} ${transporter ? 'deliveries' : 'harvests'}`]]);
       html += '<h4>Worker attributes</h4><div class="worker-training">';
       for (const [attribute, rule] of Object.entries(WORKER_ATTRIBUTES)) {
+        if (transporter && attribute === 'gathering') continue;
         const rank = worker.attributes?.[attribute] || 0;
         const next = workerStats({ ...worker, attributes: { ...worker.attributes, [attribute]: Math.min(WORKER_RULES.maxAttributeRank, rank + 1) } }, p);
         const metric = stats => attribute === 'gathering' ? `${num(stats.gatherSeconds)} seconds / harvest` : attribute === 'speed' ? `${num(stats.speed)} movement speed` : `${stats.carryCapacity} cargo capacity`;
@@ -381,7 +455,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         const selected = (worker.color || WORKER_COLORS[0].value) === color.value;
         html += command(`${selected ? '✓ ' : ''}${color.name}`, 'worker_color', { workerId: worker.id, color: color.value }, selected, `Choose ${color.name.toLowerCase()} worker clothing`).replace('<button ', `<button aria-pressed="${selected}" style="border-left:8px solid ${color.value}" `);
       }
-      html += '</div><h4>Work orders</h4>';
+      html += '</div>';
+    } else {
+      html += '<h4>Work orders</h4><p class="worker-route-summary">Current: ' + esc(worker.resource ? `${label(worker.resource)} · ${workerRoute(worker)}` : 'No resource assigned yet.') + '</p>';
       html += '<div class="worker-order-grid">' + workerSelect(`worker-${index}-resource`, 'Resource', resources.map(resource => [resource, label(resource)]), order.resource);
       html += workerSelect(`worker-${index}-sourcePlotId`, transporter ? 'Fetch from owned storage' : 'Gather from', [[ '', transporter ? 'Choose a supply building' : gatherer ? 'Choose this production plot' : 'Public gathering grounds'], ...sources.map(plot => [plot.id, workerPlotName(plot.id)])], order.sourcePlotId);
       if (transporter) {
@@ -399,13 +475,15 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         draft.order = { ...order, destinationPlotId: order.mode === 'store' ? order.destinationPlotId : null };
         send({ type: 'action', kind: 'worker_assign', workerId: worker.id, ...draft.order });
       }, !sourceValid || !destinationValid || worker.staffRetired || worker.roleLimitPaused);
-      html += command(worker.paused ? 'Resume work' : worker.staffPlotId ? 'Pause & return to plot' : 'Pause & return to treasury', 'worker_pause', { workerId: worker.id, paused: !worker.paused }, worker.staffRetired || worker.roleLimitPaused && worker.paused || transporter && worker.paused && (!worker.resource || !worker.sourcePlotId), transporter && !worker.sourcePlotId ? 'Apply a supply route first.' : '');
-      html += button('Find worker', () => { waypoint = { kind: 'worker', id: worker.id, name: worker.name || 'Your worker', x: worker.x, z: worker.z }; toast('Your worker is marked on the minimap.'); });
+      html += '</div>';
+      html += row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`) + meter(weight, ability.carryCapacity, 'Worker cargo capacity');
+      if (worker.staffPlotId) html += row(worker.staffRetired ? 'Inactive plot staff' : transporter ? 'Plot transporter' : 'Plot gatherer', workerPlotName(worker.staffPlotId));
+      html += '<div class="panel-actions">';
       html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Take as much as your pack can hold. The worker keeps any remainder.');
       if (!worker.staffPlotId || worker.staffRetired) html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury, and the worker must have an empty pack and return supplied equipment before leaving.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0 || Object.keys(worker.equipment || {}).length > 0, weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
-      html += '</div></div></section>';
-    });
-    return html + '<div class="panel-actions">' + button('Back to your pack', () => show('inventory')) + '</div>';
+      html += '</div>';
+    }
+    return html + '</div></section>';
   }
   function quoteTrade(resource) {
     const p = me(), s = state(), stock = s.stock?.[resource] || 0, carried = transferableCount(p, resource);
@@ -812,5 +890,5 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     return waypoint;
   }
-  return { show, refresh, getWaypoint, getCurrent: () => current ? { ...current } : null, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { clearCouncilPress(); current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); inspections.clear(); buildCarousel.clear(); } };
+  return { show, refresh, getWaypoint, getCurrent: () => current ? { ...current } : null, setWaypoint: point => { if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) waypoint = { ...point }; }, clear: () => { clearCouncilPress(); current = null; waypoint = null; signature = ''; renderedAccess = ''; renderedDraftKey = null; transferDrafts.clear(); tradeAmounts.clear(); displayedTrades.clear(); workerDrafts.clear(); workerView = { selectedId: null, query: '', filter: 'all', type: 'all', tab: 'orders' }; inspections.clear(); buildCarousel.clear(); } };
 }

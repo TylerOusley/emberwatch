@@ -1,5 +1,13 @@
 # Emberwatch build validation
 
+## Build 29 hotfix: worker management
+
+Validated September 18, 2026: **867/867 tests pass** with `npm test`, without failures, cancellations or skips. The **24 worker UI tests** cover existing hiring, orders, tool transfers/repairs, maintenance, training, collection and dismissal, plus large rosters with one editor, search/type/status filters, empty results, stable worker identity after reordering, per-worker drafts across selection/tab/snapshot changes, UI reset, pointer/keyboard press protection and detached controls. Percentage editing preserves the Apply button through blur; transporter training offers movement/carrying and displays delivery progress. All three changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.
+
+An independent fixture renders the actual UI with 26 mixed personal/plot workers: 26 roster controls and exactly one detail card. Structural parsing finds no duplicate IDs, unresolved label targets or unbalanced tags. A supplemental desktop static render was inspected using the actual markup, styles and fonts with print adaptations for native controls/scrolling. This is not an interactive browser screenshot or WebGL playtest; a browser executable was unavailable. Responsive styles are included, but mobile pixel rendering is not claimed from the print renderer.
+
+This hotfix changes client presentation and interaction handling. Server worker behavior, employment limits, wages, routes, equipment costs, ownership and proximity validation remain unchanged. No production player data was manually changed.
+
 ## Build 29: uncapped zombie bounties
 
 Validated September 18, 2026: **858/858 tests pass** with `npm test`, with no failures, cancellations or skips. All **120 runtime JavaScript modules** pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes.

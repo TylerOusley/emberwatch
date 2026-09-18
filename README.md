@@ -8,6 +8,8 @@ The approved gameplay systems described below have playable implementations. Thi
 
 ## Latest playtest improvements
 
+The Build 29 worker UI hotfix replaces repeated full worker cards with a compact, searchable roster and a selected-worker panel. Filter by status or crew type, see cargo and work status at a glance, and switch between Orders, Tools and Training. Draft orders stay with each worker across selections and live updates. Wage, staffing and work rules remain unchanged.
+
 Build 29 pays every contributing resident 100 gold immediately when a zombie dies. Any positive damage counts, regardless of role, including damage from owned towers and guards while their owner is offline. Each player receives one full bounty per zombie, with no nightly cap or treasury funding requirement. Normal loan repayments apply. The pack tracks kills, assists and gross bounty gold for the current village run.
 
 Build 28 makes Wizard staffs unbreakable and restores existing broken staffs during saved-game migration. Wizards can reclaim a lost staff for free at any working Arcane Academy entrance with room for its 3 weight. Recovery preserves mana, spell cooldown and learned skills. Fire/frost spend 15 mana with a 0.6-second delay; lightning spends 22 with a 0.8-second delay. You can keep casting below full mana until you cannot afford the next spell.

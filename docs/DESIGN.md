@@ -1,5 +1,11 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 29 hotfix: worker management
+
+Worker management presents a compact roster beside one selected worker. Search names, resources, statuses and buildings; filter personal hires, plot gatherers or transporters, and all/on-duty/paused/needs-attention states. Existing authoritative status text remains visible. Retired or role-limited staff and blocked/funding/supply waits are marked for attention; stocked transporters remain on duty.
+
+Orders are the default detail tab. Tools and automatic maintenance, then training and clothing, are separate tabs. Transporters show delivery progress and only useful movement/carrying upgrades. Overview counts and wallet funding stay visible; longer wage and staffing explanations are collapsed. The layout stacks at narrow widths and bounds roster scrolling. Drafts are keyed by worker identity and survive filtering, switching tabs, crew reorder and live snapshots. Selection and filters reset when leaving the village. Pressed controls, keyboard focus, roster scroll and transporter percentage edits survive relevant redraws. Server employment, orders, tool costs, proximity checks and dismissal confirmation are unchanged.
+
 ## Build 29: uncapped zombie bounties
 
 Every resident who deals positive actual damage to a zombie earns 100 gross gold when it dies, regardless of role, connection state or whether they are downed. Direct hits, spell burns, owned towers and owned troops share their resident owner identity. Each contributing player receives the full amount once per zombie, without splitting the bounty or imposing a damage threshold or nightly cap. Unowned defenders can finish a zombie and still pay its player contributors. Brood husks and each offspring are separate enemies; offspring do not inherit parent contributions.

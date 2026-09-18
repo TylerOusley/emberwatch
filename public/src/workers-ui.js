@@ -4,7 +4,7 @@ import { WORKER_EQUIPMENT, WORKER_TOOLS, workerTool } from '../../shared/workers
 // Buttons carry only choices; equipment, costs and proximity are checked again
 // by the server before any tool or material changes hands.
 export function workerEquipmentPanel({ worker, player, plots, command, row, esc, plotName }) {
-  let html = worker.roleLimitPaused ? '<p class="settlement-warning">This personal hire is suspended by your current role limit. Their orders, cargo, equipment and prepaid wages stay safe. Manager training or dismissing another hire can reopen the slot.</p>' : '';
+  let html = '';
   if (worker.staffRole === 'transporter') return html;
   const near = Math.hypot(player.x - worker.x, player.z - worker.z) <= 3.3;
   html += '<h4>Worker tools</h4><p>Supply a crafted stone tool for +25% harvest output or an iron tool for +50%. One durability is used per harvest. Broken tools fall back to standard wooden equipment until repaired. Stand beside the worker to swap, recover or repair gear.</p>';
@@ -37,4 +37,16 @@ export function workerEquipmentPanel({ worker, player, plots, command, row, esc,
     html += '</div>';
   }
   return html;
+}
+
+// Summarize the authoritative status without changing work or wage rules.
+export function workerActivity(worker) {
+  if (worker.staffRetired) return { state: 'attention', label: 'Inactive plot' };
+  if (worker.roleLimitPaused) return { state: 'attention', label: 'Role limit' };
+  if (worker.paused) return { state: 'paused', label: 'Paused' };
+  if (worker.staffRole === 'transporter' && /target met/i.test(worker.status || '')) return { state: 'working', label: 'Stocked' };
+  if (!worker.resource || /waiting|needs|choose|invalid|unavailable|storage full/i.test(worker.status || '')) {
+    return { state: 'attention', label: 'Needs attention' };
+  }
+  return { state: 'working', label: 'On duty' };
 }

@@ -12,25 +12,25 @@ const treasuryEntrance = buildingEntrance(BUILDINGS.find(b => b.id === 'bank'));
 function fixture(t) {
   const previous = globalThis.document;
   let html = '', buttons = [], activePanel = null, opens = 0;
-  const fields = new Map(), sent = [];
+  const fields = new Map(), sent = [], timers = new Map(); let nextTimer = 0;
   const player = { id: 'alice', name: 'Alice', role: 'guard', x: -10, z: -23, wallet: 200, bank: 50, hp: 100, maxHp: 100, hunger: 70, inventory: {}, durability: {}, tiers: {} };
   const worker = { id: 'hired-one', ownerId: 'alice', name: 'Alice’s worker', x: -10, z: -23, resource: 'timber', sourcePlotId: null, mode: 'sell', destinationPlotId: null, status: 'Waiting for orders', paused: true, cargo: {} };
   Object.assign(player, treasuryEntrance);
   const state = { workers: [worker], players: [player], plots: [], guards: [], stock: {}, treasury: 20000, policies: {}, loan: { credit: 500 } };
-  const content = { contains: element => [...fields.values()].includes(element), querySelectorAll: selector => selector === '[data-settlement-button]' ? buttons : [] };
+  const content = { contains: element => [...fields.values(), ...buttons].includes(element), querySelectorAll: selector => selector === '[data-settlement-button]' ? buttons : [], querySelector: selector => { const id = selector.match(/^#(.+)$/)?.[1]; return id ? fields.get(id) : null; } };
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = previous; });
-  const ui = createSettlementUI({ getState: () => state, getMe: () => player, getActivePanel: () => activePanel, getHotbar: () => [], setHotbar() {}, toast() {}, send: payload => sent.push(payload), openPanel(next, kind) {
+  const ui = createSettlementUI({ schedule: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, cancel: id => timers.delete(id), getState: () => state, getMe: () => player, getActivePanel: () => activePanel, getHotbar: () => [], setHotbar() {}, toast() {}, send: payload => sent.push(payload), openPanel(next, kind) {
     html = next; activePanel = kind; opens++; fields.clear();
-    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(([, attributes, text]) => ({ text, dataset: { settlementButton: attributes.match(/data-settlement-button="(\d+)"/)[1] }, disabled: /\sdisabled(?:\s|$)/.test(attributes) }));
+    buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(([, attributes, text]) => ({ text, tagName: 'BUTTON', dataset: { settlementButton: attributes.match(/data-settlement-button="(\d+)"/)[1], workerId: attributes.match(/data-worker-id="([^"]+)"/)?.[1] }, ariaPressed: attributes.match(/aria-pressed="([^"]+)"/)?.[1], disabled: /\sdisabled(?:\s|$)/.test(attributes) }));
     for (const [, id, options] of html.matchAll(/<select\b[^>]*id="([^"]+)"[^>]*>(.*?)<\/select>/gs)) {
       const selected = [...options.matchAll(/<option value="([^"]*)"([^>]*)>/g)].find(([, , attributes]) => /\bselected\b/.test(attributes));
       fields.set(id, { tagName: 'SELECT', value: selected?.[1] ?? options.match(/value="([^"]*)"/)?.[1] ?? '' });
     }
-    for (const [, id, attributes] of html.matchAll(/<input\b[^>]*id="([^"]+)"([^>]*)>/g)) fields.set(id, { tagName: 'INPUT', value: attributes.match(/value="([^"]*)"/)?.[1] || '' });
+    for (const [, id, attributes] of html.matchAll(/<input\b[^>]*id="([^"]+)"([^>]*)>/g)) fields.set(id, { tagName: 'INPUT', value: attributes.match(/value="([^"]*)"/)?.[1] || '', focus() { document.activeElement = this; }, setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; } });
   } });
-  return { ui, player, worker, state, fields, sent, get html() { return html; }, get opens() { return opens; }, get buttons() { return buttons; }, button(text) { const found = buttons.find(b => b.text === text); assert.ok(found, `Missing button: ${text}`); return found; }, click(text) { const control = this.button(text); assert.equal(control.disabled, false, `Disabled button: ${text}`); control.onclick(); }, select(id, selected) { const control = fields.get(id); assert.ok(control, `Missing select: ${id}`); control.value = selected; control.onchange(); } };
+  return { ui, player, worker, state, fields, sent, timers, flushTimers() { for (const [id, timer] of [...timers]) { timers.delete(id); timer.fn(); } }, roster(id) { const found = buttons.find(button => button.dataset.workerId === id); assert.ok(found, `Missing worker: ${id}`); return found; }, choose(id) { this.roster(id).onclick(); }, search(value) { const input = fields.get('worker-roster-search'); assert.ok(input, 'Missing worker search'); input.value = value; input.oninput(); }, get html() { return html; }, get opens() { return opens; }, get buttons() { return buttons; }, button(text) { const found = buttons.find(b => b.text === text); assert.ok(found, `Missing button: ${text}`); return found; }, click(text) { const control = this.button(text); assert.equal(control.disabled, false, `Disabled button: ${text}`); control.onclick(); }, select(id, selected) { const control = fields.get(id); assert.ok(control, `Missing select: ${id}`); control.value = selected; control.onchange(); } };
 }
 
 test('worker management shows the active Manager cap, wage rate and trained cargo allowance', t => {
@@ -43,7 +43,7 @@ test('worker management shows the active Manager cap, wage rate and trained carg
 test('actual worker equipment controls send supplied-tool choices and refresh after durability changes', t => {
   const f = fixture(t); Object.assign(f.worker, { x: f.player.x, z: f.player.z });
   f.player.tiers.pickaxe = 'iron'; f.player.durability.pickaxe = 91;
-  f.ui.show('workers'); f.click('Supply your iron pickaxe');
+  f.ui.show('workers'); f.click('Tools'); f.click('Supply your iron pickaxe');
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_equip', workerId: f.worker.id, tool: 'pickaxe', tier: 'iron' });
   f.worker.equipment = { pickaxe: { tier: 'iron', durability: 91, maxDurability: 200 } }; f.player.durability.pickaxe = 0; f.ui.refresh();
   assert.match(f.html, /91 \/ 200 durability/); f.click('Recover tool');
@@ -54,7 +54,7 @@ test('actual worker equipment controls send supplied-tool choices and refresh af
 
 test('automatic worker maintenance controls submit an owned supply plot and bounded budget', t => {
   const f = fixture(t), plotId = PLOTS[0].id;
-  f.state.plots = [{ id: plotId, ownerId: 'alice', building: 'house', hp: 300 }]; f.ui.show('workers'); f.click('Enable 100g budget');
+  f.state.plots = [{ id: plotId, ownerId: 'alice', building: 'house', hp: 300 }]; f.ui.show('workers'); f.click('Tools'); f.click('Enable 100g budget');
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_maintenance', workerId: f.worker.id, enabled: true, budgetGold: 100, plotId });
   f.worker.maintenanceEnabled = true; f.worker.maintenanceBudgetGold = 80; f.worker.maintenancePlotId = plotId; f.ui.refresh();
   assert.match(f.html, /80 gold remaining/); f.click('Disable automatic repairs');
@@ -141,7 +141,7 @@ test('worker names and statuses are escaped and clearing the UI drops an old vil
 test('worker training and colors show current progress and submit explicit owner actions', t => {
   const f = fixture(t);
   Object.assign(f.worker, { level: 1, workXp: 24, upgradePoints: 0, attributes: { gathering: 0, speed: 0, carry: 0 }, color: '#71865b' });
-  f.ui.show('workers');
+  f.ui.show('workers'); f.click('Training');
   assert.match(f.html, /work day and night/); assert.match(f.html, /24 \/ 25 harvests/);
   assert.equal(f.button('+1 rank · 1 point').disabled, true);
   f.worker.workXp = 25; f.worker.level = 2; f.worker.upgradePoints = 1; f.ui.refresh();
@@ -173,7 +173,7 @@ test('worker hiring requires the player entrance while returning workers can wai
 
 test('illustrated worker training compares numeric next-rank effects while retaining five crew places', t => {
   const f = fixture(t); f.worker.attributes = { gathering: 2, speed: 1, carry: 0 }; f.worker.upgradePoints = 1; f.worker.level = 4;
-  f.ui.show('workers');
+  f.ui.show('workers'); f.click('Training');
   assert.match(f.html, /data-worker-portrait=/); assert.match(f.html, /1 \/ 5 personal workers/);
   assert.match(f.html, /3.2 seconds \/ harvest/); assert.match(f.html, /2.8 seconds \/ harvest/);
   assert.match(f.html, /3.3 movement speed/); assert.match(f.html, /3.6 movement speed/);
@@ -189,7 +189,8 @@ test('plot staff are counted separately and never use a personal hiring place', 
   for (let i = 0; i < 2; i++) f.state.workers.push({ ...f.worker, id: `plot-${i}`, staffPlotId: id, staffRole: 'gatherer', resource: 'stone', sourcePlotId: id, destinationPlotId: id, mode: 'store' });
   f.ui.show('workers'); assert.match(f.html, /4 \/ 5 personal workers · 2 plot staff/);
   assert.match(f.html, /arrive paused with no hiring fee/); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, false);
-  assert.equal(f.buttons.filter(button => button.text === 'Dismiss worker').length, 4, 'active staff cannot be dismissed and regenerated');
+  assert.equal(f.buttons.filter(button => button.text === 'Dismiss worker').length, 1, 'only the selected personal worker has dismissal controls');
+  f.choose('plot-0'); assert.equal(f.buttons.filter(button => button.text === 'Dismiss worker').length, 0, 'active staff cannot be dismissed and regenerated');
 });
 
 test('transporter form submits an owned storage source and percentage with its fixed destination', t => {
@@ -213,4 +214,135 @@ test('inactive plot staff show retained cargo, disable work and allow nearby col
   assert.match(f.html, /Inactive plot staff/); assert.match(f.html, /Cargo stays safe/); assert.match(f.html, /0 plot staff/);
   assert.equal(f.button('Apply orders').disabled, true); assert.equal(f.button('Resume work').disabled, true);
   f.click('Collect carried supplies'); assert.equal(f.sent.at(-1).kind, 'worker_collect');
+});
+
+test('a large crew has one order editor and keeps tools and training behind selected-worker tabs', t => {
+  const f = fixture(t);
+  for (let i = 1; i < 28; i++) f.state.workers.push({ ...f.worker, id: `crew-${i}`, name: `Worker ${i + 1}`, cargo: {} });
+  f.ui.show('workers');
+  assert.equal(f.buttons.filter(button => button.dataset.workerId).length, 28);
+  assert.equal([...f.fields.keys()].filter(id => /^worker-\d+-resource$/.test(id)).length, 1);
+  assert.equal(f.buttons.filter(button => button.text === 'Apply orders').length, 1);
+  assert.equal(f.buttons.some(button => /Supply your|\+1 rank|Enable 100g budget/.test(button.text)), false);
+  assert.equal(f.roster(f.worker.id).ariaPressed, 'true');
+  f.choose('crew-18'); assert.equal(f.roster('crew-18').ariaPressed, 'true');
+  assert.equal(f.roster(f.worker.id).ariaPressed, 'false'); assert.ok(f.fields.has('worker-18-resource'));
+  f.click('Training'); assert.equal(f.fields.has('worker-18-resource'), false);
+  assert.equal(f.buttons.filter(button => button.text === '+1 rank · 1 point').length, 3);
+  f.choose('crew-19'); assert.ok(f.fields.has('worker-19-resource'), 'selecting a different worker returns to Orders');
+  assert.equal(f.buttons.some(button => button.text === '+1 rank · 1 point'), false);
+});
+
+test('searching and reordering the roster still sends orders to the selected worker ID', t => {
+  const f = fixture(t);
+  f.worker.name = 'Alpha';
+  const second = { ...f.worker, id: 'beta', name: 'Beta', cargo: {} };
+  f.state.workers.push({ ...f.worker, id: 'outsider', ownerId: 'bob' }, second);
+  f.ui.show('workers'); f.search('Beta');
+  assert.deepEqual(f.buttons.filter(button => button.dataset.workerId).map(button => button.dataset.workerId), ['beta']);
+  f.select('worker-1-resource', 'iron'); f.click('Apply orders');
+  assert.equal(f.sent.at(-1).workerId, 'beta'); assert.equal(f.sent.at(-1).resource, 'iron');
+  f.state.workers.reverse(); f.ui.refresh();
+  assert.ok(f.fields.has('worker-0-resource')); assert.equal(f.fields.get('worker-0-resource').value, 'iron');
+  f.click('Apply orders'); assert.equal(f.sent.at(-1).workerId, 'beta');
+  f.search(''); f.choose(f.worker.id); f.click('Apply orders');
+  assert.equal(f.sent.at(-1).workerId, f.worker.id); assert.equal(f.sent.at(-1).resource, 'timber');
+});
+
+test('unsent orders stay with each worker through selection, tabs and live status updates', t => {
+  const f = fixture(t), second = { ...f.worker, id: 'second', name: 'Second worker', resource: 'wheat', cargo: {} };
+  f.state.workers.push(second); f.ui.show('workers'); f.select('worker-0-resource', 'coal');
+  f.choose(second.id); assert.equal(f.fields.get('worker-1-resource').value, 'wheat');
+  f.select('worker-1-resource', 'stone'); f.click('Tools'); f.worker.status = 'Going to public forest'; f.ui.refresh();
+  f.click('Orders'); assert.equal(f.fields.get('worker-1-resource').value, 'stone');
+  f.choose(f.worker.id); assert.equal(f.fields.get('worker-0-resource').value, 'coal');
+  f.click('Apply orders'); assert.equal(f.sent.at(-1).workerId, f.worker.id); assert.equal(f.sent.at(-1).resource, 'coal');
+  f.choose(second.id); f.click('Apply orders'); assert.equal(f.sent.at(-1).workerId, second.id); assert.equal(f.sent.at(-1).resource, 'stone');
+});
+
+test('type and status filters combine with search and recover from an empty result', t => {
+  const f = fixture(t), mineId = PLOTS[0].id, storeId = PLOTS[1].id;
+  f.worker.name = 'Personal woodcutter';
+  f.state.plots = [{ id: mineId, ownerId: 'alice', building: 'mine', hp: 300 }, { id: storeId, ownerId: 'alice', building: 'house', hp: 300 }];
+  f.state.workers.push(
+    { ...f.worker, id: 'miner', name: 'Mountain miner', staffPlotId: mineId, staffRole: 'gatherer', resource: 'stone', sourcePlotId: mineId, destinationPlotId: mineId, mode: 'store', paused: false, status: 'Gathering stone', cargo: {} },
+    { ...f.worker, id: 'hauler', name: 'Supply hauler', staffPlotId: storeId, staffRole: 'transporter', resource: 'stone', sourcePlotId: mineId, destinationPlotId: storeId, mode: 'store', paused: false, status: 'Delivering stone', cargo: {} }
+  );
+  const visible = () => f.buttons.filter(button => button.dataset.workerId).map(button => button.dataset.workerId);
+  f.ui.show('workers'); f.select('worker-roster-type', 'gatherer'); assert.deepEqual(visible(), ['miner']);
+  f.select('worker-roster-filter', 'working'); assert.deepEqual(visible(), ['miner']);
+  f.select('worker-roster-filter', 'paused'); assert.deepEqual(visible(), []);
+  assert.equal(f.buttons.some(button => button.text === 'Apply orders'), false, 'empty results expose no unrelated editor');
+  f.select('worker-roster-filter', 'all'); f.select('worker-roster-type', 'transporter'); assert.deepEqual(visible(), ['hauler']);
+  f.search('missing worker'); assert.deepEqual(visible(), []);
+  f.search('SUPPLY'); assert.deepEqual(visible(), ['hauler'], 'worker search ignores case');
+  f.search(''); f.select('worker-roster-type', 'personal'); assert.deepEqual(visible(), [f.worker.id]);
+  f.worker.paused = false; f.ui.refresh(); f.select('worker-roster-filter', 'attention'); assert.deepEqual(visible(), [f.worker.id], 'a worker waiting for orders needs attention');
+});
+
+test('clearing the UI resets search, filters, selection, tab and unsent worker orders', t => {
+  const f = fixture(t), second = { ...f.worker, id: 'second', name: 'Second worker', cargo: {} };
+  f.state.workers.push(second); f.ui.show('workers'); f.choose(second.id); f.select('worker-1-resource', 'iron');
+  f.select('worker-roster-filter', 'paused'); f.select('worker-roster-type', 'personal'); f.search('Second'); f.click('Tools');
+  f.ui.clear(); f.ui.show('workers');
+  assert.equal(f.fields.get('worker-roster-search').value, '');
+  assert.equal(f.fields.get('worker-roster-filter').value, 'all'); assert.equal(f.fields.get('worker-roster-type').value, 'all');
+  assert.equal(f.roster(f.worker.id).ariaPressed, 'true'); assert.ok(f.fields.has('worker-0-resource'));
+  f.choose(second.id); assert.equal(f.fields.get('worker-1-resource').value, 'timber');
+});
+
+test('worker order clicks survive live snapshots through pointer and keyboard release without replay', t => {
+  const f = fixture(t);
+  for (const key of [null, ' ', 'Enter']) {
+    f.ui.show('workers'); f.select('worker-0-resource', 'coal');
+    const button = f.button('Apply orders'); document.activeElement = button;
+    if (key) button.onkeydown?.({ key }); else button.onpointerdown?.({ button: 0 });
+    f.player.wallet++; f.worker.status = `Working ${key || 'pointer'}`; f.ui.refresh();
+    assert.ok(f.buttons.includes(button), 'the pressed control remains attached until its native click');
+    if (key) button.onkeyup?.({ key }); else button.onpointerup?.();
+    f.state.treasury++; f.ui.refresh(); assert.ok(f.buttons.includes(button));
+    const before = f.sent.length; button.onclick();
+    assert.equal(f.sent.length, before + 1); assert.equal(f.sent.at(-1).workerId, f.worker.id); assert.equal(f.sent.at(-1).resource, 'coal');
+    f.flushTimers(); assert.equal(f.sent.length, before + 1, 'timer cleanup cannot replay a command');
+  }
+});
+
+test('detached worker controls and cancelled presses cannot act on a different selection', t => {
+  const f = fixture(t), second = { ...f.worker, id: 'second', name: 'Second worker', cargo: {} };
+  f.state.workers.push(second); f.ui.show('workers');
+  const oldApply = f.button('Apply orders'); f.choose(second.id); oldApply.onclick(); assert.equal(f.sent.length, 0);
+  const button = f.button('Apply orders'); button.onpointerdown?.({ button: 0 });
+  f.player.wallet++; f.ui.refresh(); button.onpointercancel?.(); f.ui.refresh();
+  assert.equal(f.sent.length, 0); assert.ok(!f.buttons.includes(button));
+  button.onclick(); assert.equal(f.sent.length, 0);
+  const current = f.button('Apply orders'); current.onpointerdown?.({ button: 0 }); current.onpointerup?.();
+  f.ui.clear(); assert.equal(f.timers.size, 0); current.onclick(); assert.equal(f.sent.length, 0);
+});
+
+test('typing a transporter target updates its draft without replacing Apply when the field blurs', t => {
+  const f = fixture(t), destination = PLOTS[0].id, source = PLOTS[1].id;
+  Object.assign(f.worker, { staffPlotId: destination, staffRole: 'transporter', resource: 'stone', sourcePlotId: source, mode: 'store', destinationPlotId: destination, targetPercent: 50 });
+  f.state.plots = [{ id: destination, ownerId: 'alice', building: 'tinker_shop', hp: 300 }, { id: source, ownerId: 'alice', building: 'house', hp: 300 }];
+  f.ui.show('workers');
+  let input = f.fields.get('worker-0-targetPercent'); input.value = '35'; input.oninput();
+  input = f.fields.get('worker-0-targetPercent');
+  assert.equal(input.value, '35'); assert.equal(document.activeElement, input, 'typing retains focus in the number field');
+  const apply = f.button('Apply orders'), opens = f.opens;
+  apply.onpointerdown({ button: 0 }); input.onchange(); document.activeElement = apply;
+  assert.equal(f.opens, opens, 'blur with the unchanged draft must not rebuild the form');
+  assert.ok(f.buttons.includes(apply), 'Apply is still attached when the native click follows blur');
+  apply.onpointerup(); apply.onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, resource: 'stone', sourcePlotId: source, mode: 'store', destinationPlotId: destination, targetPercent: 35 });
+});
+
+test('transporter training offers movement and carrying upgrades and measures progress in deliveries', t => {
+  const f = fixture(t), destination = PLOTS[0].id;
+  Object.assign(f.worker, { staffPlotId: destination, staffRole: 'transporter', resource: 'stone', mode: 'store', destinationPlotId: destination, level: 2, upgradePoints: 2, workXp: 27 });
+  f.state.plots = [{ id: destination, ownerId: 'alice', building: 'tinker_shop', hp: 300 }];
+  f.ui.show('workers'); f.click('Training');
+  assert.match(f.html, /2 \/ 25 deliveries/); assert.doesNotMatch(f.html, /seconds \/ harvest/);
+  const upgrades = f.buttons.filter(button => button.text === '+1 rank · 1 point');
+  assert.equal(upgrades.length, 2);
+  upgrades[0].onclick(); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'speed' });
+  upgrades[1].onclick(); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'carry' });
 });

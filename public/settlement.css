@@ -160,3 +160,108 @@
 .barracks-slot>small{font-size:9px;color:#a4b99b}
 @media(max-width:740px){.menu-hero{grid-template-columns:180px minmax(0,1fr);gap:17px}.menu-hero-art,.menu-hero-art>svg[data-building-art]{height:170px}.menu-hero-copy{padding:20px 18px 20px 0}.menu-hero-copy h2{font-size:21px}.pack-supplies{grid-template-columns:repeat(4,minmax(0,1fr))}.pack-equipment{grid-template-columns:repeat(2,minmax(0,1fr))}.storage-counter .storage-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.worker-card-heading{grid-template-columns:105px minmax(0,1fr);gap:12px}.worker-assignment-art{display:none}.menu-section:has(>.menu-section-art){grid-template-columns:100px minmax(0,1fr);gap:14px}.worker-training{gap:8px}.worker-training-card{padding:10px}.worker-card-body{padding:15px}.care-options{grid-template-columns:1fr}.structure-upgrade>footer{flex-wrap:wrap}.menu-costs{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:490px){.settlement-dialog:has(.menu-hero){padding:22px 16px}.menu-hero{grid-template-columns:1fr;gap:0}.menu-hero-art,.menu-hero-art>svg[data-building-art]{height:145px}.menu-hero-art>svg:not([data-building-art]){max-width:210px;margin:auto}.menu-hero-copy{padding:18px}.menu-hero-copy h2{font-size:20px}.pack-supplies{grid-template-columns:repeat(3,minmax(0,1fr))}.pack-supply>div{height:74px}.pack-equipment{grid-template-columns:1fr}.pack-tool{grid-template-columns:70px minmax(0,1fr)}.pack-tool-art{height:90px}.worker-card-heading{grid-template-columns:90px minmax(0,1fr);padding-right:14px}.worker-card-heading h3{font-size:15px}.worker-card-portrait{height:120px}.worker-training{grid-template-columns:1fr}.worker-training-card{display:grid;grid-template-columns:1fr 1fr;column-gap:10px}.worker-training-card>.menu-tier{grid-column:1/-1;justify-self:start}.worker-training-card h5{grid-column:1/-1}.worker-training-card button{grid-column:1/-1}.worker-order-grid{grid-template-columns:1fr}.storage-counter .storage-grid{grid-template-columns:repeat(3,minmax(0,1fr));padding:10px}.storage-counter>header{display:block}.storage-counter>header p{margin-top:8px}.storage-transfer-controls .transfer-form>select{flex-basis:100%}.storage-transfer-controls .transfer-form>label{flex-basis:100%}.storage-transfer-controls input{width:100%}.menu-section:has(>.menu-section-art){grid-template-columns:1fr}.menu-section-art{height:95px}.menu-section-art>svg{height:100%}.structure-upgrade>header{grid-template-columns:110px minmax(0,1fr);gap:12px}.structure-upgrade h3{font-size:15px}.upgrade-comparison{margin:12px}.upgrade-comparison-head,.upgrade-comparison-row{gap:7px;padding:9px 8px;grid-template-columns:1.15fr 1fr 1fr;font-size:9px}.upgrade-comparison-row>span{font-size:9px}.menu-costs{margin:10px 12px}.structure-upgrade>footer{padding:13px}.structure-upgrade>footer>button{width:100%;max-width:none}}
+
+/* The worker ledger keeps the roster visible while one worker's orders are edited. */
+.settlement-dialog:has(.worker-manager){width:1040px;max-width:94vw;padding:24px 28px}
+.worker-manager{min-width:0;color:#dbe2ce}
+.worker-manager-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-right:22px;margin-bottom:16px}
+.worker-manager-heading>div{min-width:0}
+.worker-manager-heading .eyebrow{margin:0 0 6px;font-size:9px;letter-spacing:1.8px}
+.worker-manager-heading h2{margin:0;font-size:24px}
+.worker-manager-heading p:not(.eyebrow){font-size:12px;line-height:1.6;color:#b9c9b5;margin:7px 0 0}
+.worker-manager .worker-hire-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;flex-shrink:0}
+.worker-manager .worker-hire-actions button{min-width:0;font-size:11px;padding:10px 13px;margin:0}
+.worker-manager .worker-overview{margin:0 0 16px}
+.worker-manager .worker-overview .settlement-stats,.worker-manager .worker-overview.settlement-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0}
+.worker-manager .worker-overview .settlement-stats>div,.worker-manager .worker-overview.settlement-stats>div{min-width:0;padding:10px 12px;border-radius:5px;background:#152b2380;border-color:#a8ae7840}
+.worker-manager .worker-overview .settlement-stats span,.worker-manager .worker-overview.settlement-stats span{font-size:11px;margin-bottom:5px}
+.worker-manager .worker-overview .settlement-stats strong,.worker-manager .worker-overview.settlement-stats strong{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+.worker-toolbar{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.worker-toolbar>label{display:grid;min-width:0;gap:6px;font-size:11px;color:#c2ceb9}
+.worker-manager .worker-toolbar input,.worker-manager .worker-toolbar select{width:100%;min-width:0;padding:10px 11px;font-size:12px;background:#11251e;border-color:#a3ac7955;border-radius:5px}
+.worker-manager .worker-toolbar input::placeholder{color:#97ab98}
+.worker-workspace{display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px;align-items:start}
+.worker-roster,.worker-detail{min-width:0}
+.worker-roster{padding:12px 8px 8px;border:1px solid #91a57940;border-radius:8px;background:#10251db3}
+.worker-roster>h3{margin:0 6px 4px;font:600 14px Cinzel,Georgia,serif;color:#efdcac}
+.worker-roster .worker-roster-count{font-size:11px;line-height:1.5;color:#aabfa7;margin:0 6px 12px}
+.worker-roster-list{display:grid;gap:6px;max-height:540px;max-height:min(540px,62vh);overflow-y:auto;overscroll-behavior:contain;padding:3px;scrollbar-width:thin;scrollbar-color:#a6a474 #12251e}
+.worker-manager .worker-roster-item{display:block;width:100%;min-width:0;padding:11px 10px;text-align:left;color:#d8e0c9;background:#213a2d80;border:1px solid #8a9e733b;border-radius:5px;font:inherit;line-height:1.5;box-shadow:none}
+.worker-manager .worker-roster-item:hover{background:#304936;border-color:#b9b27499}
+.worker-manager .worker-roster-item[aria-pressed=true]{background:#394b33;border-color:#dfc181;box-shadow:inset 3px 0 #dfc181}
+.worker-roster-title{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px 8px;min-width:0}
+.worker-roster-title>strong{font-size:13px;font-weight:600;color:#f0e3bd;overflow-wrap:anywhere}
+.worker-status{display:inline-block;width:fit-content;max-width:100%;padding:3px 7px;border:1px solid #8bb78255;border-radius:4px;font-size:10px;line-height:1.3;font-weight:500;color:#c8e6b8;background:#54774324}
+.worker-status[data-state=attention]{color:#ffe0aa;border-color:#d5aa6266;background:#94652933}
+.worker-status[data-state=paused]{color:#cbd3d8;border-color:#92a6ae55;background:#72869324}
+.worker-roster-meta,.worker-roster-route,.worker-roster-note{display:block;margin-top:5px;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.worker-roster-meta{color:#a8bea3}
+.worker-roster-route{color:#d3dcc5}
+.worker-roster-note{color:#edcf8f}
+.worker-manager .worker-card{margin:0;border-radius:8px;box-shadow:none;border-color:#bca56c66;background:linear-gradient(145deg,#293e32,#172e24)}
+.worker-manager .worker-card-heading{grid-template-columns:72px minmax(0,1fr) 64px;gap:10px;padding:10px 16px 8px 9px}
+.worker-manager .worker-card-portrait{height:90px}
+.worker-manager .worker-assignment-art{display:block;height:64px}
+.worker-manager .worker-card-heading h3{font-size:18px;margin:2px 0 7px;overflow-wrap:anywhere}
+.worker-manager .worker-card-heading p{font-size:11px;line-height:1.5;margin:4px 0}
+.worker-manager .worker-card-heading small{font-size:11px;line-height:1.5;padding-bottom:0}
+.worker-manager .worker-quick-actions{margin:0;padding:11px 16px;display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid #a3ad7b33;background:#162c2280}
+.worker-manager .worker-quick-actions>button{min-width:0;flex:0 1 auto;font-size:11px;padding:9px 12px}
+.worker-detail-tabs{display:flex;gap:4px;padding:9px 13px 0;border-bottom:1px solid #a3ad7b44;background:#142a20}
+.worker-manager .worker-detail-tabs>button{flex:1;min-width:0;border:1px solid transparent;border-bottom:3px solid transparent;border-radius:4px 4px 0 0;padding:11px 8px;background:transparent;color:#b9cbb2;font-size:12px;line-height:1.4}
+.worker-manager .worker-detail-tabs>button:hover{background:#b3ad6c12;color:#f0dfb5}
+.worker-manager .worker-detail-tabs>button[aria-pressed=true]{border-bottom-color:#dfc181;background:#d6bf7914;color:#f4dfa9}
+.worker-manager .worker-card-body{padding:17px}
+.worker-manager .worker-card-body>h4{margin:4px 0 12px;font-size:15px}
+.worker-manager .worker-card-body>p{font-size:12px;line-height:1.6}
+.worker-manager .worker-card-body .settlement-stats{margin:12px 0;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+.worker-manager .worker-card-body .settlement-stats>div{padding:9px}
+.worker-manager .worker-card-body .settlement-stats span{font-size:10px}
+.worker-manager .worker-card-body .settlement-stats strong{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.worker-manager .worker-order-grid{gap:11px}
+.worker-manager .worker-order-grid>label{font-size:11px;line-height:1.5}
+.worker-manager .worker-order-grid select{font-size:12px}
+.worker-manager .worker-card-body .panel-actions>button{font-size:11px;min-width:0;padding:11px 12px}
+.worker-manager .worker-card-body .settlement-row{gap:12px;flex-wrap:wrap}
+.worker-manager .worker-card-body .settlement-row>div{flex:1 1 180px}
+.worker-manager .worker-card-body .settlement-row small{font-size:11px;line-height:1.6}
+.worker-manager .worker-card-body .settlement-row>button{font-size:11px;max-width:100%;padding:10px 12px}
+.worker-manager .worker-training{gap:9px}
+.worker-manager .worker-training-card{padding:12px 10px}
+.worker-manager .worker-training-card h5{font-size:13px}
+.worker-manager .worker-training-card p{font-size:11px}
+.worker-manager .worker-training-card p>small{font-size:9px;letter-spacing:.4px}
+.worker-manager .worker-training-card button{font-size:11px;line-height:1.5}
+.worker-route-summary{padding:12px;border-left:3px solid #a9b979;border-radius:3px;background:#94a95b12;font-size:12px;line-height:1.7;color:#d2dec3;overflow-wrap:anywhere}
+.worker-empty{padding:26px 18px;border:1px dashed #a2b17c66;border-radius:7px;text-align:center;font-size:12px;line-height:1.7;color:#bcccaf}
+.worker-empty>strong{display:block;margin-bottom:7px;font-size:14px;color:#ebdbaf}
+.worker-empty>p{margin:6px 0 0;font-size:12px;line-height:1.7}
+.worker-help{margin:18px 0 0;border-top:1px solid #a3ad7b33;padding-top:14px;font-size:12px;color:#b9cbb1;line-height:1.7}
+.worker-help>summary{cursor:pointer;width:fit-content;padding:3px 0;color:#d7c48f;font-size:12px}
+.worker-help p{font-size:12px;line-height:1.7;margin:11px 0 0}
+.worker-manager button:focus-visible,.worker-manager input:focus-visible,.worker-manager select:focus-visible,.worker-help>summary:focus-visible{outline:2px solid #f5dda0;outline-offset:2px}
+@media(max-width:900px){
+  .worker-manager-heading{align-items:flex-start}.worker-manager .worker-hire-actions{flex-direction:column;flex-shrink:1}
+  .worker-workspace{grid-template-columns:250px minmax(0,1fr);gap:13px}
+  .worker-manager .worker-card-heading{grid-template-columns:60px minmax(0,1fr);padding-right:13px}.worker-manager .worker-assignment-art{display:none}
+  .worker-manager .worker-training{grid-template-columns:1fr}.worker-manager .worker-training-card{display:grid;grid-template-columns:1fr 1fr;column-gap:10px}.worker-manager .worker-training-card>.menu-tier,.worker-manager .worker-training-card h5,.worker-manager .worker-training-card button{grid-column:1/-1}.worker-manager .worker-training-card>.menu-tier{justify-self:start}
+}
+@media(max-width:760px){
+  .settlement-dialog:has(.worker-manager){padding:22px 18px}
+  .worker-manager-heading{padding-right:18px;gap:12px}.worker-manager-heading h2{font-size:22px}
+  .worker-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.worker-toolbar>label:first-child{grid-column:1/-1}
+  .worker-workspace{grid-template-columns:1fr;gap:16px}.worker-roster-list{max-height:260px}
+  .worker-manager .worker-card-heading{grid-template-columns:70px minmax(0,1fr) 64px}.worker-manager .worker-assignment-art{display:block}
+  .worker-manager .worker-overview .settlement-stats,.worker-manager .worker-overview.settlement-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:490px){
+  .settlement-dialog:has(.worker-manager){padding:22px 13px}
+  .worker-manager-heading{display:block;padding-right:20px}.worker-manager .worker-hire-actions{margin-top:12px;flex-direction:row;justify-content:flex-start}
+  .worker-manager .worker-hire-actions button{flex:1 1 auto;padding:10px;font-size:11px}
+  .worker-manager .worker-overview .settlement-stats>div,.worker-manager .worker-overview.settlement-stats>div{padding:9px}
+  .worker-toolbar{gap:8px}.worker-manager .worker-toolbar input,.worker-manager .worker-toolbar select{padding:10px 7px;font-size:11px}
+  .worker-manager .worker-card-heading{grid-template-columns:58px minmax(0,1fr);padding:10px;gap:8px}.worker-manager .worker-card-heading h3{font-size:16px}.worker-manager .worker-card-portrait{height:83px}.worker-manager .worker-assignment-art{display:none}
+  .worker-manager .worker-quick-actions{padding:10px;gap:6px}.worker-manager .worker-quick-actions>button{flex:1 1 auto;padding:9px 7px}
+  .worker-detail-tabs{padding:7px 7px 0}.worker-manager .worker-detail-tabs>button{padding:10px 5px;font-size:11px}
+  .worker-manager .worker-card-body{padding:13px}.worker-manager .worker-order-grid{grid-template-columns:1fr}
+}
