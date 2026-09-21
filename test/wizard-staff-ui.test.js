@@ -19,7 +19,7 @@ function panelHarness() {
   let html = '', kind = null, buttons = [], renders = 0;
   const sent = [];
   const find = query => query === 'button' ? buttons : /^\[data-/.test(query) ? buttons.filter(button => Object.hasOwn(button.attrs, query.slice(1, -1))) : [];
-  const content = { querySelectorAll: find, querySelector: query => find(query)[0], contains: () => false };
+  const content = { querySelectorAll: find, querySelector: query => find(query)[0], contains: node => buttons.includes(node) };
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   const doc = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : null };
   const deps = { document: doc, getActivePanel: () => kind, send: action => sent.push(action), openPanel(markup, panel) {
@@ -93,10 +93,11 @@ test('pack, Academy plot and shop honor permanent staff ownership after snapshot
   const { state, player, plot } = fixture(), h = panelHarness();
   const previous = globalThis.document; globalThis.document = h.doc; t.after(() => { globalThis.document = previous; });
   const ui = createSettlementUI({ ...h.deps, getState: () => state, getMe: () => player, getHotbar: () => [], setHotbar() {}, toast() {} });
-  ui.show('plot', plot.id); h.button('Reclaim staff · Free').onclick();
+  ui.show('plot', plot.id); const reclaim = h.button('Reclaim staff · Free'); reclaim.onclick();
   assert.equal(h.sent.at(-1).kind, 'academy_reclaim_staff');
   player.staffOwned = true; ui.refresh(); assert.equal(h.button('Reclaim staff · Free'), undefined);
   ui.show('inventory'); ui.refresh(); const before = h.renders;
+  reclaim.onclick(); assert.equal(h.sent.length, 1, 'a detached Academy control cannot act after leaving its screen');
   assert.match(h.html, /Mana powered · No durability wear/);
   assert.doesNotMatch(h.html, /Staff durability|Arcane staff<\/h4><p>\d/);
   player.staffOwned = false; ui.refresh(); assert.equal(h.renders, before + 1);

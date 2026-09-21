@@ -284,13 +284,14 @@ test('plot staff are counted separately and never use a personal hiring place', 
   f.choose('plot-0'); assert.equal(f.buttons.filter(button => button.text === 'Dismiss worker').length, 0, 'active staff cannot be dismissed and regenerated');
 });
 
-test('transporter form submits an owned storage source and percentage with its fixed destination', t => {
+test('transporter form keeps sources owned and allows a chosen delivery destination with percentage', t => {
   const f = fixture(t), destination = PLOTS[0].id, source = PLOTS[1].id, foreign = PLOTS[2].id;
   Object.assign(f.worker, { staffPlotId: destination, staffRole: 'transporter', resource: null, sourcePlotId: null, mode: 'store', destinationPlotId: destination, targetPercent: 50 });
   f.state.plots = [{ id: destination, ownerId: 'alice', building: 'tinker_shop', hp: 300 }, { id: source, ownerId: 'alice', building: 'house', hp: 300 }, { id: foreign, ownerId: 'bob', building: 'mine', hp: 300 }];
   f.ui.show('workers'); assert.equal(f.button('Apply orders').disabled, true); assert.equal(f.button('Resume work').disabled, true);
-  assert.match(f.html, /Fetch from owned storage/); assert.doesNotMatch(f.html, new RegExp(`value="${foreign}"`));
-  assert.equal(f.fields.has('worker-0-mode'), false); assert.equal(f.fields.has('worker-0-destinationPlotId'), false);
+  assert.match(f.html, /Fetch from owned storage/); assert.doesNotMatch(f.html.match(/id="worker-0-sourcePlotId"[^>]*>(.*?)<\/select>/s)[1], new RegExp(`value="${foreign}"`));
+  assert.match(f.html.match(/id="worker-0-destinationPlotId"[^>]*>(.*?)<\/select>/s)[1], new RegExp(`value="${foreign}"`));
+  assert.equal(f.fields.has('worker-0-mode'), false); assert.equal(f.fields.has('worker-0-destinationPlotId'), true);
   f.select('worker-0-resource', 'arrows'); f.select('worker-0-sourcePlotId', source); f.select('worker-0-targetPercent', '35');
   f.worker.status = 'Waiting'; f.ui.refresh(); assert.equal(f.fields.get('worker-0-targetPercent').value, '35');
   f.click('Apply orders'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, sourcePlotId: source, destinationPlotId: destination, mode: 'store', resource: 'arrows', targetPercent: 35 });
@@ -436,4 +437,35 @@ test('transporter training offers movement and carrying upgrades and measures pr
   assert.equal(upgrades.length, 2);
   upgrades[0].onclick(); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'speed' });
   upgrades[1].onclick(); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_upgrade', workerId: f.worker.id, attribute: 'carry' });
+});
+
+test('all-mine orders require an owned mine and expose donation destinations with owner labels', t => {
+  const f = fixture(t), mine = PLOTS[0].id, donor = PLOTS[1].id, foreignMine = PLOTS[2].id;
+  f.state.plots = [{ id: mine, ownerId: 'alice', building: 'mine', hp: 300 }, { id: donor, ownerId: 'bob', ownerName: 'Bob', building: 'tinker_shop', hp: 300 }, { id: foreignMine, ownerId: 'bob', building: 'mine', hp: 300 }];
+  f.ui.show('workers'); f.select('worker-0-resource', 'mine_all');
+  assert.equal(f.button('Apply orders').disabled, true, 'all ores cannot use public gathering grounds');
+  assert.match(f.html, /All mine resources/); assert.match(f.html, /stone, iron, coal and sulfur/);
+  assert.doesNotMatch(f.html.match(/id="worker-0-sourcePlotId"[^>]*>(.*?)<\/select>/s)[1], new RegExp(`value="${foreignMine}"`));
+  f.select('worker-0-sourcePlotId', mine); f.select('worker-0-mode', 'store'); f.select('worker-0-destinationPlotId', donor);
+  assert.match(f.html, /Bob · Donation/); assert.match(f.html, /Donation to Bob/); assert.match(f.html, /cannot take them back/);
+  f.click('Apply orders');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, resource: 'mine_all', sourcePlotId: mine, mode: 'store', destinationPlotId: donor });
+  f.state.plots[0].ownerId = 'bob'; f.ui.refresh(); assert.equal(f.button('Apply orders').disabled, true);
+});
+
+test('transporter donation route still withdraws only from an owned source and rejects a ruined destination', t => {
+  const f = fixture(t), home = PLOTS[0].id, source = PLOTS[1].id, destination = PLOTS[2].id;
+  Object.assign(f.worker, { staffPlotId: home, staffRole: 'transporter', resource: 'stone', sourcePlotId: source, mode: 'store', destinationPlotId: home, targetPercent: 30 });
+  f.state.plots = [{ id: home, ownerId: 'alice', building: 'tinker_shop', hp: 300 }, { id: source, ownerId: 'alice', building: 'house', hp: 300 }, { id: destination, ownerId: 'bob', ownerName: '<Bob>', building: 'cannon', hp: 300 }];
+  f.ui.show('workers'); f.select('worker-0-destinationPlotId', destination);
+  assert.match(f.html, /Donation to &lt;Bob&gt;/); assert.doesNotMatch(f.html, /Donation to <Bob>/);
+  f.select('worker-0-sourcePlotId', home); f.click('Apply orders');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_assign', workerId: f.worker.id, resource: 'stone', sourcePlotId: home, mode: 'store', destinationPlotId: destination, targetPercent: 30 });
+  assert.doesNotMatch(f.html.match(/id="worker-0-sourcePlotId"[^>]*>(.*?)<\/select>/s)[1], new RegExp(`value="${destination}"`));
+  f.state.plots[2].ruined = true; f.ui.refresh(); assert.equal(f.button('Apply orders').disabled, true);
+});
+
+test('mine-all equipment marks the pickaxe as the current tool', t => {
+  const f = fixture(t); f.worker.resource = 'mine_all'; f.ui.show('workers'); f.click('Tools');
+  assert.match(f.html, /Pickaxe · current assignment/); assert.match(f.html, /data-item="pickaxe"/);
 });

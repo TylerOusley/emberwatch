@@ -1,5 +1,17 @@
 # Emberwatch build validation
 
+## Build 31: village usability update
+
+Validated September 21, 2026: **998/998 tests pass** with `npm test`, without failures, cancellations or skips. All **19 changed runtime JavaScript modules** pass syntax checks; **95 actual browser modules** link with valid imports/exports. `git diff --check` passes. Independent backend and UI reviews have no remaining blocking finding.
+
+Seventy tests added since Build 30 cover native pointer/keyboard press retention through live updates, draft/disclosure persistence, direct inventory transfers and donation-only controls, navigation destinations, compact HUD/guide behavior, Academy/project actions, all-resource mine assignments, actual mixed cargo/yields, cross-owner deposits, ownership changes, capacity/refill/wage rules and persistence. A focused regression verifies that paused, unfunded and fulfilled donor routes cannot starve recipient transporters by reserving capacity.
+
+Reward tests verify exact uncapped night grants, no player-count multiplier, duplicate dawn/restart prevention, safe-integer rejection and transactional rollback; authoritative 100/200/1,000 enemy bounties preserve kill/assist attribution, owned defenders and offline owners. Feedback tests exercise real SQLite persistence, authenticated privacy/admin access, idempotent retry, durable rate limits, review audit/rollback, bounded UTF-8 requests including split-byte streaming, escaped exports and draft recovery after failures.
+
+Recorded-audio tests cover gesture activation, cached decoding, sample selection without an added procedural layer, failure fallback, mute/reset/disposal and bounded voices. All five MP3 clips decode successfully, total 56,961 bytes, and are served with exact bytes and `audio/mpeg`. HTTP asset checks also confirm the Build 31 marker. Credits record source licenses and editing ranges.
+
+Actual-module menu HTML and static renders were inspected for inventory, storage and the combined HUD. The print renderer does not faithfully reproduce browser grid/canvas layout. Chromium installation was unavailable, so no interactive browser playtest, perceived-sound comparison or sustained multiplayer frame-rate measurement is claimed. Live publication is checked separately by deployment status, health/village endpoints and exact changed-asset hashes; production player data is not mutated for testing.
+
 ## Build 30 hotfix: personal betting dashboard
 
 Validated September 18, 2026: **928/928 tests pass** with `npm test`, without failures, cancellations or skips. All five changed runtime JavaScript modules pass syntax checks, **93 browser modules** link with actual imports/exports, and `git diff --check` passes. Independent review found no unresolved implementation issue.

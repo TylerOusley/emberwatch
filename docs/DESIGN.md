@@ -1,5 +1,17 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 31: village usability, shared deliveries and feedback
+
+Current rules supersede earlier historical build entries where noted.
+
+- Inventory/building storage: direct resource-card transfers of 1, 10 and Max, with an optional exact-amount drawer. Foreign storage is donation-only. Current ownership, stock and capacity are rechecked for every action. Expanded details and editing drafts persist through live snapshots; pointer/keyboard presses defer refresh through the native click. Menu refresh signatures ignore unrelated moving crews.
+- Navigation: three village-menu categories; compact project, depot and skill cards; secondary rules/history/management in native disclosures. The first-watch guide starts collapsed. Season/weather/event details sit at the day/night clock. Inventory counts and the minimap remain.
+- Night survival: treasury grant equals 1,000 times the completed night, with no 5,000-gold cap and no player-count multiplier. Phase transition and reward persist together, preventing repeated daytime/restart grants; unsafe integer arithmetic rejects the transaction.
+- Combat: ordinary shamblers, runners and Grave mites pay 100; armored zombies and Brood husks pay 200; Gravebreakers pay 1,000. Every positive-damage resident contributor receives the full kind-based amount once, including owned defenders and offline/downed owners. No nightly cap. Loan repayment and immediate transactional death settlement remain.
+- Workers: `mine_all` is an owned-mine assignment selecting available actual stone/iron/coal/sulfur nodes. Actual cargo, weights, yields, upgrades, tool durability and XP remain authoritative. Shared destinations accept donations from gatherers/transporters; sources remain owner-only. Routes pin recipient identity and stop after ownership changes. Capacity, refill targets and one-cart transfer limits apply. Paused, unfunded or fulfilled routes cannot reserve incoming capacity and starve another transporter. Saved legacy routes pin the employer until explicitly reassigned.
+- Feedback: authenticated account-private reports, persistent retry receipts/rate limits and trusted build/village context. Administrator-only review inbox, audited status/note changes and paginated exports. Ten open reports mark a review batch; there is no automatic code change or deployment. [Workflow](FEEDBACK.md).
+- Sound: five local recorded pickaxe/chopping clips, gesture-gated cached decoding, no procedural overlay on successful playback, existing mute and bounded-voice behavior. [Attribution](../public/assets/audio/CREDITS.html).
+
 ## Build 30 hotfix: personal betting dashboard
 
 Every resident can open Betting stats from the village menu or tavern, anywhere in the village. The dashboard shows only the viewer's own results, with all-village and current-village scopes and a breakdown across all six games. It includes all retained settled betting receipts, including older coin-flip/roulette receipts, rather than only the twenty recent results. A card hand counts once after settlement; poker includes both ante and play wagers. Gold won is the sum of positive net profits, gold lost is the sum of negative net losses, and net equals returned minus wagered. A partial payout below the stake is a loss and an equal payout is a draw, regardless of historical win flags.
@@ -32,7 +44,7 @@ Orders are the default detail tab. Tools and automatic maintenance, then trainin
 
 ## Build 29: uncapped zombie bounties
 
-Every resident who deals positive actual damage to a zombie earns 100 gross gold when it dies, regardless of role, connection state or whether they are downed. Direct hits, spell burns, owned towers and owned troops share their resident owner identity. Each contributing player receives the full amount once per zombie, without splitting the bounty or imposing a damage threshold or nightly cap. Unowned defenders can finish a zombie and still pay its player contributors. Brood husks and each offspring are separate enemies; offspring do not inherit parent contributions.
+Build 29 originally paid 100 gross gold; Build 31 supersedes that amount with the 100/200/1,000 kind-based rewards above. Every resident who deals positive actual damage receives the applicable bounty when it dies, regardless of role, connection state or whether they are downed. Direct hits, spell burns, owned towers and owned troops share their resident owner identity. Each contributing player receives the full amount once per zombie, without splitting the bounty or imposing a damage threshold or nightly cap. Unowned defenders can finish a zombie and still pay its player contributors. Brood husks and each offspring are separate enemies; offspring do not inherit parent contributions.
 
 Bounties create new income instead of spending the treasury. Existing loan repayment rules apply before the wallet receives the net amount. The previous capped Guard kill bonus is replaced; already accrued service bonuses, Priest performance, repair pay and dawn wages remain intact. Private saved combat totals record kills, assists and gross bounty gold for the village run. The pack and help screen explain these rules. Lethal damage, wallet credits, account debt changes and brood offspring persist together in a transaction so reloads cannot repeat a payment or lose its credited death. Empty villages still pause.
 
@@ -282,7 +294,7 @@ Each new village starts with **20,000 gold in a public treasury**, once per run 
 | --- | --- | --- |
 | Guard base wage | 25 gold per active day/night cycle, prorated participation | Dawn |
 | Priest base wage | 25 gold per active day/night cycle, prorated participation | Dawn |
-| Zombie bounties, every role | 100 gross gold per kill or positive-damage assist, once per contributor per zombie, no cap | Immediately on death, subject to loan repayment |
+| Zombie bounties, every role | 100 ordinary / 200 armored or Brood husk / 1,000 Gravebreaker gross gold per kill or positive-damage assist, once per contributor per zombie, no nightly cap | Immediately on death, subject to loan repayment |
 | Priest performance | 1 per 50 meaningful HP healed; 5 per eligible revival; up to 25 extra | With dawn wages |
 | Repairs, every job | 1 per successful repair swing, up to 10 extra per cycle | Dawn |
 

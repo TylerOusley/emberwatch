@@ -69,3 +69,4 @@ dialog:has(.village-finance){width:1020px;max-width:95vw;padding:0;background:#1
   .vf-betting-table td:before{content:attr(data-label);display:block;margin-bottom:5px;color:#a9bca9;font-size:10px}
   .vf-betting-table .vf-betting-unavailable{grid-column:1/-1}
 }
+.village-finance details.vf-rules{padding:15px 18px;border:1px solid #a2ab7144;border-radius:6px;background:#11282a55}.village-finance details.vf-rules>summary{cursor:pointer;font-size:13px;color:#dfc591}.village-finance details.vf-rules[open]>summary{margin-bottom:15px}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createGameAudio, createFootstepSurface } from '../public/src/audio.js';
+import { createGameAudio, createFootstepSurface, TASK_RECORDINGS } from '../public/src/audio.js';
 
 class Node {
   constructor(){this.gain=this.pan=this.threshold=this.knee=this.ratio=this.playbackRate={value:1};this.connections=[];this.disconnected=false;}
@@ -15,10 +15,11 @@ class Context {
   createBufferSource(){const source=new Node();source.start=time=>{source.started=true;source.startAt=time;};source.stop=()=>{source.stopped=true;source.onended?.();};this.sources.push(source);return source;}
   async resume(){this.resumes++;this.state='running';}async close(){this.closed++;this.state='closed';}
 }
-function fixture({muted=false,storage,document}={}){
+function fixture({muted=false,storage,document,fetch=null,decodeAudioData}={}){
   const context=new Context(),saved=new Map([['emberwatch-muted',String(muted)]]);
+  if(decodeAudioData)context.decodeAudioData=decodeAudioData;
   const doc=document||new EventTarget();doc.hidden=false;
-  const audio=createGameAudio({contextFactory:()=>context,storage:storage||{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},document:doc,random:()=>.5});
+  const audio=createGameAudio({contextFactory:()=>context,storage:storage||{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},document:doc,random:()=>.5,fetch});
   return {audio,context,saved,doc};
 }
 function frame(time=0,overrides={}){
@@ -223,4 +224,97 @@ test('old, muted, faraway and reconnect musket shots do not replay',async()=>{
   audio.reset();update(audio,11,state(10.9,'reconnect'));update(audio,11.1,state(10.9,'reconnect'));
   assert.equal(audio.debug.events.musket,undefined,'reconnecting establishes a fresh baseline');
   update(audio,11.2,state(11.2,'fresh'));assert.equal(audio.debug.events.musket,1);audio.dispose();
+});
+
+const settleLoading=()=>new Promise(resolve=>setImmediate(resolve));
+function recordedFixture(options={}){
+  const fetched=[],decoded=[];
+  const fetch=async(url,options)=>{
+    fetched.push({url,options});
+    return {ok:true,arrayBuffer:async()=>new Uint8Array([fetched.length]).buffer};
+  };
+  const decodeAudioData=async data=>{
+    const buffer={duration:.8+new Uint8Array(data)[0]/100,recording:new Uint8Array(data)[0]};decoded.push(buffer);return buffer;
+  };
+  return {...fixture({fetch,decodeAudioData,...options}),fetched,decoded};
+}
+
+test('approved recordings load after a gesture, cache once and replace each procedural strike with one voice',async()=>{
+  const {audio,context,fetched,decoded}=recordedFixture();update(audio,0);
+  assert.equal(fetched.length,0,'no network or audio work before a user gesture');
+  await audio.unlock();await settleLoading();
+  assert.deepEqual(fetched.map(call=>call.url).sort(),Object.values(TASK_RECORDINGS).flat().sort());
+  assert.equal(decoded.length,5);assert.deepEqual(audio.debug.recordings,{stone:4,wood:1});
+  assert.equal(context.sources.length,0,'finishing a fetch never starts an old action');
+  const heard=[];
+  for(let i=0;i<12;i++){
+    update(audio,.1+i*.1);const before=context.sources.length;
+    assert.equal(audio.play('stone'),true);assert.equal(context.sources.length,before+1);
+    const source=context.sources.at(-1);assert.ok(decoded.includes(source.buffer));
+    assert.notEqual(source.buffer,heard.at(-1));heard.push(source.buffer);
+    assert.ok(source.playbackRate.value>=.985&&source.playbackRate.value<=1.015);
+    source.onended();
+  }
+  for(let start=0;start<heard.length;start+=4)assert.equal(new Set(heard.slice(start,start+4)).size,4);
+  assert.equal(context.buffers.length,0,'no procedural overlay is allocated when the recorded family is ready');
+  update(audio,2);assert.equal(audio.play('wood'),true);
+  const wood=context.sources.at(-1).buffer;assert.ok(decoded.includes(wood));assert.ok(!heard.includes(wood));
+  update(audio,2.1);assert.equal(audio.play('wood'),true);assert.equal(context.sources.at(-1).buffer,wood,'wood variation shares its decoded recording');
+  await audio.unlock();audio.reset();await audio.unlock();await settleLoading();assert.equal(fetched.length,5,'rejoining does not fetch or decode again');
+  assert.equal(audio.debug.activeVoices,0);audio.dispose();assert.deepEqual(audio.debug.recordings,{});
+});
+
+test('recordings retain voice limits, spatial audibility and mute behavior underground',async()=>{
+  const {audio,context}=recordedFixture();await audio.unlock();await settleLoading();
+  for(let i=0;i<100;i++){
+    audio.update(frame(i*.07,{position:{x:0,z:-151}}));
+    audio.play(i%2?'stone':'wood',{position:{x:0,z:-152}});
+    assert.ok(audio.debug.activeVoices<=16);
+  }
+  assert.equal(audio.debug.activeVoices,16);
+  assert.ok(context.sources.every(source=>source.buffer.recording));
+  audio.setMuted(true);assert.equal(audio.debug.activeVoices,0);assert.ok(context.sources.every(source=>source.stopped));
+  audio.setMuted(false);audio.update(frame(8,{position:{x:0,z:-151}}));
+  assert.equal(audio.play('stone',{position:{x:100,z:-151}}),false,'distant sources remain inaudible');
+  assert.equal(audio.play('stone',{position:{x:0,z:-152}}),true);
+  audio.reset();assert.equal(audio.debug.activeVoices,0);assert.equal(audio.play('wood'),false);audio.dispose();
+});
+
+test('failed downloads and decode failures preserve playable fallbacks without unhandled rejections or retries per strike',async()=>{
+  let requests=0,decodes=0;
+  const {audio,context}=recordedFixture({fetch:async url=>{
+    requests++;
+    if(url.endsWith('1.mp3'))throw Error('network unavailable');
+    if(url.endsWith('2.mp3'))return {ok:false};
+    return {ok:true,arrayBuffer:async()=>new ArrayBuffer(1)};
+  },decodeAudioData:async()=>{decodes++;throw Error('unsupported audio');}});
+  await audio.unlock();await settleLoading();assert.equal(requests,5);assert.equal(decodes,3);
+  assert.deepEqual(audio.debug.recordings,{});update(audio,0);
+  assert.equal(audio.play('stone'),true);update(audio,.1);assert.equal(audio.play('wood'),true);
+  assert.ok(context.sources.every(source=>source.buffer.getChannelData));
+  await audio.unlock();await settleLoading();assert.equal(requests,5,'unavailable assets do not cause a network loop on clicks');audio.dispose();
+});
+
+test('partial recording loads use healthy variants while a missing wood asset falls back independently',async()=>{
+  const {audio,context}=recordedFixture({fetch:async url=>({ok:!url.includes('wood')&&!url.endsWith('3.mp3'),arrayBuffer:async()=>new ArrayBuffer(1)})});
+  await audio.unlock();await settleLoading();assert.deepEqual(audio.debug.recordings,{stone:3});
+  update(audio,0);assert.equal(audio.play('stone'),true);assert.notEqual(context.sources.at(-1).buffer.recording,undefined);
+  assert.equal(audio.play('wood'),true);assert.equal(context.sources.at(-1).buffer.recording,undefined);audio.dispose();
+});
+
+test('loading completion does not replay muted actions and disposing in-flight loads releases their results',async()=>{
+  const pending=[];let decodes=0;
+  const delayedFetch=(url,{signal})=>new Promise(resolve=>pending.push({signal,resolve}));
+  const decodeAudioData=async()=>{decodes++;return {duration:.8,recording:decodes};};
+  const {audio,context}=recordedFixture({muted:true,fetch:delayedFetch,decodeAudioData});
+  await audio.unlock();update(audio,0);assert.equal(audio.play('stone'),false);
+  pending.forEach(call=>call.resolve({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)}));await settleLoading();
+  assert.equal(context.sources.length,0);assert.equal(decodes,5);audio.setMuted(false);assert.equal(context.sources.length,0);
+  assert.equal(audio.play('stone'),true);audio.dispose();
+  pending.length=0;decodes=0;
+  const disposed=recordedFixture({fetch:delayedFetch,decodeAudioData});await disposed.audio.unlock();disposed.audio.dispose();
+  assert.ok(pending.every(call=>call.signal.aborted));
+  pending.forEach(call=>call.resolve({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)}));await settleLoading();
+  assert.equal(decodes,0,'do not decode using a closed context');assert.deepEqual(disposed.audio.debug.recordings,{});
+  assert.equal(disposed.context.sources.length,0);
 });

@@ -1,12 +1,16 @@
 // Shared identities and presentation sizes; the server owns combat and time.
-export const ZOMBIE_BOUNTY_GOLD = 100;
+export const ZOMBIE_BOUNTIES = Object.freeze({ small: 100, large: 200, boss: 1000 });
+// Keep the base constant for callers describing an ordinary zombie.
+export const ZOMBIE_BOUNTY_GOLD = ZOMBIE_BOUNTIES.small;
+export const LARGE_ZOMBIE_BOUNTY_GOLD = ZOMBIE_BOUNTIES.large;
+export const BOSS_ZOMBIE_BOUNTY_GOLD = ZOMBIE_BOUNTIES.boss;
 export const ENEMY_TYPES = Object.freeze({
   shambler: Object.freeze({ label: 'Shambler', scale: 1, hp: 65, speed: 1.75, damage: 9, structureDamage: 8, reward: ZOMBIE_BOUNTY_GOLD, windup: .8, radius: 1.45, recovery: .8 }),
   runner: Object.freeze({ label: 'Grave runner', scale: .86, hp: 36, speed: 3.25, damage: 6, structureDamage: 5, reward: ZOMBIE_BOUNTY_GOLD, windup: .65, radius: 1.05, recovery: .65 }),
-  armored: Object.freeze({ label: 'Ironbound', scale: 1.12, hp: 110, speed: 1.5, damage: 13, structureDamage: 13, armor: .35, reward: ZOMBIE_BOUNTY_GOLD, windup: 1.1, radius: 1.65, recovery: 1 }),
-  splitter: Object.freeze({ label: 'Brood husk', scale: 1.45, hp: 135, speed: 1.4, damage: 12, structureDamage: 12, reward: ZOMBIE_BOUNTY_GOLD, windup: 1.45, radius: 2.7, recovery: 1.2 }),
+  armored: Object.freeze({ label: 'Ironbound', scale: 1.12, hp: 110, speed: 1.5, damage: 13, structureDamage: 13, armor: .35, reward: LARGE_ZOMBIE_BOUNTY_GOLD, windup: 1.1, radius: 1.65, recovery: 1 }),
+  splitter: Object.freeze({ label: 'Brood husk', scale: 1.45, hp: 135, speed: 1.4, damage: 12, structureDamage: 12, reward: LARGE_ZOMBIE_BOUNTY_GOLD, windup: 1.45, radius: 2.7, recovery: 1.2 }),
   splinter: Object.freeze({ label: 'Grave mite', scale: .54, hp: 18, speed: 2.6, damage: 3, structureDamage: 3, reward: ZOMBIE_BOUNTY_GOLD, windup: .65, radius: .85, recovery: .8 }),
-  siege: Object.freeze({ label: 'Gravebreaker', scale: 1.85, hp: 360, speed: 1.15, damage: 21, structureDamage: 75, reward: ZOMBIE_BOUNTY_GOLD, windup: 1.65, radius: 3.2, recovery: 2.4 })
+  siege: Object.freeze({ label: 'Gravebreaker', scale: 1.85, hp: 360, speed: 1.15, damage: 21, structureDamage: 75, reward: BOSS_ZOMBIE_BOUNTY_GOLD, windup: 1.65, radius: 3.2, recovery: 2.4 })
 });
 export const ENEMY_LIMITS = Object.freeze({ active: 120, graveEmergence: 2.2, splitEmergence: .65, splitCount: 3, siegeWindup: 1.65 });
 export const MELEE = Object.freeze({ playerRange: 3.2, guardRange: 2.6, halfArc: Math.PI / 3 });
@@ -16,6 +20,11 @@ export function inMeleeArc(from, target, range) {
 }
 export function enemyKind(enemy) {
   return Object.hasOwn(ENEMY_TYPES, enemy?.kind) ? enemy.kind : enemy?.elite ? 'armored' : 'shambler';
+}
+// Resolve from the authoritative kind, including migrated elites, never a saved
+// reward field or the damage/health scaling used for later waves.
+export function enemyBountyGold(enemy) {
+  return ENEMY_TYPES[enemyKind(enemy)].reward;
 }
 export function enemyStats(kind, band = 0, players = 1) {
   const type = ENEMY_TYPES[kind] ?? ENEMY_TYPES.shambler;

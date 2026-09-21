@@ -1,16 +1,18 @@
 import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
-import { RESOURCE_WEIGHTS, TOOL_WEIGHTS, TOOL_TIERS, inventoryWeight, carryCapacity, resourceWeight } from '../shared/content.js';
+import { BUILDING_TYPES, RESOURCE_WEIGHTS, TOOL_WEIGHTS, TOOL_TIERS, inventoryWeight, carryCapacity, resourceWeight } from '../shared/content.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
-import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_TOOLS, WORKER_EQUIPMENT, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, PLOT_STAFF, plotStaffCount, transporterTarget, workerStats, workerEmployment, workerTool } from '../shared/workers.js';
+import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_MINE_RESOURCES, WORKER_ASSIGNMENTS, WORKER_TOOLS, WORKER_EQUIPMENT, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, PLOT_STAFF, plotStaffCount, transporterTarget, workerStats, workerEmployment, workerTool } from '../shared/workers.js';
 import { plotStorageCapacity, productionRegrowSeconds, productionHarvest } from '../shared/production.js';
 import { resetNpcNavigation, stepNpcNavigation } from './navigation.js';
+import { ownedCartCount } from '../shared/cart-ownership.js';
+import { TRANSPORT } from '../shared/transport.js';
 
 const kinds = new Set(['worker_hire', 'worker_assign', 'worker_pause', 'worker_collect', 'worker_dismiss', 'worker_upgrade', 'worker_color', 'worker_equip', 'worker_unequip', 'worker_repair', 'worker_maintenance', 'worker_buy_tool', 'worker_auto_replace']);
 const tools = WORKER_TOOLS;
-const production = { wheat: 'wheat_farm', timber: 'tree_farm', stone: 'mine', iron: 'mine', coal: 'mine', sulfur: 'mine' };
+const production = { wheat: 'wheat_farm', timber: 'tree_farm', stone: 'mine', iron: 'mine', coal: 'mine', sulfur: 'mine', mine_all: 'mine' };
 const cargoResources = Object.keys(RESOURCE_WEIGHTS);
 const publicNodes = new Map(RESOURCES.map(node => [node.id, node]));
 const bank = BUILDINGS.find(building => building.id === 'bank');
@@ -96,6 +98,10 @@ export function ensureWorkers(v) {
     w.gatherProgress = Math.min(workerStats(w).gatherSeconds, w.gatherProgress);
     if (typeof w.paused !== 'boolean') w.paused = true;
     w.sourcePlotId ??= null; w.destinationPlotId ??= null;
+    // Older assignments could only deliver to their owner's buildings. Do not
+    // silently authorize a new recipient when a saved destination changes hands.
+    if (w.destinationPlotId && typeof w.destinationOwnerId !== 'string') w.destinationOwnerId = w.ownerId;
+    if (!w.destinationPlotId) w.destinationOwnerId = null;
     w.resource ??= null; w.mode ??= 'sell';
     w.anim ??= 'idle'; w.status ??= 'Choose an assignment'; w.hp = w.maxHp = 100;
   }
@@ -129,7 +135,7 @@ function reconcilePlotStaff(v) {
         v.workers.push(w);
       }
       Object.assign(w, { staffRole: role, staffRetired: false, resource, sourcePlotId: role === 'gatherer' ? plot.id : null,
-        mode: 'store', destinationPlotId: plot.id, targetPercent: 50, paused: true, targetNodeId: null,
+        mode: 'store', destinationPlotId: plot.id, destinationOwnerId: plot.ownerId, targetPercent: 50, paused: true, targetNodeId: null,
         gatherProgress: 0, delivering: cargoResources.some(id => w.cargo?.[id] > 0), status: role === 'gatherer' ? 'Plot worker ready — resume to start' : 'Choose a supply route' });
       resetNpcNavigation(w); claimed.add(key);
     }
@@ -143,15 +149,21 @@ function ownedWorker(v, p, id) {
 }
 
 function sourcePlot(v, w) {
-  return v.plots?.find(p => p.id === w.sourcePlotId && p.ownerId === w.ownerId && p.hp > 0 && p.building === production[w.resource]);
+  return v.plots?.find(p => p.id === w.sourcePlotId && p.ownerId === w.ownerId && p.hp > 0 && !p.ruined && !p.rebuilding && p.building === production[w.resource]);
 }
 
 function destinationPlot(v, w) {
-  return v.plots?.find(p => p.id === w.destinationPlotId && p.ownerId === w.ownerId && p.hp > 0 && p.building && PLOTS.some(m => m.id === p.id));
+  const plot = storageBuilding(v, w.destinationPlotId);
+  return plot?.ownerId === (w.destinationOwnerId ?? w.ownerId) ? plot : null;
+}
+
+function storageBuilding(v, id) {
+  return v.plots?.find(p => p.id === id && p.ownerId && p.hp > 0 && !p.ruined && !p.rebuilding && Object.hasOwn(BUILDING_TYPES, p.building ?? '') && PLOTS.some(m => m.id === p.id));
 }
 
 function storageSource(v, w) {
-  return v.plots?.find(p => p.id === w.sourcePlotId && p.ownerId === w.ownerId && p.hp > 0 && p.building && PLOTS.some(m => m.id === p.id));
+  const plot = storageBuilding(v, w.sourcePlotId);
+  return plot?.ownerId === w.ownerId ? plot : null;
 }
 
 function purchasedEquipment(tier) {
@@ -242,24 +254,28 @@ export function workersAction(sim, v, p, action) {
     if (w.roleLimitPaused) throw new Error('Your current role supports fewer personal workers. Become a Manager or dismiss another hire to reactivate this worker.');
     if (w.staffRole === 'transporter') {
       const source = storageSource(v, { ...w, sourcePlotId: action.sourcePlotId });
+      const destination = storageBuilding(v, action.destinationPlotId);
       if (!cargoResources.includes(action.resource)) throw new Error('Choose a stored resource to transport.');
-      if (!source || source.id === w.staffPlotId) throw new Error('Choose a different living source building you own.');
-      if (action.mode !== 'store' || action.destinationPlotId !== w.staffPlotId || !destinationPlot(v, w)) throw new Error('Transporters supply their own staffed building.');
+      if (!source) throw new Error('Choose a living source building you own.');
+      if (action.mode !== 'store' || !destination) throw new Error('Choose a living building for storage or donation.');
+      if (source.id === destination.id) throw new Error('Choose a different living source building you own.');
       if (!Number.isInteger(action.targetPercent) || action.targetPercent < 1 || action.targetPercent > 100) throw new Error('Choose a target percentage from 1 to 100.');
-      Object.assign(w, { resource: action.resource, sourcePlotId: source.id, targetPercent: action.targetPercent,
+      Object.assign(w, { resource: action.resource, sourcePlotId: source.id, mode: 'store', destinationPlotId: destination.id, destinationOwnerId: destination.ownerId, targetPercent: action.targetPercent,
         paused: false, delivering: hasCargo(w), gatherProgress: 0, targetNodeId: null, stalledFor: 0, status: 'Starting supply route' });
       resetNpcNavigation(w);
       return `Transporter will fill ${action.resource} to ${action.targetPercent}% of this building's storage capacity while anyone is online in the village and your wages are funded.`;
     }
-    if (!WORKER_RESOURCES.includes(action.resource)) throw new Error('Choose wheat, timber, stone, iron, coal or sulfur.');
+    if (!WORKER_ASSIGNMENTS.includes(action.resource)) throw new Error('Choose wheat, timber, stone, iron, coal, sulfur or all mine resources.');
     if (action.sourcePlotId !== null && typeof action.sourcePlotId !== 'string') throw new Error('Choose public resources or one of your production plots.');
+    if (action.resource === 'mine_all' && action.sourcePlotId === null) throw new Error('Choose an owned mine to gather all its resources.');
     if (!['store', 'sell'].includes(action.mode)) throw new Error('Choose whether to store or sell the resources.');
     const order = { ownerId: p.id, resource: action.resource, sourcePlotId: action.sourcePlotId, destinationPlotId: action.destinationPlotId };
     if (w.staffRole === 'gatherer' && action.sourcePlotId !== w.staffPlotId) throw new Error('Plot gatherers work at their own production plot.');
     if (action.sourcePlotId !== null && !sourcePlot(v, order)) throw new Error('Choose a living production building you own that supplies this resource.');
-    if (action.mode === 'store' && (typeof action.destinationPlotId !== 'string' || !destinationPlot(v, order))) throw new Error('Choose one of your living buildings for storage.');
+    const destination = action.mode === 'store' ? storageBuilding(v, action.destinationPlotId) : null;
+    if (action.mode === 'store' && !destination) throw new Error('Choose a living building for storage or donation.');
     if (action.mode === 'sell' && action.destinationPlotId !== null) throw new Error('Resource Exchange sales do not need a storage building.');
-    Object.assign(w, { resource: action.resource, sourcePlotId: action.sourcePlotId, mode: action.mode, destinationPlotId: action.mode === 'store' ? action.destinationPlotId : null,
+    Object.assign(w, { resource: action.resource, sourcePlotId: action.sourcePlotId, mode: action.mode, destinationPlotId: destination?.id ?? null, destinationOwnerId: destination?.ownerId ?? null,
       paused: false, status: 'Starting work', targetNodeId: null, gatherProgress: 0, delivering: hasCargo(w), nextSearchAt: 0, stalledFor: 0 });
     resetNpcNavigation(w);
     return 'Worker assigned. Work continues day and night while anyone is online in the village and your wages are funded.';
@@ -326,7 +342,7 @@ function approach(node, from, extraSolids) {
 }
 
 function availableNodes(v, w) {
-  if (w.sourcePlotId !== null) return sourcePlot(v, w) ? (v.plotResources ?? []).filter(node => node.plotId === w.sourcePlotId && node.type === w.resource && node.available && node.remaining > 0).map(node => ({ node, state: node })) : [];
+  if (w.sourcePlotId !== null) return sourcePlot(v, w) ? (v.plotResources ?? []).filter(node => node.plotId === w.sourcePlotId && (w.resource === 'mine_all' ? WORKER_MINE_RESOURCES.includes(node.type) : node.type === w.resource) && node.available && node.remaining > 0).map(node => ({ node, state: node })) : [];
   return (v.resources ?? []).flatMap(state => {
     const node = resolveResource(publicNodes.get(state.id), state);
     // Sidewall woodland needs a much longer route around the wall's southern
@@ -392,7 +408,7 @@ function storeCargo(v, w) {
   let room = Math.max(0, plotStorageCapacity(plot) - inventoryWeight(plot.storage));
   for (const id of cargoResources) {
     const wanted = w.staffRole === 'transporter' && id === w.resource ? Math.max(0, transporterTarget(plotStorageCapacity(plot), RESOURCE_WEIGHTS[id], w.targetPercent) - (plot.storage[id] ?? 0)) : Infinity;
-    const amount = Math.min(w.cargo[id], wanted, Math.floor((room + 1e-6) / RESOURCE_WEIGHTS[id]));
+    const amount = Math.min(w.cargo[id], wanted, donationAllowance(v, w, plot, id), Math.floor((room + 1e-6) / RESOURCE_WEIGHTS[id]));
     if (amount > 0 && whole(plot.storage[id] ?? 0) && whole((plot.storage[id] ?? 0) + amount)) {
       plot.storage[id] = (plot.storage[id] ?? 0) + amount; w.cargo[id] -= amount; room -= amount * RESOURCE_WEIGHTS[id];
     }
@@ -401,16 +417,37 @@ function storeCargo(v, w) {
   return !hasCargo(w);
 }
 
+function donationAllowance(v, w, plot, resource) {
+  if (resource !== 'cart' || plot.ownerId === w.ownerId) return Infinity;
+  const recipient = v.players?.[plot.ownerId];
+  return recipient ? Math.max(0, TRANSPORT.maxCarts - ownedCartCount(v, recipient)) : 0;
+}
+
+function incomingDelivery(v, w, destination, resource) {
+  const owner = v.players?.[w.ownerId];
+  // Paused and unfunded donors keep their cargo, but must not reserve another
+  // owner's supply target forever. Online presence is not a wage requirement.
+  if (w.paused || w.roleLimitPaused || w.staffRetired || !owner || allowance(w, owner, 1) <= 0 || w.mode !== 'store'
+      || w.destinationPlotId !== destination.id || (w.destinationOwnerId ?? w.ownerId) !== destination.ownerId
+      || !(w.staffRole === 'transporter' ? cargoResources : WORKER_ASSIGNMENTS).includes(w.resource)
+      || !(w.staffRole === 'transporter' || w.delivering)) return 0;
+  // A transporter retains any excess over its own target on arrival. Count
+  // only the portion it can actually deliver toward this recipient's stock.
+  const wanted = w.staffRole === 'transporter' && resource === w.resource
+    ? Math.max(0, transporterTarget(plotStorageCapacity(destination), RESOURCE_WEIGHTS[resource], w.targetPercent) - (destination.storage[resource] ?? 0)) : Infinity;
+  return Math.min(w.cargo?.[resource] ?? 0, wanted, donationAllowance(v, w, destination, resource));
+}
+
 function transporterTick(v, w, p, dt, neighbors, solids) {
   const destination = destinationPlot(v, w);
-  if (!destination || destination.id !== w.staffPlotId) { returnHome(v, w, 'Choose a storage building', dt, neighbors, solids); return; }
+  if (!destination) { returnHome(v, w, 'Choose a storage building', dt, neighbors, solids); return; }
   if (hasCargo(w)) {
     const time = allowance(w, p, dt);
     if (!time) { returnHome(v, w, 'Needs wallet gold for wages', dt, neighbors, solids); return; }
     const point = plotFront(PLOTS.find(anchor => anchor.id === destination.id), 1);
     if (distance(w, point) > .7) {
       const moved = move(w, point, time, neighbors, solids, p, dt);
-      w.status = moved ? 'Transporting supplies to own building' : 'Waiting for a clear delivery path';
+      w.status = moved ? destination.ownerId === w.ownerId ? 'Transporting supplies to storage' : 'Delivering donated supplies' : 'Waiting for a clear delivery path';
     } else if (storeCargo(v, w)) {
       w.delivering = false; w.workXp = Math.min(WORKER_MAX_XP, w.workXp + 1); ensureWorkerProgress(w);
     }
@@ -419,9 +456,9 @@ function transporterTick(v, w, p, dt, neighbors, solids) {
   const source = storageSource(v, w);
   if (!source || source === destination) { returnHome(v, w, 'Choose a supply source', dt, neighbors, solids); return; }
   const weight = RESOURCE_WEIGHTS[w.resource];
-  const incoming = v.workers.reduce((sum, worker) => sum + (worker !== w && worker.ownerId === w.ownerId && !worker.staffRetired && worker.mode === 'store' && worker.destinationPlotId === destination.id ? worker.cargo?.[w.resource] ?? 0 : 0), 0);
+  const incoming = v.workers.reduce((sum, worker) => sum + (worker === w ? 0 : incomingDelivery(v, worker, destination, w.resource)), 0);
   const wanted = Math.max(0, transporterTarget(plotStorageCapacity(destination), weight, w.targetPercent) - (destination.storage[w.resource] ?? 0) - incoming);
-  const room = Math.max(0, Math.floor((plotStorageCapacity(destination) - inventoryWeight(destination.storage) + 1e-6) / weight));
+  const room = Math.min(donationAllowance(v, w, destination, w.resource), Math.max(0, Math.floor((plotStorageCapacity(destination) - inventoryWeight(destination.storage) + 1e-6) / weight)));
   const available = source.storage[w.resource] ?? 0;
   if (!whole(available) || !whole(destination.storage[w.resource] ?? 0)) { w.status = 'Invalid storage balance — supply route paused'; return; }
   if (!wanted || !room) { w.status = 'Supply target met or storage full'; return; }
@@ -469,20 +506,13 @@ export function workersTick(sim, v, dt) {
     w.anim = 'idle';
     const p = v.players?.[w.ownerId];
     const stats = workerStats(w, p);
-    const reason = w.staffRetired ? 'Plot staff inactive — cargo kept' : w.roleLimitPaused ? 'Current role worker limit — cargo and wages kept' : w.paused ? 'Paused' : !p ? 'Owner unavailable' : !(w.staffRole === 'transporter' ? cargoResources : WORKER_RESOURCES).includes(w.resource) ? 'Choose an assignment' : null;
+    const reason = w.staffRetired ? 'Plot staff inactive — cargo kept' : w.roleLimitPaused ? 'Current role worker limit — cargo and wages kept' : w.paused ? 'Paused' : !p ? 'Owner unavailable' : !(w.staffRole === 'transporter' ? cargoResources : WORKER_ASSIGNMENTS).includes(w.resource) ? 'Choose an assignment' : null;
     if (reason) { returnHome(v, w, reason, dt, neighbors, solids); continue; }
     if (w.staffRole === 'transporter') { transporterTick(v, w, p, dt, neighbors, solids); continue; }
     if (w.mode === 'store' && !destinationPlot(v, w)) { returnHome(v, w, 'Choose a storage building', dt, neighbors, solids); continue; }
-    if (w.sourcePlotId !== null && !sourcePlot(v, w) && !hasCargo(w)) { returnHome(v, w, 'Choose a resource source', dt, neighbors, solids); continue; }
+    if ((w.sourcePlotId !== null || w.resource === 'mine_all') && !sourcePlot(v, w) && !hasCargo(w)) { returnHome(v, w, 'Choose a resource source', dt, neighbors, solids); continue; }
     const time = allowance(w, p, dt);
     if (!time) { returnHome(v, w, 'Needs wallet gold for wages', dt, neighbors, solids); continue; }
-    const tool = tools[w.resource];
-    const harvest = productionHarvest(1, w.sourcePlotId === null ? null : sourcePlot(v, w), w.resource, v.environment, w.environmentYieldRemainders?.[w.resource] ?? 0);
-    const savedRemainder = w.toolYieldRemainders?.[w.resource], toolRemainder = Number.isFinite(savedRemainder) && savedRemainder >= 0 && savedRemainder < 1 ? savedRemainder : 0;
-    const toolTotal = harvest.yield * WORKER_EQUIPMENT[workerTool(w, tool).tier].multiplier + toolRemainder;
-    const harvestYield = Math.floor(toolTotal + 1e-9);
-    const harvestWeight = RESOURCE_WEIGHTS[w.resource] * harvestYield;
-    if (inventoryWeight(w.cargo) + harvestWeight > stats.carryCapacity) w.delivering = true;
     const nodes = availableNodes(v, w);
     if (!nodes.length && hasCargo(w)) w.delivering = true;
     if (w.delivering && hasCargo(w)) {
@@ -491,16 +521,12 @@ export function workersTick(sim, v, dt) {
       w.targetNodeId = null; w.gatherProgress = 0;
       if (plot ? distance(w, target) > .7 : !canUseBuilding(w, market)) {
         const moved = move(w, target, time, neighbors, solids, p, dt);
-        w.status = moved ? (plot ? 'Carrying goods to storage' : 'Carrying goods to Resource Exchange') : 'Waiting for a clear delivery path';
+        w.status = moved ? (plot ? plot.ownerId === w.ownerId ? 'Carrying goods to storage' : 'Delivering donated supplies' : 'Carrying goods to Resource Exchange') : 'Waiting for a clear delivery path';
       } else {
         const complete = plot ? storeCargo(v, w) : sellCargo(sim, v, w, p);
         if (complete) w.delivering = false;
       }
       continue;
-    }
-    if (w.mode === 'store') {
-      const plot = destinationPlot(v, w);
-      if (inventoryWeight(plot.storage) + harvestWeight > plotStorageCapacity(plot)) { w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue; }
     }
     if (w.mode === 'sell' && (!whole(v.treasury) || v.treasury <= TREASURY_RESERVE)) { w.status = 'Waiting for treasury funds'; w.gatherProgress = 0; continue; }
     let chosen = nodes.find(({ node }) => node.id === w.targetNodeId), target = chosen && approach(chosen.node, w, solids);
@@ -514,14 +540,28 @@ export function workersTick(sim, v, dt) {
       }
     }
     if (!chosen || !target) { w.status = 'Waiting for resources'; continue; }
+    // All yield, capacity, regrowth and tool accounting follow the actual node,
+    // never the mine_all assignment. Depleting one vein releases the target so
+    // the normal bounded search can find another resource in the same plot.
+    const resource = chosen.node.type, tool = tools[resource];
+    const harvest = productionHarvest(1, w.sourcePlotId === null ? null : sourcePlot(v, w), resource, v.environment, w.environmentYieldRemainders?.[resource] ?? 0);
+    const savedRemainder = w.toolYieldRemainders?.[resource], toolRemainder = Number.isFinite(savedRemainder) && savedRemainder >= 0 && savedRemainder < 1 ? savedRemainder : 0;
+    const toolTotal = harvest.yield * WORKER_EQUIPMENT[workerTool(w, tool).tier].multiplier + toolRemainder;
+    const harvestYield = Math.floor(toolTotal + 1e-9);
+    const harvestWeight = RESOURCE_WEIGHTS[resource] * harvestYield;
+    if (inventoryWeight(w.cargo) + harvestWeight > stats.carryCapacity) { w.delivering = true; w.gatherProgress = 0; continue; }
+    if (w.mode === 'store') {
+      const plot = destinationPlot(v, w);
+      if (inventoryWeight(plot.storage) + harvestWeight > plotStorageCapacity(plot)) { w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue; }
+    }
     if (distance(w, target) > .65 || distance(w, chosen.node) > 3.3 || !openSegment(w, chosen.node, [...SOLIDS, ...solids])) {
       w.gatherProgress = 0;
       const moved = move(w, target, time, neighbors, solids, p, dt);
-      w.status = moved ? `Walking to ${w.resource}` : 'Waiting for a clear gathering path';
+      w.status = moved ? `Walking to ${resource}` : 'Waiting for a clear gathering path';
       continue;
     }
     if (w.gatherProgress + time + 1e-7 < stats.gatherSeconds) {
-      payForTime(w, p, time); w.gatherProgress += time; w.status = `Gathering ${w.resource}`; w.anim = 'gather';
+      payForTime(w, p, time); w.gatherProgress += time; w.status = `Gathering ${resource}`; w.anim = 'gather';
       w.yaw = Math.atan2(chosen.node.x - w.x, chosen.node.z - w.z);
       continue;
     }
@@ -533,7 +573,7 @@ export function workersTick(sim, v, dt) {
     const replacing = !!price && whole(account?.bank) && account.bank >= price;
     const replacingBefore = replacing && item.durability === 0;
     const completedTotal = replacingBefore ? harvest.yield * WORKER_EQUIPMENT[item.tier].multiplier + toolRemainder : toolTotal;
-    const completedYield = Math.floor(completedTotal + 1e-9), completedWeight = RESOURCE_WEIGHTS[w.resource] * completedYield;
+    const completedYield = Math.floor(completedTotal + 1e-9), completedWeight = RESOURCE_WEIGHTS[resource] * completedYield;
     if (inventoryWeight(w.cargo) + completedWeight > stats.carryCapacity) { w.delivering = true; w.gatherProgress = 0; continue; }
     if (w.mode === 'store' && inventoryWeight(destinationPlot(v, w).storage) + completedWeight > plotStorageCapacity(destinationPlot(v, w))) {
       w.status = 'Storage full — work paused'; w.gatherProgress = 0; continue;
@@ -541,17 +581,17 @@ export function workersTick(sim, v, dt) {
     const finishHarvest = () => {
       const replace = () => { sim.store.bank(p.id, -price); w.equipment[tool] = purchasedEquipment(item.tier); };
       if (replacingBefore) replace();
-      payForTime(w, p, time); w.gatherProgress = 0; w.status = `Gathering ${w.resource}`; w.anim = 'gather';
+      payForTime(w, p, time); w.gatherProgress = 0; w.status = `Gathering ${resource}`; w.anim = 'gather';
       w.yaw = Math.atan2(chosen.node.x - w.x, chosen.node.z - w.z);
-      w.cargo[w.resource] += completedYield; chosen.state.remaining--;
-      w.environmentYieldRemainders ??= {}; w.environmentYieldRemainders[w.resource] = harvest.remainder;
-      w.toolYieldRemainders ??= {}; w.toolYieldRemainders[w.resource] = Math.max(0, completedTotal - completedYield);
+      w.cargo[resource] += completedYield; chosen.state.remaining--;
+      w.environmentYieldRemainders ??= {}; w.environmentYieldRemainders[resource] = harvest.remainder;
+      w.toolYieldRemainders ??= {}; w.toolYieldRemainders[resource] = Math.max(0, completedTotal - completedYield);
       if (w.equipment[tool]?.durability > 0) w.equipment[tool].durability--;
       if (replacing && !replacingBefore) replace();
       w.workXp = Math.min(WORKER_MAX_XP, w.workXp + 1); ensureWorkerProgress(w);
       if (chosen.state.remaining <= 0) {
         chosen.state.available = false;
-        chosen.state.regrowAt = v.clock + productionRegrowSeconds(w.resource, w.sourcePlotId === null ? null : sourcePlot(v, w), v.environment);
+        chosen.state.regrowAt = v.clock + productionRegrowSeconds(resource, w.sourcePlotId === null ? null : sourcePlot(v, w), v.environment);
         w.targetNodeId = null;
       }
     };
@@ -571,7 +611,7 @@ export function workersSnapshot(v, viewerId) {
     backpackTier: 1, tiers: Object.fromEntries(['axe', 'pickaxe', 'scythe'].map(tool => [tool, workerTool(w, tool).tier])),
     ...(viewerId === w.ownerId ? { resource: w.resource, sourcePlotId: w.sourcePlotId,
       staffPlotId: w.staffPlotId ?? null, staffSlot: w.staffSlot ?? null, staffRole: w.staffRole ?? null, staffRetired: !!w.staffRetired, targetPercent: w.targetPercent ?? 50,
-      mode: w.mode, destinationPlotId: w.destinationPlotId, status: w.status,
+      mode: w.mode, destinationPlotId: w.destinationPlotId, destinationOwnerId: w.destinationOwnerId, status: w.status,
       paused: w.paused, cargo: { ...w.cargo }, paidWorkSeconds: w.paidWorkSeconds,
       roleLimitPaused: w.roleLimitPaused, employment: workerEmployment(v.players?.[w.ownerId]),
       equipment: structuredClone(w.equipment), autoReplaceEnabled: w.autoReplaceEnabled,

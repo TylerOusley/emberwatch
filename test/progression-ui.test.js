@@ -22,7 +22,8 @@ function fixture(t) {
   return {ui,player,plot,state,sent,waypoints,guide,content,get html(){return html;},get opens(){return opens;},field:id=>content.querySelector('#'+id),click(id){const c=content.querySelector('#'+id);assert.ok(c);assert.equal(c.disabled,false);c.onclick();}};
 }
 test('first-watch checklist is optional, compact, server-driven and marks its next destination without a modal',t=>{
-  const f=fixture(t);f.ui.refresh();assert.equal(f.opens,0);assert.equal(f.guide.hidden,false);assert.match(f.guide.innerHTML,/Choose your first tool/);assert.doesNotMatch(f.guide.innerHTML,/<ol/);
+  const f=fixture(t);f.ui.refresh();assert.equal(f.opens,0);assert.equal(f.guide.hidden,false);assert.match(f.guide.innerHTML,/aria-expanded="false"/);assert.doesNotMatch(f.guide.innerHTML,/Choose your first tool|<ol/);assert.equal(f.guide.querySelector('.guide-mark'),undefined);
+  f.guide.querySelector('.guide-toggle').onclick();assert.match(f.guide.innerHTML,/aria-expanded="true"/);assert.match(f.guide.innerHTML,/Choose your first tool/);assert.match(f.guide.innerHTML,/<ol/);
   f.guide.querySelector('.guide-mark').onclick();assert.deepEqual(f.waypoints[0],{...buildingEntrance(BUILDINGS.find(b=>b.id==='tools')),label:'Oak & Iron'});
   f.guide.querySelector('.guide-dismiss').onclick();assert.deepEqual(f.sent.at(-1),{type:'action',kind:'guide_visibility',dismissed:true});assert.equal(f.state.progression.guide.dismissed,false,'no local progress forgery');
   f.state.progression.guide.dismissed=true;f.ui.refresh();assert.equal(f.guide.hidden,true);f.ui.showGuide();assert.deepEqual(f.sent.at(-1),{type:'action',kind:'guide_visibility',dismissed:false});
@@ -39,9 +40,20 @@ test('appearance controls retain drafts while snapshots arrive and require prope
 });
 
 test('mining guide leads beginners to the cave mouth and follows actual ore rolls underground',t=>{
-  const f=fixture(t);f.state.progression.guide.done=['tool'];f.ui.refresh();f.guide.querySelector('.guide-mark').onclick();
+  const f=fixture(t);f.state.progression.guide.done=['tool'];f.ui.refresh();f.guide.querySelector('.guide-toggle').onclick();f.guide.querySelector('.guide-mark').onclick();
   assert.deepEqual(f.waypoints.at(-1),{...CAVE_ENTRANCE,label:'Mountain mine entrance'});
   const node=RESOURCES.find(n=>n.caveTier==='middle'&&n.type!=='stone');
   Object.assign(f.player,{x:node.x+1,z:node.z});f.state.resources=RESOURCES.map(n=>({id:n.id,type:n.id===node.id?'stone':n.type,available:n.id===node.id}));
   f.guide.querySelector('.guide-mark').onclick();assert.deepEqual(f.waypoints.at(-1),{x:node.x,z:node.z,label:'Gather stone'});
+});
+
+
+test('guide expansion survives progress updates and reopening from the menu reveals the next step',t=>{
+  const f=fixture(t);f.ui.refresh();const collapsed=f.guide.innerHTML;
+  f.state.players.push({id:'bob',online:true});f.ui.refresh();assert.equal(f.guide.innerHTML,collapsed);
+  f.guide.querySelector('.guide-toggle').onclick();
+  f.state.progression.guide.done.push('tool');f.ui.refresh();assert.match(f.guide.innerHTML,/aria-expanded="true"/);assert.match(f.guide.innerHTML,/1\/5/);assert.match(f.guide.innerHTML,/guide-mark/);
+  f.guide.querySelector('.guide-toggle').onclick();assert.match(f.guide.innerHTML,/aria-expanded="false"/);assert.equal(f.guide.querySelector('.guide-mark'),undefined);
+  f.state.progression.guide.dismissed=true;f.ui.refresh();f.ui.showGuide();f.state.progression.guide.dismissed=false;f.ui.refresh();assert.equal(f.guide.hidden,false);assert.match(f.guide.innerHTML,/aria-expanded="true"/);
+  f.ui.clear();f.ui.refresh();assert.match(f.guide.innerHTML,/aria-expanded="false"/);
 });

@@ -46,7 +46,7 @@ test('dawn respawn loses equipment and pack but preserves savings and offers cre
   const f=await fixture(t,'priest'), {p,v,sim,store}=f;
   p.wallet=100;p.inventory.wheat=30;p.durability.axe=80;p.backpackTier=3;store.bank(p.id,65);
   sim.hurtPlayer(v,p,500); assert.throws(()=>f.act({kind:'respawn'}),/dawn/);
-  sim.dawn(v); f.act({kind:'respawn'});
+  sim.startNight(v); sim.dawn(v); f.act({kind:'respawn'});
   assert.equal(p.wallet,75);assert.equal(p.hp,125);assert.equal(p.maxHp,125);assert.equal(p.tool,'');
   assert.equal(p.backpackTier,0);assert.equal(carryCapacity(p),100);assert.equal(store.account(p.id).bank,65);
   assert.ok(Object.values(p.durability).every(n=>n===0));assert.ok(Object.values(p.inventory).every(n=>n===0));

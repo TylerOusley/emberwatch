@@ -8,19 +8,22 @@ import { Simulation } from './simulation.js';
 import { VillageChat } from './chat.js';
 import { randomUUID } from 'node:crypto';
 import { accountCrateSnapshot, crateAccountAction } from './crates.js';
+import { listFeedback, submitFeedback, reviewFeedback, feedbackMarkdown } from './feedback.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary', '.mp3': 'audio/mpeg' };
 function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(JSON.stringify(value));
 }
-async function readJson(req) {
-  let body = '';
+async function readJson(req, maximumBytes = 8192) {
+  const chunks = []; let bytes = 0;
   for await (const chunk of req) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 8192) throw new Error('Request too large.');
+    bytes += chunk.length;
+    if (bytes > maximumBytes) throw new Error('Request too large.');
+    chunks.push(chunk);
   }
+  const body = Buffer.concat(chunks).toString('utf8');
   try { const value = JSON.parse(body); if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(); return value; }
   catch { throw new Error('Send a valid JSON object.'); }
 }
@@ -42,6 +45,34 @@ export function createApp(options = {}) {
       if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, game: 'emberwatch' });
       if (req.method === 'GET' && url.pathname === '/api/config') return json(res, 200, { devTools: simulation.devTools });
       if (req.method === 'GET' && url.pathname === '/api/villages') return json(res, 200, { villages: simulation.list() });
+      if (url.pathname === '/api/feedback' || url.pathname.startsWith('/api/feedback/')) {
+        const account = store.accountFromToken(req.headers.authorization?.replace(/^Bearer /, ''));
+        if (!account) return json(res, 401, { error: 'Sign in to send or read feedback.' });
+        try {
+          if (url.pathname === '/api/feedback' && req.method === 'GET') return json(res, 200, listFeedback(store, account.id, url.searchParams));
+          if (url.pathname === '/api/feedback' && req.method === 'POST') {
+            const result = submitFeedback(store, simulation, account.id, await readJson(req, 16384), options.feedbackClock?.() ?? Date.now());
+            return json(res, result.replayed ? 200 : 201, result);
+          }
+          if (url.pathname === '/api/feedback/review' && req.method === 'GET') return json(res, 200, listFeedback(store, account.id, url.searchParams, true));
+          if (url.pathname === '/api/feedback/export' && req.method === 'GET') {
+            const page = listFeedback(store, account.id, url.searchParams, true), format = url.searchParams.get('format') ?? 'json';
+            if (format === 'json') return json(res, 200, page);
+            if (format !== 'markdown') return json(res, 400, { error: 'Choose JSON or Markdown export.' });
+            res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="emberwatch-feedback.md"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+            return res.end(feedbackMarkdown(page));
+          }
+          const reviewMatch = url.pathname.match(/^\/api\/feedback\/([^/]+)\/review$/);
+          if (reviewMatch && req.method === 'POST') return json(res, 200, reviewFeedback(store, account.id, reviewMatch[1], await readJson(req), options.feedbackClock?.() ?? Date.now()));
+          return json(res, 405, { error: 'Method not allowed.' });
+        } catch (error) {
+          // Validation is intentionally readable; never expose SQL details or
+          // claim success when the durable write failed.
+          const bodyError = ['Request too large.', 'Send a valid JSON object.'].includes(error.message);
+          const status = error.statusCode ?? (bodyError ? 400 : 500);
+          return json(res, status, { error: status === 500 ? 'Feedback could not be saved or loaded. Please retry.' : error.message });
+        }
+      }
       if (url.pathname === '/api/crates' || url.pathname === '/api/crates/action') {
         const account = store.accountFromToken(req.headers.authorization?.replace(/^Bearer /, ''));
         if (!account) return json(res, 401, { error: 'Sign in to manage your crates and loadout.' });

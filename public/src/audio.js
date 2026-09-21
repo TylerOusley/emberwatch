@@ -1,7 +1,12 @@
 import { caveAreaAt } from '../../shared/caves.js';
 
-// Original, quiet procedural sounds. No downloads or continuously running
-// oscillators: short cached buffers share one master bus and a bounded voice pool.
+// Short cached buffers share one master bus and a bounded voice pool. Gathering
+// uses the approved field recordings; other cues and offline fallbacks are local.
+export const TASK_RECORDINGS = Object.freeze({
+  stone: Object.freeze([1, 2, 3, 4].map(n => `/assets/audio/pickaxe-rock-${n}.mp3`)),
+  wood: Object.freeze(['/assets/audio/wood-chop.mp3'])
+});
+const RECORDING_GAIN = Object.freeze({ stone: .46, wood: .42 });
 const TAU = Math.PI * 2, clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const SOUND = Object.freeze({
   swing: [.20, .17], musket: [.68, .25], tap: [.17, .19], wood: [.19, .19], stone: [.17, .18], gather: [.24, .13], repair: [.21, .17],
@@ -92,8 +97,10 @@ function makeBuffer(context, kind, variant=0) {
       case 'grass': s=(n*.32+smooth*.55)*Math.sin(Math.PI*u)**2;break;
       case 'stepStone': s=(Math.sin(TAU*117*t)*.4+smooth*.7+n*.15)*Math.exp(-t*32);break;
       case 'hoof': s=(Math.sin(TAU*330*t)*.36+Math.sin(TAU*163*t)*.25+n*.22)*Math.exp(-t*31);break;
-      case 'stone': s=(Math.sin(TAU*960*profile.tone*t)*.33+Math.sin(TAU*1730*profile.overtone*t)*.15+n*.23*profile.noise)*Math.exp(-t*30*profile.decay);break;
-      case 'wood': s=(Math.sin(TAU*237*profile.tone*t)*.40+Math.sin(TAU*381*profile.overtone*t)*.17+smooth*.7*profile.noise)*Math.exp(-t*24*profile.decay);break;
+      // A subdued, unpitched impact while recordings load or if decoding fails.
+      // Never layer these fallbacks over a recorded strike.
+      case 'stone': s=(n*.45+smooth*.45)*profile.noise*Math.exp(-t*30*profile.decay);break;
+      case 'wood': s=(smooth*1.2+n*.10)*profile.noise*Math.exp(-t*24*profile.decay);break;
       case 'gather': s=(n*.22*profile.noise+smooth*.85)*Math.sin(Math.PI*u)**1.5+Math.sin(TAU*640*profile.tone*t)*.13*Math.exp(-t*48*profile.decay);break;
       case 'repair': s=(Math.sin(TAU*390*profile.tone*t)*.33+Math.sin(TAU*1160*profile.overtone*t)*.11+smooth*.56*profile.noise+n*.10)*Math.exp(-t*27*profile.decay);break;
       case 'hit': s=(smooth*1.25+Math.sin(TAU*93*t)*.35)*Math.exp(-t*23);break;
@@ -113,20 +120,47 @@ export function createGameAudio(options = {}) {
   let surfaceAt=options.surfaceAt||createFootstepSurface(), listener=null, camera=null, now=0;
   let previous=null, snapshotRef=null, previousPosition=null, steps=0, nextBird=Infinity, nextCricket=Infinity, nextBreeze=Infinity, nextGroan=Infinity;
   let bellNight=null,underground=false;
-  const buffers=new Map(), voices=new Set(), lastPlayed=new Map(), taskBags=new Map(), counts={};
+  const buffers=new Map(), recordings=new Map(), voices=new Set(), lastPlayed=new Map(), taskBags=new Map(), counts={};
+  let recordingsPromise=null;
+  const fetchRecording=options.fetch===undefined?globalThis.fetch?.bind(globalThis):options.fetch;
+  const loadingControllers=new Set();
   const contextFactory=options.contextFactory||(()=>{const Context=globalThis.AudioContext||globalThis.webkitAudioContext;return Context?new Context():null;});
   const random=typeof options.random==='function'?options.random:Math.random;
   const hidden=()=>doc?.hidden===true;
-  function nextVariant(kind){
+  function nextVariant(kind,count=TASK_PROFILES.length){
     if(!VARIED_TASKS.has(kind))return 0;
     let bag=taskBags.get(kind);
-    if(!bag){bag={remaining:[],last:-1};taskBags.set(kind,bag);}
+    if(!bag||bag.count!==count){bag={remaining:[],last:-1,count};taskBags.set(kind,bag);}
     if(!bag.remaining.length){
-      bag.remaining=TASK_PROFILES.map((_,i)=>i);
+      bag.remaining=Array.from({length:count},(_,i)=>i);
       for(let i=bag.remaining.length-1;i>0;i--){const j=Math.floor(clamp(random(),0,.999999)* (i+1));[bag.remaining[i],bag.remaining[j]]=[bag.remaining[j],bag.remaining[i]];}
       if(bag.remaining.at(-1)===bag.last)[bag.remaining[0],bag.remaining[bag.remaining.length-1]]=[bag.remaining.at(-1),bag.remaining[0]];
     }
     bag.last=bag.remaining.pop();return bag.last;
+  }
+  function loadRecordings(){
+    if(recordingsPromise||!fetchRecording||!context?.decodeAudioData)return;
+    const target=context;
+    // Start only after a user gesture. Decode once, never in the render loop,
+    // and never play delayed actions when an asynchronous request finishes.
+    recordingsPromise=Promise.all(Object.entries(TASK_RECORDINGS).map(async([kind,urls])=>{
+      const loaded=await Promise.all(urls.map(async url=>{
+        const controller=new AbortController();loadingControllers.add(controller);
+        const timeout=setTimeout(()=>controller.abort(),8000);
+        try{
+          const response=await fetchRecording(url,{signal:controller.signal,cache:'force-cache'});
+          if(!response.ok)return null;
+          const data=await response.arrayBuffer();
+          if(disposed||context!==target)return null;
+          const buffer=await target.decodeAudioData(data);
+          return buffer&&Number.isFinite(buffer.duration)&&buffer.duration>0&&buffer.duration<=2.5?buffer:null;
+        }catch{return null;}
+        finally{clearTimeout(timeout);loadingControllers.delete(controller);}
+      }));
+      if(disposed||context!==target)return;
+      const available=loaded.filter(Boolean);
+      if(available.length)recordings.set(kind,available);
+    })).catch(()=>{});
   }
   function release(voice, stop=false){
     if(!voices.delete(voice))return;
@@ -157,12 +191,13 @@ export function createGameAudio(options = {}) {
     }
     let source,gain,panner,voice;
     try{
-      const variant=nextVariant(kind),bufferKey=VARIED_TASKS.has(kind)?`${kind}:${variant}`:kind;
-      if(!buffers.has(bufferKey))buffers.set(bufferKey,makeBuffer(context,kind,variant));
+      const family=recordings.get(kind),variant=nextVariant(kind,family?.length||TASK_PROFILES.length);
+      const bufferKey=VARIED_TASKS.has(kind)?`${kind}:${variant}`:kind;
+      if(!family&&!buffers.has(bufferKey))buffers.set(bufferKey,makeBuffer(context,kind,variant));
       source=context.createBufferSource();gain=context.createGain();
-      source.buffer=buffers.get(bufferKey);
-      source.playbackRate.value=kind==='bell'||kind==='heal'?1:.94+random()*.12;
-      gain.gain.value=SOUND[kind][1]*attenuation*clamp(Number.isFinite(detail.strength)?detail.strength:1,0,1.4);
+      source.buffer=family?.[variant]||buffers.get(bufferKey);
+      source.playbackRate.value=family?.[variant]?.duration ? .985+random()*.03 : kind==='bell'||kind==='heal'?1:.94+random()*.12;
+      gain.gain.value=(family?RECORDING_GAIN[kind]*(.94+random()*.06):SOUND[kind][1])*attenuation*clamp(Number.isFinite(detail.strength)?detail.strength:1,0,1.4);
       source.connect(gain);
       if(context.createStereoPanner){panner=context.createStereoPanner();panner.pan.value=pan;gain.connect(panner);panner.connect(master);}else gain.connect(master);
       voice={source,nodes:[source,gain,...(panner?[panner]:[])],ambient,kind};voices.add(voice);
@@ -278,7 +313,7 @@ export function createGameAudio(options = {}) {
         if(compressor){compressor.threshold.value=-12;compressor.knee.value=15;compressor.ratio.value=5;master.connect(compressor);compressor.connect(context.destination);}else master.connect(context.destination);
       }
       if(context.state==='suspended')await context.resume();
-      unlocked=context.state==='running';return unlocked;
+      unlocked=context.state==='running';if(unlocked)loadRecordings();return unlocked;
     }catch{unlocked=false;return false;}
   }
   function setMuted(value){
@@ -293,12 +328,13 @@ export function createGameAudio(options = {}) {
   return {unlock,setMuted,play,update,reset,
     setSurfaceResolver(resolver){if(typeof resolver==='function')surfaceAt=resolver;},
     get muted(){return muted;},
-    get debug(){return {activeVoices:voices.size,maxVoices:MAX_VOICES,buffers:buffers.size,unlocked,active,muted,events:{...counts}};},
+    get debug(){return {activeVoices:voices.size,maxVoices:MAX_VOICES,buffers:buffers.size,recordings:Object.fromEntries([...recordings].map(([kind,family])=>[kind,family.length])),unlocked,active,muted,events:{...counts}};},
     dispose(){
       if(disposed)return;reset();disposed=true;unlocked=false;
       doc?.removeEventListener?.('visibilitychange',onVisibility);
       try{master?.disconnect();compressor?.disconnect();}catch{}
-      buffers.clear();try{context?.close()?.catch?.(()=>{});}catch{}
+      for(const controller of loadingControllers)controller.abort();loadingControllers.clear();
+      buffers.clear();recordings.clear();try{context?.close()?.catch?.(()=>{});}catch{}
       master=compressor=context=null;
     }
   };

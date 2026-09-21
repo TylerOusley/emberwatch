@@ -116,7 +116,7 @@ test('changing jobs accrues only each role active time and cannot duplicate dawn
   assert.equal(owner.wageAccrued, 6.25, 'a villager interval does not earn a guard wage');
   act(app, v, owner, { kind: 'role_change', role: 'priest' }); app.simulation.tick(360);
   assert.equal(owner.wageAccrued, 18.75);
-  const wallet = owner.wallet; app.simulation.dawn(v);
+  const wallet = owner.wallet; app.simulation.startNight(v); app.simulation.dawn(v);
   assert.equal(owner.wallet, wallet + 18); assert.equal(owner.wageAccrued, 0);
   act(app, v, owner, { kind: 'role_change', role: 'guard' }); app.simulation.dawn(v);
   assert.equal(owner.wallet, wallet + 18, 'another role switch does not pay old participation a second time');

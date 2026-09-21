@@ -55,7 +55,7 @@ test('hiring is capped, costs wallet gold once, and never uses treasury, bank or
   assert.equal(v.workers.length, 5); assert.equal(owner.wallet, 625);
 });
 
-test('orders require ownership and compatible living source/storage buildings', () => {
+test('orders require owned compatible sources and living storage destinations', () => {
   const { v, owner, visitor, act, hire, assign, built } = fixture();
   const w = hire(), mine = built('mine'), house = built('house', 1), foreign = built('mine', 2, visitor);
   const original = structuredClone(w);
@@ -63,11 +63,13 @@ test('orders require ownership and compatible living source/storage buildings', 
   assert.throws(() => assign(w, { resource: '__proto__' }), /Choose wheat/);
   assert.throws(() => assign(w, { sourcePlotId: foreign.id }), /you own/);
   assert.throws(() => assign(w, { resource: 'wheat', sourcePlotId: mine.id }), /supplies this resource/);
-  assert.throws(() => assign(w, { mode: 'store', destinationPlotId: foreign.id }), /your living buildings/);
+  assert.throws(() => assign(w, { mode: 'store', destinationPlotId: 'missing' }), /living building/);
   assert.throws(() => assign(w, { sourcePlotId: {} }), /public resources/);
   assert.deepEqual(w, original, 'invalid orders do not silently unpause or replace the assignment');
   assign(w, { sourcePlotId: mine.id, mode: 'store', destinationPlotId: house.id });
   assert.equal(w.paused, false); assert.equal(w.sourcePlotId, mine.id); assert.equal(w.destinationPlotId, house.id);
+  assign(w, { sourcePlotId: mine.id, mode: 'store', destinationPlotId: foreign.id });
+  assert.equal(w.destinationOwnerId, visitor.id, 'a donation route explicitly records its recipient');
   assert.equal(owner.wallet, 925); assert.equal(v.treasury, 20000);
 });
 
@@ -368,7 +370,7 @@ test('worker snapshots show shared actors but keep cargo, wage time and orders w
   const { v, hire } = fixture(); const w = hire(); w.cargo.iron = 4; w.paidWorkSeconds = 12;
   const own = workersSnapshot(v, 'owner').workers[0], other = workersSnapshot(v, 'visitor').workers[0];
   assert.equal(own.cargo.iron, 4); assert.equal(own.paidWorkSeconds, 12); assert.equal(own.backpackTier, 1);
-  for (const key of ['cargo', 'paidWorkSeconds', 'sourcePlotId', 'destinationPlotId', 'paused', 'status', 'resource', 'mode']) assert.equal(Object.hasOwn(other, key), false, key);
+  for (const key of ['cargo', 'paidWorkSeconds', 'sourcePlotId', 'destinationPlotId', 'destinationOwnerId', 'paused', 'status', 'resource', 'mode']) assert.equal(Object.hasOwn(other, key), false, key);
   own.cargo.iron = 20; assert.equal(w.cargo.iron, 4, 'snapshots do not expose mutable ledger objects');
 });
 

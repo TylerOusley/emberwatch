@@ -239,6 +239,7 @@ test('failed receipt, village or dividend persistence rolls back every balance a
   const requestId = randomUUID(); assert.throws(() => act({ kind: 'investment_deposit', amount: 1000, requestId }), /receipt write failed/); store.saveFinanceReceipt = writeReceipt;
   assert.deepEqual({ wallet: first.wallet, treasury: village.treasury, position: position() }, before); assert.equal(store.financeReceipt(village.id, first.id, requestId), null);
   act({ kind: 'investment_deposit', amount: 1000, requestId }); dawn(1);
+  sim.startNight(village);
   const writeDawn = store.saveFinanceDawn, old = structuredClone(village), oldPosition = position();
   store.saveFinanceDawn = () => { throw new Error('dividend write failed'); };
   assert.throws(() => sim.dawn(village), /dividend write failed/); store.saveFinanceDawn = writeDawn;

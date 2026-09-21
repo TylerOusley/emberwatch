@@ -94,14 +94,14 @@ test('ownership changes retire old staff without transferring their private carg
   assert.equal(visible.cargo, undefined); assert.equal(visible.staffPlotId, undefined);
 });
 
-test('transport orders validate ownership, distinct source, fixed destination and whole percentages atomically', () => {
+test('transport orders validate owned distinct sources, living destinations and whole percentages atomically', () => {
   const f = fixture(), source = f.build(0, 'mine'), destination = f.build(1, 'tinker_shop'), foreign = f.build(2, 'mine', 1, f.visitor.id), w = f.staff(destination)[0];
   const before = structuredClone(w);
   assert.throws(() => f.route(w, foreign), /you own/);
   assert.throws(() => f.route(w, destination), /different living source/);
   for (const target of [0, 101, 1.5, '50', NaN]) assert.throws(() => f.route(w, source, 'wheat', target), /1 to 100/);
   assert.throws(() => f.route(w, source, '__proto__'), /stored resource/);
-  assert.throws(() => f.act(w, 'worker_assign', { sourcePlotId: source.id, destinationPlotId: source.id, mode: 'store', resource: 'wheat', targetPercent: 50 }), /own staffed building/);
+  assert.throws(() => f.act(w, 'worker_assign', { sourcePlotId: source.id, destinationPlotId: source.id, mode: 'store', resource: 'wheat', targetPercent: 50 }), /different living source/);
   assert.deepEqual(w, before); f.route(w, source); assert.equal(w.paused, false);
 });
 

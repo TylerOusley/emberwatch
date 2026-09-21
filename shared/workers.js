@@ -10,7 +10,11 @@ export const WORKER_RULES = Object.freeze({
   xpPerPoint: 25, maxAttributeRank: 5
 });
 export const WORKER_RESOURCES = Object.freeze(['wheat', 'timber', 'stone', 'iron', 'coal', 'sulfur']);
-export const WORKER_TOOLS = Object.freeze({ wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', sulfur: 'pickaxe' });
+export const WORKER_MINE_RESOURCES = Object.freeze(['stone', 'iron', 'coal', 'sulfur']);
+// Assignments may describe several node types, but cargo and sale accounting
+// always use real resource IDs. Mixed mining is confined to an owned mine.
+export const WORKER_ASSIGNMENTS = Object.freeze([...WORKER_RESOURCES, 'mine_all']);
+export const WORKER_TOOLS = Object.freeze({ wheat: 'scythe', timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', sulfur: 'pickaxe', mine_all: 'pickaxe' });
 export const WORKER_EQUIPMENT = Object.freeze({
   wood: Object.freeze({ multiplier: 1 }),
   stone: Object.freeze({ multiplier: 1.25, purchaseGold: 30 }),

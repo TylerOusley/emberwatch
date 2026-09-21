@@ -1,6 +1,5 @@
 import { SEASONS, WEATHER, VILLAGE_EVENTS } from '../../shared/environment.js';
 
-const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 export function environmentCountdown(seconds) { const whole = Math.max(0, Math.ceil(Number.isFinite(seconds) ? seconds : 0)); return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`; }
 export function environmentHUDModel(state) {
   if (!state) return null;
@@ -14,7 +13,16 @@ export function environmentHUDModel(state) {
   };
 }
 export function createEnvironmentUI(root) {
-  let signature = '', announcement = '';
+  let signature = '', announcement = '', mounted = false;
+  const field = name => root.querySelector(`[data-environment="${name}"]`);
+  function write(name, value) { const element = field(name); if (element.textContent !== value) element.textContent = value; }
+  function mount() {
+    if (mounted) return;
+    // Keep the summary and native disclosure alive while countdowns tick. Replacing
+    // them every second can swallow a click or close the details mid-read.
+    root.innerHTML = `<details class="environment-disclosure"><summary aria-label="Season, weather and village event details"><span class="environment-chip"><span data-environment="season-icon" aria-hidden="true"></span><span data-environment="season"></span></span><span class="environment-chip environment-weather"><span data-environment="weather-icon" aria-hidden="true"></span><span data-environment="weather"></span></span><span class="environment-chip environment-event-chip" data-environment="event-chip" hidden><span data-environment="event-icon" aria-hidden="true"></span><span data-environment="event-label"></span><small data-environment="event-time"></small></span><span class="environment-expand" aria-hidden="true">⌄</span></summary><div class="environment-details"><p class="environment-season-effect" data-environment="season-description"></p><div class="environment-timers"><span>Next season <strong data-environment="season-time"></strong></span><span>Weather changes <strong data-environment="weather-time"></strong></span></div><div class="environment-event" data-environment="event-details" hidden><strong data-environment="event-heading"></strong><p data-environment="event-description"></p><small data-environment="event-location"></small></div><p class="environment-quiet" data-environment="next-event"></p></div></details><span class="environment-sr" role="status" aria-live="polite" data-environment="announcement"></span>`;
+    mounted = true;
+  }
   return {
     update(state) {
       if (!root) return;
@@ -22,11 +30,18 @@ export function createEnvironmentUI(root) {
       if (!model) { root.hidden = true; signature = ''; return; }
       root.hidden = false;
       const next = JSON.stringify(model); if (next === signature) return; signature = next;
+      mount();
       const event = model.event;
       const nextAnnouncement = event ? `${event.id}:${event.label}` : '';
       const announce = nextAnnouncement !== announcement; announcement = nextAnnouncement;
-      root.innerHTML = `<div class="environment-season environment-${model.season}"><span class="environment-season-icon" aria-hidden="true">${model.seasonIcon}</span><div><strong>${model.seasonLabel}</strong><span>Next season ${model.seasonCountdown}</span></div><div class="environment-weather"><span aria-hidden="true">${model.weatherIcon}</span> ${model.weather}<small>Changes in ${model.weatherCountdown}</small></div></div><p class="environment-season-effect">${escape(model.seasonDescription)}</p>${event ? `<div class="environment-event"><div class="environment-event-heading"><strong><span aria-hidden="true">${event.icon}</span> ${event.label}</strong><span>${event.countdown} left</span></div><p>${escape(event.description)}</p><small>${escape(event.resources)} · ${escape(event.direction)}</small></div>` : `<div class="environment-quiet">Next village event in ${model.nextEventCountdown}</div>`}<span class="environment-sr" role="status">${announce && event ? escape(event.label + '. ' + event.description) : ''}</span>`;
+      write('season-icon', model.seasonIcon); write('season', model.seasonLabel); write('season-description', model.seasonDescription); write('season-time', model.seasonCountdown);
+      write('weather-icon', model.weatherIcon); write('weather', model.weather); write('weather-time', model.weatherCountdown);
+      field('event-chip').hidden = !event; field('event-details').hidden = !event;
+      write('event-icon', event?.icon ?? ''); write('event-label', event?.label ?? ''); write('event-time', event?.countdown ?? '');
+      write('event-heading', event ? `${event.label} · ${event.countdown} left` : ''); write('event-description', event?.description ?? ''); write('event-location', event ? `${event.resources} · ${event.direction}` : '');
+      field('next-event').hidden = Boolean(event); write('next-event', `Next village event in ${model.nextEventCountdown}`);
+      if (announce) write('announcement', event ? `${event.label}. ${event.description}` : 'Village event ended.');
     },
-    clear() { if (root) { root.hidden = true; root.replaceChildren(); } signature = ''; announcement = ''; }
+    clear() { if (root) { root.hidden = true; root.replaceChildren(); } signature = ''; announcement = ''; mounted = false; }
   };
 }

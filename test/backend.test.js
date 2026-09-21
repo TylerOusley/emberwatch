@@ -134,7 +134,7 @@ test('repair validation, finite material consumption, and separate ten-gold dawn
   assert.throws(() => action(app, village, p, { kind: 'repair', targetId: 'gate' }), /materials/);
   assert.equal(p.repairBonus, oldBonus); assert.equal(village.gate.hp, 421);
   p.participated = 720; p.wageAccrued = 25; p.jobBonus = 25; const wallet = p.wallet;
-  app.simulation.dawn(village);
+  app.simulation.startNight(village); app.simulation.dawn(village);
   assert.equal(p.wallet, wallet + 60); assert.equal(p.repairBonus, 0); assert.equal(p.jobBonus, 0);
 });
 
@@ -178,7 +178,7 @@ test('gathering uses real nodes and tools; downed dwarfs wait until dawn and cho
   app.simulation.hurtPlayer(village, p, p.hp + (p.shield ?? 0));
   assert.throws(() => action(app, village, p, { kind: 'respawn' }), /next dawn/);
   assert.throws(() => action(app, village, p, { kind: 'gather', targetId: node.id }), /downed/);
-  app.simulation.dawn(village);
+  app.simulation.startNight(village); app.simulation.dawn(village);
   assert.equal(p.downed, true); assert.equal(p.respawnAvailable, true);
   action(app, village, p, { kind: 'respawn' });
   assert.equal(p.hp, 100); assert.equal(p.inventory.wheat, 0); assert.equal(p.wallet, 7);
@@ -193,7 +193,7 @@ test('priests can complete revivals across dawn; non-priests cannot revive', asy
   priest.x = 0; priest.z = 0; guard.x = 1; guard.z = 0;
   app.simulation.hurtPlayer(v, guard, guard.hp + (guard.shield ?? 0));
   action(app, v, priest, { kind: 'heal', targetId: guard.id });
-  app.simulation.dawn(v);
+  app.simulation.startNight(v); app.simulation.dawn(v);
   for (let i = 0; i < 101; i++) app.simulation.tick(.05);
   assert.equal(guard.downed, false); assert.equal(guard.hp, 45); assert.equal(guard.respawnAvailable, false);
   assert.equal(priest.jobBonus, 5);

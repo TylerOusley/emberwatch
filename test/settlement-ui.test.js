@@ -15,7 +15,7 @@ function fixture(t, options = {}) {
   const fields = new Map(), sent = [], timers = new Map(); let nextTimer = 0;
   const player = { id: 'alice', name: 'Alice', role: 'guard', x: 0, z: 0, wallet: 2000, bank: 80, hp: 70, maxHp: 100, hunger: 50, inventory: { wheat: 10, timber: 0, stone: 0, iron: 0, coal: 0 }, durability: { sword: 100, axe: 75, pickaxe: 100, scythe: 100, hammer: 100 }, tiers: { sword: 'wood', axe: 'wood', pickaxe: 'wood', scythe: 'wood', hammer: 'wood' } };
   const state = { players: [player], plots: [], guards: [], beds: [], stock: { wheat: 100, timber: 100, stone: 100, iron: 100, coal: 100 }, treasury: 2500, policies: { guardWage: 25, priestWage: 25, tradeTax: 10, landTax: 2, exportPriority: 'balanced' }, proposals: [], merchant: { present: true, stock: { iron: 5 }, prices: { iron: 9 } }, stable: { stock: 3 }, loan: { debt: 0, credit: 0, availablePool: 500 }, foodQuotes: Object.fromEntries(['food', 'good_food', 'best_food'].map(id => [id, foodQuote(100, id)])) };
-  const content = { contains: e => nodes.includes(e), querySelectorAll: query => query === '[data-settlement-button]' ? buttons : query === '[data-shop-inspect]' ? details : [], querySelector: query => nodes.find(node => node.dataset?.shopFocus && query === `[data-shop-focus="${node.dataset.shopFocus}"]`) };
+  const content = { contains: e => nodes.includes(e), querySelectorAll: query => query === '[data-settlement-button]' ? buttons : query === '[data-shop-inspect]' ? details : query === 'summary' ? summaries : [], querySelector: query => nodes.find(node => node.dataset?.shopFocus && query === `[data-shop-focus="${node.dataset.shopFocus}"]`) };
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = prior; });
@@ -24,7 +24,9 @@ function fixture(t, options = {}) {
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
       const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[1].match(/aria-label="([^"]*)"/)?.[1] || match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
       const focusKey = match[1].match(/data-shop-focus="([^"]+)"/)?.[1]; if (focusKey) { button.dataset.shopFocus = focusKey; button.focus = () => { document.activeElement = button; }; }
-      const id = match[1].match(/\bid="([^"]+)"/)?.[1]; if (id) fields.set(id, button);
+      const id = match[1].match(/\bid="([^"]+)"/)?.[1]; if (id) { button.id = id; fields.set(id, button); }
+      button.dataset.menuFocus = match[1].match(/data-menu-focus="([^"]+)"/)?.[1];
+      button.focus = () => { document.activeElement = button; };
       return button;
     });
     for (const match of html.matchAll(/<(input|select)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) fields.set(match[3], { tagName: match[1].toUpperCase(), value: match[2].match(/\bvalue="([^"]*)"/)?.[1] || '', max: match[2].match(/\bmax="([^"]*)"/)?.[1] || '' });
@@ -774,7 +776,7 @@ test('pack and merchant displays use deployed gear and keep stored resource weig
   f.player.crateEquipment = { utility: 'lumber_pack' }; f.player.inventory = { timber: 5 }; f.ui.refresh();
   assert.match(f.html, /1.6 weight each with your equipped pack/); assert.match(f.html, /8 \/ 100/);
   f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, storage: { timber: 5 } }];
-  f.visit('plot', site.id); assert.match(f.html, /Capacity: 10 \/ 1,500 weight/);
+  f.visit('plot', site.id); assert.match(f.html, /Storage space<\/span><strong>10 \/ 1,500 weight/);
 });
 
 test('production upgrade cards compare current and next numeric benefits through the third tier', t => {
@@ -839,4 +841,143 @@ test('every role sees immediate uncapped zombie bounties separately from dawn se
   f.player.combatRewards = { kills: 30, assists: 3, gold: 3300 }; f.ui.refresh();
   assert.equal(f.openCount, renders + 1, 'new reward credit refreshes even if other balances stay the same');
   assert.match(f.html, /3,300 gold before loan repayments/);
+});
+
+test('building supplies transfer directly with one click and exact amounts are optional', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory = { stone: 35, sulfur: 11 }; f.player.backpackTier = 2;
+  f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, maxHp: 500, storage: { stone: 40, sulfur: 3 } }];
+  f.visit('plot', site.id);
+  assert.match(f.html, /data-storage-resource="sulfur"/);
+  assert.equal(f.details.find(detail => detail.dataset.shopInspect === `storage-exact-${site.id}`).open, false);
+  assert.equal(f.fields.get('storage-stored-stone').textContent, '40');
+  assert.equal(f.fields.get('storage-carried-stone').textContent, '35');
+  for (const [direction, quantity, kind] of [['store', 1, 'plot_deposit'], ['store', 10, 'plot_deposit'], ['take', 10, 'plot_withdraw'], ['take', 'max', 'plot_withdraw'], ['store', 'max', 'plot_deposit']]) {
+    const button = f.fields.get(`storage-stone-${direction}-${quantity}`);
+    assert.equal(button.disabled, false); button.onclick();
+    assert.deepEqual(f.sent.at(-1), { type: 'action', kind, plotId: site.id, resource: 'stone', ...(quantity === 'max' ? { max: true } : { amount: quantity }) });
+  }
+  f.fields.get('storage-sulfur-store-10').onclick();
+  assert.equal(f.sent.at(-1).resource, 'sulfur'); assert.equal(f.sent.at(-1).amount, 10);
+});
+
+test('direct transfer uses the clicked resource and revalidates latest carried goods, ownership and free space', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory = { stone: 30, wheat: 20 }; f.player.durability = {};
+  const plot = { id: site.id, ownerId: f.player.id, building: 'house', hp: 500, maxHp: 500, storage: { stone: 40 } };
+  f.state.plots = [plot]; f.visit('plot', site.id);
+  const old = f.fields.get('storage-stone-store-10');
+  f.fields.get('storage-resource').value = 'wheat'; f.fields.get('storage-resource').onchange();
+  old.onclick(); assert.equal(f.sent.at(-1).resource, 'stone');
+  const count = f.sent.length; f.player.inventory.stone = 2; old.onclick(); assert.equal(f.sent.length, count);
+  f.player.inventory.stone = 30; plot.storage = { wheat: 1500 }; old.onclick(); assert.equal(f.sent.length, count, 'full building cannot accept a stale Store button');
+  plot.storage = { stone: 40 }; const take = f.fields.get('storage-stone-take-10'); plot.ownerId = 'bob'; take.onclick();
+  assert.equal(f.sent.length, count, 'a previous owner cannot withdraw after ownership changes');
+});
+
+test('visitor shelves offer explicit donations and no withdrawal buttons', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory = { sulfur: 12 };
+  f.state.plots = [{ id: site.id, ownerId: 'bob', ownerName: 'Bob', building: 'wizard_tower', hp: 500, maxHp: 500, storage: { sulfur: 50 } }];
+  f.visit('plot', site.id);
+  assert.match(f.html, /Donations to Bob/); assert.match(f.html, /cannot take them back/);
+  assert.equal(f.fields.has('storage-sulfur-take-1'), false); assert.equal(f.fields.has('storage-take'), false);
+  f.click('Donate 10 Sulfur');
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_deposit', plotId: site.id, resource: 'sulfur', amount: 10 });
+});
+
+test('direct cart transfers use cart capacity and dispatch cart actions', t => {
+  const f = fixture(t);
+  f.player.durability = {}; f.player.inventory = { sulfur: 20 };
+  f.state.carts = [{ id: 'cargo-one', ownerId: f.player.id, x: f.player.x, z: f.player.z, storage: { sulfur: 30 }, capacity: 1500 }];
+  f.ui.show('cart', 'cargo-one');
+  f.fields.get('storage-sulfur-store-10').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'cartDeposit', targetId: 'cargo-one', resource: 'sulfur', amount: 10 });
+  f.fields.get('storage-sulfur-take-max').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'cartWithdraw', targetId: 'cargo-one', resource: 'sulfur', max: true });
+});
+
+test('every settlement purchase retains its native click target through busy snapshots and key release', t => {
+  const f = fixture(t);
+  for (const key of [null, 'Enter', ' ']) {
+    f.visit('bank'); f.ui.refresh();
+    const button = f.fields.get('bank-deposit-max'), before = f.openCount, sent = f.sent.length;
+    if (key) button.onkeydown({ key }); else button.onpointerdown({ button: 0 });
+    for (let i = 0; i < 20; i++) { f.player.wallet++; f.state.stock.stone++; f.ui.refresh(); }
+    assert.equal(f.openCount, before, 'the pressed control must stay in the DOM');
+    if (key) button.onkeyup({ key }); else button.onpointerup();
+    f.player.wallet++; f.ui.refresh(); assert.equal(f.openCount, before, 'release must not remove the target before click');
+    button.onclick();
+    assert.equal(f.sent.length, sent + 1); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'deposit', max: true });
+    assert.ok(f.openCount > before, 'deferred balances render after the action');
+  }
+});
+
+test('moving and harvesting workers do not redraw unrelated settlement menus', t => {
+  const f = fixture(t);
+  f.state.workers = Array.from({ length: 80 }, (_, index) => ({ id: `worker-${index}`, ownerId: f.player.id, x: index, z: index, resource: 'stone', status: 'Walking', cargo: {} }));
+  f.visit('tools'); f.ui.refresh(); const opens = f.openCount;
+  for (let tick = 0; tick < 30; tick++) {
+    for (const worker of f.state.workers) { worker.x++; worker.z--; worker.status = tick % 2 ? 'Gathering' : 'Delivering'; worker.workXp = tick; worker.cargo.stone = tick; }
+    f.ui.refresh();
+  }
+  assert.equal(f.openCount, opens);
+});
+
+test('leaving a building cancels an in-progress direct transfer and rejects detached controls', t => {
+  const f = fixture(t), site = PLOTS[0];
+  f.player.inventory = { stone: 30 };
+  f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 500, maxHp: 500, storage: {} }];
+  f.visit('plot', site.id);
+  const button = f.fields.get('storage-stone-store-10'); button.onpointerdown({ button: 0 });
+  f.player.x += 100; f.ui.refresh(); button.onclick();
+  assert.equal(f.sent.length, 0); assert.match(f.html, /BUILDING ENTRANCE/);
+  f.visit('plot', site.id); const old = f.fields.get('storage-stone-store-10');
+  f.ui.show('inventory'); old.onclick(); assert.equal(f.sent.length, 0, 'controls from previous screens cannot act');
+});
+
+test('pack defaults to carried goods and keeps expanded equipment and hotbar sections through snapshots', t => {
+  const f = fixture(t); f.player.inventory = { food: 2, stone: 20 }; f.ui.show('inventory');
+  for (const key of ['pack-empty', 'pack-equipment', 'pack-hotbar', 'pack-earnings', 'pack-actions']) assert.equal(f.details.find(detail => detail.dataset.shopInspect === key).open, false);
+  assert.match(f.html, /Carried supplies/); assert.match(f.html, /data-supply="food"/);
+  f.click('Eat bread'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'eat', tier: 'food' });
+  const gear = f.details.find(detail => detail.dataset.shopInspect === 'pack-equipment'); gear.open = true; gear.ontoggle();
+  const setup = f.details.find(detail => detail.dataset.shopInspect === 'pack-hotbar'); setup.open = true; setup.ontoggle();
+  f.player.wallet++; f.ui.refresh();
+  assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'pack-equipment').open, true);
+  assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'pack-hotbar').open, true);
+  assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'pack-earnings').open, false);
+  f.ui.clear(); f.ui.show('inventory');
+  assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'pack-equipment').open, false);
+});
+
+test('native section expansion targets survive snapshots until the browser click and toggle have run', t => {
+  const f = fixture(t); f.ui.show('inventory'); f.ui.refresh();
+  const summary = f.summaries.find(summary => summary.dataset.shopFocus === 'fold-pack-equipment');
+  const detail = f.details.find(detail => detail.dataset.shopInspect === 'pack-equipment');
+  const before = f.openCount;
+  summary.onpointerdown({ button: 0 }); f.player.wallet++; f.ui.refresh(); assert.equal(f.openCount, before);
+  summary.onpointerup(); summary.onclick(); f.player.wallet++; f.ui.refresh(); assert.equal(f.openCount, before);
+  detail.open = true; detail.ontoggle();
+  for (const [id, timer] of [...f.timers]) { f.timers.delete(id); timer.fn(); }
+  assert.ok(f.openCount > before); assert.equal(f.details.find(detail => detail.dataset.shopInspect === 'pack-equipment').open, true);
+});
+
+test('store controls ask for a fresh review if the recipient changes before clicking', t => {
+  const f = fixture(t), site = PLOTS[0]; f.player.inventory.stone = 20;
+  const plot = { id: site.id, ownerId: 'bob', ownerName: 'Bob', building: 'house', hp: 300, maxHp: 300, storage: {} };
+  f.state.plots = [plot]; f.visit('plot', site.id);
+  const donate = f.fields.get('storage-stone-store-10');
+  plot.ownerId = 'charlie'; plot.ownerName = 'Charlie'; donate.onclick();
+  assert.equal(f.sent.length, 0); assert.match(f.html, /Donations to Charlie/);
+  f.fields.get('storage-stone-store-10').onclick(); assert.equal(f.sent.length, 1);
+});
+
+test('keyboard focus stays on a resource action when other inventory rows appear', t => {
+  const f = fixture(t), site = PLOTS[0]; f.player.inventory = { cart: 1 };
+  f.state.plots = [{ id: site.id, ownerId: f.player.id, building: 'house', hp: 300, maxHp: 300, storage: {} }];
+  f.visit('plot', site.id); f.ui.refresh();
+  f.fields.get('storage-cart-store-max').focus();
+  f.player.inventory.arrows = 20; f.ui.refresh();
+  assert.equal(document.activeElement, f.fields.get('storage-cart-store-max'));
 });

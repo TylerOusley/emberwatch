@@ -12,7 +12,7 @@ import { TOOL_TIERS, TOOL_WEIGHTS, carryCapacity, inventoryWeight, acquiredToolD
 import { ensureRoleStats, tickRoleStats, absorbDamage } from './roles.js';
 import { STARTER_GOLD, FOOD_IDS, canEquip } from '../shared/equipment.js';
 import { canUseBuilding } from '../shared/access.js';
-import { ZOMBIE_BOUNTY_GOLD, MELEE, inMeleeArc } from '../shared/enemies.js';
+import { enemyBountyGold, MELEE, inMeleeArc } from '../shared/enemies.js';
 import { ensureEnemies, spawnWaveEnemy, splitEnemy, enemySnapshot, cancelZombieWindup, attackZombieStructure, beginZombieAttack, tickZombieAttack, nightIsCleared } from './enemies.js';
 import { ensureRequests, requestsTick, requestsSnapshot, requestsAction, requestsBeforeAction, requestsAfterAction } from './requests.js';
 import { ensureProgression, joinProgression, progressionNight, progressionTick, progressionDawn, progressionAction, recordProgressionAction, progressionSnapshot } from './progression.js';
@@ -415,12 +415,16 @@ export class Simulation {
     try { this.store.transaction(() => {
       applyHit();
       cancelZombieWindup(zombie);
+      const bounty = enemyBountyGold(zombie);
       for (const [id, contribution] of Object.entries(zombie.contributors ?? {})) {
         if (!Object.hasOwn(village.players, id) || !Number.isFinite(contribution) || contribution <= 0) continue;
         const contributor = village.players[id], rewards = ensureCombatRewards(contributor);
-        this.awardIncome(village, contributor, ZOMBIE_BOUNTY_GOLD);
-        rewards[id === resident?.id ? 'kills' : 'assists']++;
-        rewards.gold += ZOMBIE_BOUNTY_GOLD;
+        const credit = id === resident?.id ? 'kills' : 'assists';
+        this.awardIncome(village, contributor, bounty);
+        if (!Number.isSafeInteger(contributor.wallet) || !Number.isSafeInteger(village.treasury) ||
+            !Number.isSafeInteger(rewards[credit] + 1) || !Number.isSafeInteger(rewards.gold + bounty)) throw new Error('The combat reward exceeds the supported gold balance.');
+        rewards[credit]++;
+        rewards.gold += bounty;
       }
       splitEnemy(village, zombie);
       this.store.saveVillage(village);
@@ -458,12 +462,18 @@ export class Simulation {
     catch (error) { restoreState(village, checkpoint); this.notices.length = noticeCount; throw error; }
   }
   payDawn(village, { earlyClear = false } = {}) {
-    const survived = village.day;
+    // The night-to-day transition is persisted with its grant. A duplicate
+    // callback, or a callback after restart, must not mint another dawn.
+    if (village.status !== 'active' || village.phase !== 'night' || village.keep.hp <= 0) return false;
+    const survived = village.day, survivalGold = 1000 * survived;
+    if (!Number.isSafeInteger(survived) || survived < 1 || !Number.isSafeInteger(survivalGold) ||
+        !Number.isSafeInteger(village.treasury) || village.treasury < 0 ||
+        !Number.isSafeInteger(village.treasury + survivalGold)) throw new Error('The survival grant exceeds the supported treasury balance.');
     progressionDawn(this, village, survived, { earlyClear });
     for (const player of Object.values(village.players)) refreshCrateMilestones(this, player.id);
     village.phase = 'day'; village.phaseRemaining = this.daySeconds; village.day++; village.warningSent = false; village.siegeNight = false;
     village.spawned = 0; village.waveCount = 0; village.nextSpawn = 0;
-    village.treasury += Math.min(5000, 1000 * survived);
+    village.treasury += survivalGold;
     economyDawn(this, village);
     for (const player of Object.values(village.players)) {
       if (player.downed) player.respawnAvailable = true;
@@ -477,6 +487,7 @@ export class Simulation {
     this.notice(village.id, earlyClear ? `The last zombie has fallen. Night ${survived} cleared! Dawn breaks early.` : `Dawn breaks. Night ${survived} survived.${village.zombies.some(z => z.hp > 0) ? ' Remaining zombies must still be defeated.' : ''}`);
     requestsTick(this, village);
     this.store.saveVillage(village);
+    return true;
   }
   tick(dt) {
     for (const village of this.villages.values()) {
