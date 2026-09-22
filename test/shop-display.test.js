@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { itemArt, shopInterior } from '../public/src/shop-display.js';
 
-const items=['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','bandage','horse','wheat','timber','stone','iron','coal','sulfur','gold'];
+const items=['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','bandage','horse','wheat','timber','stone','iron','iron_ingot','steel_ingot','pet_egg','coal','sulfur','gold'];
 const themes=['tools','weapons','tinker','food','merchant','stable','bank','market'];
 function safeSVG(svg) {
   assert.match(svg,/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
@@ -17,13 +17,13 @@ test('all catalog items have self-contained decorative art with bounded stable m
   const drawings=items.map(id=>itemArt(id));
   assert.equal(new Set(drawings).size,items.length,'every item has its own recognizable drawing');
   items.forEach((id,i)=>{safeSVG(drawings[i]);assert.match(drawings[i],new RegExp(`data-item="${id}"`));assert.equal(itemArt(id),drawings[i]);assert.ok(drawings[i].length<16000);});
-  for(const resource of ['wheat','timber','stone','iron','coal'])assert.equal(itemArt('resource',{resource}),itemArt(resource));
+  for(const resource of ['wheat','timber','stone','iron','iron_ingot','steel_ingot','pet_egg','coal'])assert.equal(itemArt('resource',{resource}),itemArt(resource));
 });
 
 test('tool quality and all four backpack upgrades are visually distinct',()=>{
   for(const id of ['axe','pickaxe','scythe','hammer','sword']){
-    const tiers=['wood','stone','iron'].map(tier=>itemArt(id,{tier}).replace(/data-tier="[^"]*"/,''));
-    assert.equal(new Set(tiers).size,3,`${id} changes material as well as its tier label`);
+    const tiers=['wood','stone','iron','steel'].map(tier=>itemArt(id,{tier}).replace(/data-tier="[^"]*"/,''));
+    assert.equal(new Set(tiers).size,4,`${id} changes material as well as its tier label`);
   }
   const levels=[0,1,2,3].map(level=>itemArt('backpack',{level}));
   assert.equal(new Set(levels.map(s=>s.replace(/data-tier="[^"]*"/,''))).size,4);

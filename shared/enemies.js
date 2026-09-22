@@ -41,6 +41,17 @@ export function enemyForWave(day, index) {
   if (day % 5 === 0 && index === 0) return 'siege';
   if (day >= 3 && index % 7 === 5) return 'armored';
   if (day >= 2 && index % 7 === 4) return 'splitter';
+  // Established villages face more pressure from existing enemy roles. Keep
+  // the first twenty nights, brood slots and fifth-night siege contract intact.
+  if (day >= 31 && index % 7 === 3) return 'armored';
+  if (day >= 21 && index % 7 === 1) return 'runner';
   if (index % 4 === 2) return 'runner';
   return 'shambler';
+}
+
+export function enemySpawnInterval(day) {
+  const night = Number.isFinite(day) ? Math.max(1, day) : 1;
+  const band = Math.floor((night - 1) / 5);
+  const latePressure = night >= 41 ? .8 : night >= 21 ? .9 : 1;
+  return Math.max(1.5, (6 - band * .4) * latePressure);
 }

@@ -13,7 +13,7 @@ function fixture() {
     joined: true, me: { wallet: 100, backpackTier: 0 }, state: { day: 10, players: [{ online: true }] }, muted: false,
     itemArt: id => `<svg data-item="${id}"></svg>`, buildingArt: id => `<svg data-building="${id}"></svg>`, pretty: String,
     $: id => buttons.get(id), openPanel(next) { html = next; buttons = new Map([...html.matchAll(/<button\b[^>]*\bid="([^"]+)"[^>]*>/g)].map(([, id]) => [id, {}])); },
-    showInventory: action('inventory'), settlement: { show: id => calls.push(id) }, guardOrders: panel('troops'), crates: panel('crates'),
+    showInventory: action('inventory'), settlement: { show: id => calls.push(id) }, guardOrders: panel('troops'), crates: panel('crates'), petsUI: panel('pets'),
     civic: panel('civic'), skills: panel('skills'), trading: panel('trading'), feedback: panel('feedback'), graphicsUI: panel('graphics'),
     villageFinance: { showInvestments: action('investments'), showTavern: action('tavern'), showTavernStats: action('stats') },
     showHelp: action('help'), progression: { ...panel('honors'), showGuide: action('guide') }, dialog: { close: action('close') },
@@ -25,13 +25,13 @@ function fixture() {
 
 test('village menu shows small groups while retaining every primary destination', () => {
   const f = fixture();
-  assert.equal((f.html.match(/class="village-menu-card"/g) ?? []).length, 5);
+  assert.equal((f.html.match(/class="village-menu-card"/g) ?? []).length, 6);
   assert.doesNotMatch(f.html, /id="menu-tavern"|id="menu-feedback"/);
-  for (const id of ['pack', 'workers', 'atlas', 'orders', 'crates']) f.click(`menu-${id}`);
-  assert.deepEqual(f.calls, ['inventory', 'workers', 'atlas', 'troops', 'crates']);
+  for (const id of ['pets', 'pack', 'workers', 'atlas', 'orders', 'crates']) f.click(`menu-${id}`);
+  assert.deepEqual(f.calls, ['pets', 'inventory', 'workers', 'atlas', 'troops', 'crates']);
   f.click('menu-tab-village'); assert.equal((f.html.match(/class="village-menu-card"/g) ?? []).length, 6);
   for (const id of ['civic', 'academy', 'trading', 'investments', 'tavern', 'tavern-stats']) f.click(`menu-${id}`);
-  assert.deepEqual(f.calls.slice(5), ['civic', 'skills', 'trading', 'investments', 'tavern', 'stats']);
+  assert.deepEqual(f.calls.slice(6), ['civic', 'skills', 'trading', 'investments', 'tavern', 'stats']);
 });
 
 test('Settings and help opens feedback and preserves graphics, guide, role and audio credit access', () => {

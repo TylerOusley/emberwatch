@@ -1,0 +1,91 @@
+{
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "downloadedAt": "2026-09-21",
+  "title": "Shiba",
+  "authors": [
+    "Quaternius"
+  ],
+  "sourceUrls": [
+    "https://quaternius.com/packs/ultimateanimatedanimals.html",
+    "https://drive.google.com/drive/folders/1yJXdB1iSrI8Db7hG77zxZ66vKsqIt0ry",
+    "https://drive.google.com/uc?export=download&id=1XWUVbmMbiG9E90OqrumueD_pBdnYdyHZ"
+  ],
+  "surfaceNotes": "Creator-authored color materials; this source has no image textures.",
+  "assetId": "shiba",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "modelSha256": "41409bd6680822caf82c77bdf8ead9376056421331f66e485d9124d56153965c",
+  "modelBytes": 1634008,
+  "sourceFiles": [
+    {
+      "name": "shiba.gltf",
+      "sha256": "3236979b94a840eb72d9ce091b1361da327a96f5ce068e666680297480f30f6b",
+      "kind": "conversion input"
+    }
+  ],
+  "sourceAnimations": [
+    "Attack",
+    "Death",
+    "Eating",
+    "Gallop",
+    "Gallop_Jump",
+    "Idle",
+    "Idle_2",
+    "Idle_2_HeadLow",
+    "Idle_HitReact1",
+    "Idle_HitReact2",
+    "Jump_ToIdle",
+    "Walk"
+  ],
+  "triangles": 1950,
+  "skinCount": 1,
+  "drawCalls": 6,
+  "clips": [
+    {
+      "name": "attack",
+      "duration": 1.2000000476837158,
+      "source": "creator animation"
+    },
+    {
+      "name": "death",
+      "duration": 1.0666667222976685,
+      "source": "creator animation"
+    },
+    {
+      "name": "idle",
+      "duration": 3.3333332538604736,
+      "source": "creator animation"
+    },
+    {
+      "name": "walk",
+      "duration": 1.0666667222976685,
+      "source": "creator animation"
+    }
+  ],
+  "textures": [],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "originalBounds": {
+      "min": [
+        -0.5355093892202378,
+        0.004425423691463154,
+        -1.667893660856834
+      ],
+      "max": [
+        0.5355093787709557,
+        3.090909438204986,
+        2.494036508768923
+      ]
+    },
+    "headingFlipped": false
+  },
+  "modifications": [
+    "Preserved creator mesh, skin weights, materials and source texture pixels.",
+    "Selected canonical idle, walk, attack and death clips with the source/adaptation stated per clip.",
+    "Added scene parent to normalize idle height to 1, center X/Z and place feet at Y=0."
+  ]
+}

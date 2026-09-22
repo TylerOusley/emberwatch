@@ -2,11 +2,27 @@
 
 An original cooperative 3D dwarf village survival game. **Emberwatch is a working title.** This standalone project does not import or depend on code from Tyler’s other games.
 
-**First Light — Village usability build 31.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
+**First Light — Playable Build 32: Smelting, steel and companions.** This build connects the 48-plot village to seasons, weather, village events, plot workers, manufacturing, owner pricing and ranged barracks troops. Guard, Priest and Villager are joined by Manager, Tinker and Wizard. The accepted rules and current balance choices are recorded in [docs/DESIGN.md](docs/DESIGN.md).
 
 The approved gameplay systems described below have playable implementations. This is their first combined playtest build: visual refinement, economy tuning, long-run balance, accessibility, and sustained multiplayer performance still need testing. Automated checks and their limits are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Latest playtest improvements
+
+Tyler authorized publishing Build 32 on September 22, 2026. This release brings smelting, steel equipment, encumbrance, tougher later waves and 13 permanent pet companions to the existing game. It upgrades existing saves in place.
+
+Any role can build a **Smelter** for 120 gold, 30 timber and 60 stone. Deposit materials into its storage and queue 1–100 ingots. An iron ingot uses 2 iron ore + 1 timber and takes 10 seconds; steel uses 2 iron ore + 1 timber + 1 coal and takes 15 seconds. Materials are paid when queued, and the furnace works while the village is active. Finished output waits safely if storage fills. Cancellation restores unused materials and waiting ingots when storage has room. Ruins pause production; hammer rebuilding preserves the job.
+
+Shop recipes that used iron now use **iron ingots**; the saved `iron` resource remains raw iron ore. Steel gathering tools yield 4 before plot/environment bonuses, last 250 uses, and steel swords deal 25 base damage. Both ingots have distinct artwork, sell for more than ore at the Resource Exchange, can be traded/stored/transported, and join percentage merchant surplus exports. Construction and defense costs retain raw ore where previously used.
+
+Player carrying capacity is now a **movement allowance**, not an intake block. Gather, buy, craft, trade or withdraw beyond it and keep every item. Encumbered players move at **45% speed**, cannot sprint, and regain full speed immediately after unloading or increasing their allowance. Riding/carrying another dwarf applies the same penalty. Building, carriage and worker cargo capacities remain physical storage limits.
+
+Nights 1–20 retain their prior behavior. Later nights add more runners from 21, more armored enemies from 31, and shorter spawn intervals at 21 and 41 while retaining the 120-enemy limit, current combat stats and bounty rules. This tuning needs playtesting. [Enemy findings and new-enemy proposals](docs/ENEMY-NEXT-UPDATE.md).
+
+**Pets & eggs** now implements 13 permanent companions in the local build. The traveling merchant has a 25% chance per visit to offer one shared egg for 5,000 wallet gold. Every egg uses the same fixed rarity odds: **Common 38%, Uncommon 30%, Rare 20%, Epic 10%, Legendary 2%**. It hatches after 30 real minutes, including offline time. Rarity is rolled first; an unowned species is preferred only within that rarity, and completing a tier never improves the odds of a higher tier. Duplicate pets return **1,000 gold to the buyer’s bank** once; a full bank retains the refund until space is available.
+
+Equip one pet across villages for extra carry capacity or melee/ranged combat support. Rabbit, marmot and undead squirrel add 20%, 15% and 25% carry capacity. Combat pets attack every two seconds; the legendary vampire bat also heals its owner for 2 HP per successful hit. The server validates ownership, purchases, targeting and refunds. These implemented rules replace the earlier empty-catalog foundation; **this update remains local and has not been published**. See [pet companions, actual assets and licensing](docs/PET-COMPANIONS.md).
+
+### Published Build 31 and earlier
 
 Build 31 simplifies the village menu into Your dwarf, Village and Settings & help. Pack and building storage use illustrated resource cards with direct **Store / Take 1, 10 or Max** actions; exact quantities remain optional. Secondary rules, equipment and management details collapse. Menus retain active clicks, keyboard presses and text drafts through live updates, and unrelated worker movement no longer rebuilds storage controls. The Academy and village projects use compact illustrated cards.
 
@@ -219,7 +235,7 @@ The noticeboard posts real shortages in communal food/repair stock, public barra
 
 Owned barracks support Defend the gate, Hold here, Follow me and Retreat to barracks. Hold captures the owner's actual current position. Troops follow the existing roads and gate, respect obstacles and stay within their order's fighting area. A following troop retreats when its owner is unavailable or unreachable, and replacements inherit the barracks order. The public Watch remains independent.
 
-New accounts receive a compact optional guide covering their first tool, gathering, selling, food and finding the gate. Dismiss or reopen it from the village menu. Account honors unlock at 1, 5, 10 and 20 credited nights across runs; a credit requires being online and alive for at least half of an actually survived night. Cosmetic sashes and crests persist across runs. Earned colors can decorate owned buildings at their entrances, and the founder can choose the keep banner at the keep entrance. These choices affect appearance only.
+New accounts receive a collapsed optional guide covering their first tool, gathering, selling, food and finding the gate. Dismiss or reopen it from the village menu. Account honors unlock at 1, 5, 10 and 20 credited nights across runs; a credit requires being online and alive for at least half of an actually survived night. Cosmetic sashes and crests persist across runs. Earned colors can decorate owned buildings at their entrances, and the founder can choose the keep banner at the keep entrance. These choices affect appearance only.
 
 ## Hired workers
 

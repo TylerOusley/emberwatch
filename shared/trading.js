@@ -2,7 +2,7 @@
 // balances and purchase credit have separate ownership and are never offered.
 // Individual bound kit quantities are excluded by the server and UI availability
 // checks; unbound purchased or traded food of the same type stays exchangeable.
-export const TRADE_ITEMS = Object.freeze({ timber: 'Timber', stone: 'Stone', wheat: 'Wheat', iron: 'Iron', coal: 'Coal', sulfur: 'Sulfur', gunpowder: 'Gunpowder', musket_ammo: 'Musket shots', food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows' });
+export const TRADE_ITEMS = Object.freeze({ timber: 'Timber', stone: 'Stone', wheat: 'Wheat', iron: 'Iron ore', iron_ingot: 'Iron ingot', steel_ingot: 'Steel ingot', coal: 'Coal', sulfur: 'Sulfur', gunpowder: 'Gunpowder', musket_ammo: 'Musket shots', food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows' });
 export const TRADE_RULES = Object.freeze({ range: 4, maxAmount: 1000000, invitationSeconds: 90, activeSeconds: 300 });
 export const emptyTradeOffer = () => ({ resources: Object.fromEntries(Object.keys(TRADE_ITEMS).map(id => [id, 0])), gold: 0 });
 export function canTrade(player) {

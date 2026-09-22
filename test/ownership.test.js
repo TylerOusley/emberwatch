@@ -97,13 +97,13 @@ test('third-level upgrades preserve spent harvests and node identity across save
   }
 });
 
-test('upgraded player yield respects tool tiers, visitor splitting and full-batch capacity atomically', () => {
+test('upgraded player yield respects tool tiers and visitor splitting while allowing encumbered harvests', () => {
   for (const building of ['mine', 'tree_farm', 'wheat_farm']) for (const level of [2, 3]) {
     const { village, owner, visitor, act, built } = fixture(), plot = built(building); plot.level = level;
     const node = village.plotResources.find(node => node.plotId === plot.id);
     const tool = node.type === 'wheat' ? 'scythe' : node.type === 'timber' ? 'axe' : 'pickaxe';
     owner.tool = visitor.tool = tool; Object.assign(owner, { x: node.x, z: node.z }); Object.assign(visitor, { x: node.x, z: node.z });
-    for (const tier of ['wood', 'stone', 'iron']) {
+    for (const tier of ['wood', 'stone', 'iron', 'steel']) {
       owner.tiers[tool] = tier; node.available = true; node.remaining = 10;
       const before = owner.inventory[node.type], durability = owner.durability[tool];
       act(owner, { kind: 'gather', targetId: node.id });
@@ -118,9 +118,11 @@ test('upgraded player yield respects tool tiers, visitor splitting and full-batc
     node.available = true; node.remaining = 3;
     owner.inventory = { wheat: 149 }; owner.durability = { [tool]: 1 };
     ensureOwnership(village);
-    const before = structuredClone({ inventory: owner.inventory, node, storage: plot.storage, durability: owner.durability });
-    assert.throws(() => act(owner, { kind: 'gather', targetId: node.id }), /pack is full/);
-    assert.deepEqual({ inventory: owner.inventory, node, storage: plot.storage, durability: owner.durability }, before);
+    const before = owner.inventory[node.type];
+    act(owner, { kind: 'gather', targetId: node.id });
+    assert.equal(owner.inventory[node.type], before + productionYield(4, plot));
+    assert.equal(node.remaining, 2); assert.equal(owner.durability[tool], 0);
+    assert.ok(inventoryWeight(owner) > carryCapacity(owner));
   }
 });
 
@@ -179,7 +181,7 @@ test('crafting in an owned shop returns existing gold without counting it as inc
 });
 
 test('visitor output is conserved with a persistent exact eighty/twenty split across tiers', () => {
-  for (const tier of ['wood', 'stone', 'iron']) {
+  for (const tier of ['wood', 'stone', 'iron', 'steel']) {
     const { village, visitor, owner, act, built, sim } = fixture();
     const plot = built('wheat_farm'); visitor.tool = 'scythe'; visitor.tiers.scythe = tier;
     const ids = village.plotResources.map(node => node.id);
@@ -199,24 +201,25 @@ test('visitor output is conserved with a persistent exact eighty/twenty split ac
   }
 });
 
-test('closed private plots, pack weight and owner storage are checked before harvest consumption', () => {
+test('closed private plots and owner storage retain hard limits while encumbered visitors can harvest', () => {
   const { village, visitor, owner, act, built } = fixture();
   const plot = built('wheat_farm'), node = village.plotResources[0]; visitor.x = node.x; visitor.z = node.z; visitor.tool = 'scythe';
   plot.allowVisitors = false;
   assert.throws(() => act(visitor, { kind: 'gather', targetId: node.id }), /closed/);
   plot.allowVisitors = true; visitor.inventory.wheat = carryCapacity(visitor) - inventoryWeight(visitor);
-  assert.throws(() => act(visitor, { kind: 'gather', targetId: node.id }), /pack is full/);
-  assert.equal(node.available, true); assert.equal(visitor.durability.scythe, 100);
-  visitor.inventory.wheat = 0; plot.splitRemainders.wheat = 4; plot.storage.wheat = 1500;
+  act(visitor, { kind: 'gather', targetId: node.id });
+  assert.equal(node.available, false); assert.equal(visitor.durability.scythe, 99);
+  assert.ok(inventoryWeight(visitor) > carryCapacity(visitor));
+  node.available = true; node.remaining = 1; visitor.inventory.wheat = 0; plot.splitRemainders.wheat = 4; plot.storage.wheat = 1500;
   assert.throws(() => act(visitor, { kind: 'gather', targetId: node.id }), /make room/);
-  assert.equal(plot.splitRemainders.wheat, 4); assert.equal(visitor.durability.scythe, 100);
+  assert.equal(plot.splitRemainders.wheat, 4); assert.equal(visitor.durability.scythe, 99);
   owner.inventory.stone = Math.floor(carryCapacity(owner) / 3); assert.ok(inventoryWeight(owner) > carryCapacity(owner), 'tools are included in carried weight');
 });
 
 test('all pickaxe tiers can harvest iron and coal without mining access restrictions', () => {
   const { village, owner, act } = fixture();
   owner.tool = 'pickaxe';
-  for (const tier of ['wood', 'stone', 'iron']) for (const type of ['iron', 'coal']) {
+  for (const tier of ['wood', 'stone', 'iron', 'steel']) for (const type of ['iron', 'coal']) {
     const node = RESOURCES.find(n => n.type === type); assert.ok(node, `${type} has public ore nodes`);
     const state = village.resources.find(n => n.id === node.id); state.available = true; state.remaining = 8;
     owner.x = node.x; owner.z = node.z; owner.tiers.pickaxe = tier;
@@ -281,13 +284,14 @@ test('exact and maximum plot transfers conserve supplies and resolve current sou
   owner.inventory = { wheat: carryCapacity(owner) - 5 };
   plot.storage = { stone: 50 };
   act(owner, { kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', max: true });
-  assert.equal(owner.inventory.stone, 1); assert.equal(plot.storage.stone, 49);
+  assert.equal(owner.inventory.stone, 50); assert.equal(plot.storage.stone, 0);
+  assert.ok(inventoryWeight(owner) > carryCapacity(owner));
   at(visitor); assert.throws(() => act(visitor, { kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', max: true }), /owner/);
 });
 
 test('cart purchases count packed, stored and deployed carts, and gifts check the receiving owner', () => {
   const { village, owner, visitor, at, act, built } = fixture(), plot = built('tinker_shop');
-  plot.storage = { timber: 200, iron: 100 }; owner.durability = {}; visitor.durability = {}; at(visitor);
+  plot.storage = { timber: 200, iron_ingot: 100 }; owner.durability = {}; visitor.durability = {}; at(visitor);
   act(visitor, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' });
   const before = JSON.stringify([plot.storage, owner.wallet, visitor.wallet, village.treasury]);
   assert.throws(() => act(visitor, { kind: 'craft_buy', plotId: plot.id, recipe: 'cart' }), /one cargo cart/);

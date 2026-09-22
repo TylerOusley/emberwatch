@@ -129,7 +129,7 @@ test('one-unit worker harvests receive fractional bonuses without fractional inv
   assert.deepEqual(productionHarvest(1, null, 'wheat', null, NaN), { yield: 1, remainder: 0 });
 });
 
-test('failed player harvests preserve seasonal carry and successful gathers use season regrowth', () => {
+test('encumbered player harvests preserve fractional yields and use season regrowth', () => {
   const village = fixture(), player = village.players.owner;
   Object.assign(player, { role: 'villager', tool: 'scythe', durability: { scythe: 100 }, tiers: { scythe: 'wood' }, inventory: {}, environmentYieldRemainders: { wheat: .75 } });
   village.guards = []; village.plots = []; village.environment = { seasonIndex: 2 };
@@ -137,11 +137,8 @@ test('failed player harvests preserve seasonal carry and successful gathers use 
   const plot = village.plots[0]; Object.assign(plot, { ownerId: player.id, building: 'wheat_farm', level: 1, hp: 100, maxHp: 100 }); ensureOwnership(village);
   const node = village.plotResources.find(item => item.type === 'wheat'); Object.assign(player, { x: node.x, z: node.z });
   player.inventory.stone = 1000;
-  assert.throws(() => ownershipAction({}, village, player, { kind: 'gather', targetId: node.id }), /pack is full/);
-  assert.equal(player.environmentYieldRemainders.wheat, .75); assert.equal(node.remaining, 1);
-  player.inventory.stone = 0;
   ownershipAction({}, village, player, { kind: 'gather', targetId: node.id });
-  assert.equal(player.inventory.wheat, 2); assert.equal(player.environmentYieldRemainders.wheat, 0);
+  assert.equal(player.inventory.wheat, 2); assert.equal(player.environmentYieldRemainders.wheat, 0); assert.equal(player.inventory.stone, 1000);
   assert.equal(node.regrowAt, productionRegrowSeconds('wheat', plot, village.environment));
 });
 

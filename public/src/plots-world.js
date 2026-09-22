@@ -179,7 +179,7 @@ export function createPlotsWorld(parent){
  const records=new Map(),shots=new Map(),dummy=new THREE.Object3D(),impacts=createCannonImpactPool(root);
  const shotDirection=new THREE.Vector3(),forward=new THREE.Vector3(0,0,1);
  let renderTime=0,baselineEffects=true,villageId=null,lastClock=null,disposed=false;
- const labels={tool_shop:'TOOLS',tinker_shop:'TINKER',sword_shop:'ARMORY',mine:'MINE',tree_farm:'GROVE',wheat_farm:'FIELD',house:'HEARTH',barracks:'WATCH',church:'SANCTUARY',archer_tower:'ARCHER POST',cannon:'CANNON',arcane_academy:'ARCANE ACADEMY',wizard_tower:'WIZARD TOWER'};
+ const labels={tool_shop:'TOOLS',tinker_shop:'TINKER',sword_shop:'ARMORY',smelter:'SMELTER',mine:'MINE',tree_farm:'GROVE',wheat_farm:'FIELD',house:'HEARTH',barracks:'WATCH',church:'SANCTUARY',archer_tower:'ARCHER POST',cannon:'CANNON',arcane_academy:'ARCANE ACADEMY',wizard_tower:'WIZARD TOWER'};
  function textSign(text,group,x,y,z,width=3){
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;
   const ctx=canvas.getContext('2d');ctx.fillStyle='#342d25';ctx.fillRect(0,0,512,128);ctx.strokeStyle='#ae8c58';ctx.lineWidth=7;ctx.strokeRect(7,7,498,114);ctx.fillStyle='#edddb7';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='600 40px Georgia';ctx.fillText(text,256,64,475);
@@ -282,6 +282,41 @@ export function createPlotsWorld(parent){
    }else{
     for(const side of [-1,1]){box('wood',side*2.2,.58,4,1.2,.8,.8);for(let f=0;f<3;f++)add('rock',f%2?'gold':'cloth',side*2.2-.3+f*.3,1.12,4,.18,.23,.16);}
    }
+  }else if(type==='smelter'){
+   // A bonded masonry furnace, tall flue and sheltered casting benches occupy
+   // the shared seven-by-six solid. The front delivery lane remains open.
+   box('stone',0,.25,0,7,.5,6);box('stone',0,1.7,-.05,6.75,2.9,5.6);
+   box('dark',0,1.57,2.79,2.3,2.25,.065);
+   for(const side of[-1,1]){
+    box('pale',side*1.35,1.08,2.82,.45,1.7,.48);
+    for(let course=0;course<5;course++)box('pale',side*2.55,.58+course*.55,2.79,1.48,.055,.08);
+   }
+   for(let i=0;i<9;i++){
+    const a=i*Math.PI/8;box('pale',Math.cos(a)*1.31,1.93+Math.sin(a)*1.21,2.82,.43,.45,.49,0,a-Math.PI/2);
+   }
+   const fire=new THREE.Mesh(new THREE.PlaneGeometry(1.95,1.6),materials.ember);
+   fire.name='smelter-furnace-glow';fire.position.set(0,1.44,2.836);fire.userData.sharedMaterial=true;fire.visible=false;group.add(fire);
+   for(const x of[-.8,-.4,0,.4,.8])box('iron',x,1.23,2.94,.06,1.35,.07);
+   box('iron',0,.61,2.98,2.18,.12,.19);box('stone',0,.36,3.18,2.6,.25,.55);
+   // The open-top flue is dark inside, with distinct staggered stone courses.
+   for(let course=0;course<9;course++){
+    const width=1.58-course*.025,y=3.22+course*.47;
+    for(const side of[-1,1])box('stone',1.80+side*(width/2-.13),y,-1.5,.26,.44,width);
+    for(const side of[-1,1])box('pale',1.80,y,-1.5+side*(width/2-.13),width-.52,.44,.26);
+   }
+   box('dark',1.80,6.94,-1.5,1.03,.06,1.03);box('iron',1.80,7.19,-1.5,1.62,.12,1.62);
+   for(const side of[-1,1]){
+    box('wood',side*2.43,1.15,3.0,1.52,.16,.96);
+    for(const x of[-.54,.54])box('dark',side*2.43+x,.57,3.0,.11,1.14,.75);
+    for(let i=0;i<3;i++)box(side<0?'iron':'pale',side*2.43+(i-1)*.35,1.32+(i%2)*.11,2.96,.62,.16,.32,.18);
+   }
+   for(const x of[-3.15,3.15])box('dark',x,1.82,2.4,.16,3.64,.18);
+   box('roof',0,3.54,1.6,7.05,.15,3.35,0,.05);box('trim',0,3.66,3.23,7.15,.17,.17);
+   // Bellows and timber piles give the workshop a readable fuel/casting side.
+   add('barrel','cloth',-2.6,1.1,-1.5,.45,.95,.7,Math.PI/2);
+   for(const y of[.60,1.48])box('wood',-2.6,y,-1.5,.98,.09,1.35);
+   for(let i=0;i<4;i++)add('cylinder','wood',-2.5+(i%2)*.45,.48+Math.floor(i/2)*.30,-2.5,.19,1.2,.19,Math.PI/2);
+   textSign('SMELTER',group,0,3.79,3.29,2.8);
   }else if(type==='barracks'){
    building(8,6,4.7,'stone');
    for(const side of [-1,1]){
@@ -490,6 +525,8 @@ export function createPlotsWorld(parent){
    const value=states.get(plot.id),ruined=Boolean(value?.building&&value.hp<=0),key=[value?.ownerId??'',value?.building??'',value?.level??0,ruined].join(':');
    let record=records.get(plot.id);
    if(record?.key!==key){if(record)remove(record.group);record={key,group:build(plot,value)};records.set(plot.id,record);}
+   const furnace=record.group.getObjectByName('smelter-furnace-glow');
+   if(furnace)furnace.visible=Boolean(value?.hp>0&&value?.smelting?.remaining>0&&value.ownerId===value.smelting.ownerId);
    const shot=value?.lastShot;
    if(!ruined&&value?.building!=='wizard_tower'&&shot&&Number.isFinite(shot.x)&&Number.isFinite(shot.z)&&Number.isFinite(shot.until)){
     const turret=record.group.getObjectByName('aiming-cannon');

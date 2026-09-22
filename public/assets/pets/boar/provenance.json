@@ -1,0 +1,97 @@
+{
+  "assetId": "boar",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "title": "Boar",
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "authors": [
+    "Teh_Bucket"
+  ],
+  "sourceUrls": [
+    "https://opengameart.org/content/boar",
+    "https://opengameart.org/sites/default/files/boar_0.blend"
+  ],
+  "sourceFiles": [
+    {
+      "name": "boar.blend",
+      "sha256": "c16625680d056f0402d1be209c41d16a63394aec94b082a63ad32f562e9f2d2d",
+      "bytes": 1780848
+    }
+  ],
+  "blendSha256": "c16625680d056f0402d1be209c41d16a63394aec94b082a63ad32f562e9f2d2d",
+  "modelSha256": "61acd3665260f9c3a7dc99fd5f1f13c5340a9d567c5e3606eff9d6834c4b821a",
+  "modelBytes": 1010328,
+  "clips": [
+    {
+      "name": "idle",
+      "sourceAction": "default",
+      "sourceFrames": [
+        0,
+        48
+      ],
+      "duration": 2.0,
+      "loopClosureFrames": 0,
+      "notes": "Original rig breathing/sniffing idle authored for this conversion."
+    },
+    {
+      "name": "walk",
+      "sourceAction": "walk",
+      "sourceFrames": [
+        0,
+        40
+      ],
+      "duration": 1.6666666666666667,
+      "loopClosureFrames": 0,
+      "notes": "Baked creator-authored skeletal motion."
+    },
+    {
+      "name": "attack",
+      "sourceAction": "attack",
+      "sourceFrames": [
+        0,
+        19
+      ],
+      "duration": 0.7916666666666666,
+      "loopClosureFrames": 0,
+      "notes": "Baked creator-authored skeletal motion."
+    }
+  ],
+  "textures": [
+    {
+      "name": "boar",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "sourceHeading": "+Y",
+    "headingFlipped": true,
+    "originalBoundsZUp": {
+      "min": [
+        -0.6390616297721863,
+        -1.7905741930007935,
+        -1.031602382659912
+      ],
+      "max": [
+        0.6390615105628967,
+        1.6244080066680908,
+        1.125645399093628
+      ]
+    }
+  },
+  "meshCount": 1,
+  "skinCount": 1,
+  "modifications": [
+    "Preserved source mesh, skin weights, UVs and supplied diffuse/normal texture pixels.",
+    "Applied author non-armature modifiers and rebuilt legacy Blender materials as Principled PBR.",
+    "Baked original IK constraints into separate named skeletal clips; no mixed full timeline.",
+    "Eased non-looping source idle/walk endpoints back to their initial pose; recorded added frames per clip.",
+    "Centered and normalized the idle pose to height 1 meter with feet at Y=0 and forward +Z.",
+    "Rendered the actual converted model to a transparent 512px thumbnail."
+  ]
+}

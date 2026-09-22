@@ -1,20 +1,21 @@
 import { canUseBuilding, canUsePlot } from '../shared/access.js';
 import { BUILDINGS, PLOTS, RESOURCES, resolveResource, clearResourceSegment, plotSolids } from '../shared/world.js';
-import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, BANDAGE, SHOP_PRICE_LIMIT, SHOP_CRAFT_BATCH_LIMIT, shopPrice, carryCapacity, inventoryWeight, resourceWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
+import { BUILDING_TYPES, RECIPES, TOOL_TIERS, TOOL_WEIGHTS, RESOURCE_WEIGHTS, PLOT_PRICES, MAX_PLOTS, BACKPACKS, BANDAGE, SHOP_PRICE_LIMIT, SHOP_CRAFT_BATCH_LIMIT, shopPrice, carryCapacity, inventoryWeight, acquiredToolDurability, normalizeToolDurability } from '../shared/content.js';
 import { chargePurchase } from './transport.js';
 import { LOANS } from '../shared/transport.js';
 import { TOWER_STATS } from '../shared/defense.js';
-import { moveResource } from '../shared/transfers.js';
+import { moveResource, PLAYER_CARRY_LIMIT } from '../shared/transfers.js';
 import { requireCartAllowance } from '../shared/cart-ownership.js';
 import { plotStorageCapacity, PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionLevel, productionStats, productionUpgrade, productionHarvest } from '../shared/production.js';
 import { ROLE_STATS, roleCanBuild } from '../shared/roles.js';
 import { craftingCost, roleSkills } from '../shared/skills.js';
 import { ownsStaff } from '../shared/equipment.js';
 import { ensureSkills } from './skills.js';
+import { smeltingAction, smeltingTick } from './smelting.js';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-const kinds = new Set(['plot_buy', 'plot_build', 'plot_demolish', 'plot_access', 'plot_deposit', 'plot_withdraw', 'craft_buy', 'craft_stock', 'shop_price', 'role_change', 'gather', 'buyBackpack', 'buyBandage', 'useBandage', 'upgradeProduction']);
+const kinds = new Set(['plot_buy', 'plot_build', 'plot_demolish', 'plot_access', 'plot_deposit', 'plot_withdraw', 'craft_buy', 'craft_stock', 'shop_price', 'role_change', 'gather', 'buyBackpack', 'buyBandage', 'useBandage', 'upgradeProduction', 'smelt_start', 'smelt_cancel']);
 const resourceTool = { timber: 'axe', stone: 'pickaxe', iron: 'pickaxe', coal: 'pickaxe', sulfur: 'pickaxe', wheat: 'scythe' };
 const yieldRemainder = (plot, type) => Number.isInteger(plot.splitRemainders?.[type]) ? plot.splitRemainders[type] : 0;
 const maxHarvests = type => type === 'wheat' ? 1 : type === 'timber' ? 5 : 8;
@@ -25,11 +26,13 @@ const checkNear = (player, plot) => {
 };
 const checkOwner = (plot, player) => { if (plot.ownerId !== player.id) throw new Error('Only the plot owner can do that.'); };
 const checkEmpty = plot => {
+  if (plot.smelting) throw new Error('Finish or cancel the smelting job before removing this building.');
   if (Object.values(plot.storage).some(amount => amount > 0)) throw new Error('Withdraw the stored goods before removing this building.');
   if (plot.patients?.length) throw new Error('Wait until every church patient has left before removing this building.');
 };
-const checkCapacity = (player, id, count) => {
-  if (inventoryWeight(player) + resourceWeight(player, id) * count > carryCapacity(player) + 1e-6) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store goods on a plot or in a cart.');
+const checkIntake = (player, id, count) => {
+  const held = player.inventory[id] ?? 0;
+  if (!Number.isSafeInteger(held) || held < 0 || !Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(held + count)) throw new Error('Your pack cannot hold more of that item.');
 };
 const award = (sim, village, player, gold) => {
   if (typeof sim.awardIncome === 'function') sim.awardIncome(village, player, gold);
@@ -87,7 +90,7 @@ export function ensureOwnership(village) {
 function removeBuilding(village, plot) {
   village.guards = village.guards.filter(guard => guard.plotId !== plot.id && guard.barracksId !== plot.id);
   village.plotResources = village.plotResources.filter(node => node.plotId !== plot.id);
-  Object.assign(plot, { building: null, hp: 0, maxHp: 0, level: 1, patients: [], splitRemainders: {}, guardOrder: null, shopPrices: {} });
+  Object.assign(plot, { building: null, hp: 0, maxHp: 0, level: 1, patients: [], splitRemainders: {}, guardOrder: null, shopPrices: {}, smelting: null });
 }
 
 export function ownershipAction(sim, village, player, action) {
@@ -97,7 +100,7 @@ export function ownershipAction(sim, village, player, action) {
     const shop = BUILDINGS.find(building => building.id === 'tools');
     if (!canUseBuilding(player, shop)) throw new Error('Visit Oak & Iron’s front counter to buy a bandage.');
     if (!Number.isSafeInteger(player.inventory.bandage) || player.inventory.bandage < 0 || !Number.isSafeInteger(player.inventory.bandage + 1)) throw new Error('Your pack cannot hold another bandage.');
-    checkCapacity(player, 'bandage', 1);
+    checkIntake(player, 'bandage', 1);
     if (!Number.isSafeInteger(player.wallet) || player.wallet < 0) throw new Error('Your wallet cannot pay for this purchase.');
     if (!Number.isSafeInteger(village.treasury + BANDAGE.price)) throw new Error('The village treasury cannot accept this purchase.');
     chargePurchase(sim, village, player, BANDAGE.price);
@@ -148,8 +151,8 @@ export function ownershipAction(sim, village, player, action) {
       if (inventoryWeight(plot.storage) + ownerYield * RESOURCE_WEIGHTS[node.type] > plotStorageCapacity(plot)) throw new Error('The owner needs to make room in plot storage.');
     }
     const received = output - ownerYield;
-    checkCapacity(player, node.type, received);
-    // Commit all three ledgers together only after permissions and both capacities pass.
+    checkIntake(player, node.type, received);
+    // Player intake may exceed carry weight; plot storage still has a hard limit.
     player.inventory[node.type] += received;
     player.environmentYieldRemainders ??= {}; player.environmentYieldRemainders[node.type] = harvest.remainder;
     if (plot && plot.ownerId !== player.id) {
@@ -177,6 +180,7 @@ export function ownershipAction(sim, village, player, action) {
   const plot = village.plots.find(p => p.id === action.plotId);
   if (!plot) throw new Error('Choose an available village plot.');
   checkNear(player, plot);
+  if (action.kind === 'smelt_start' || action.kind === 'smelt_cancel') return smeltingAction(village, player, plot, action);
   if (action.kind === 'plot_buy') {
     if (plot.ownerId) throw new Error('This plot already belongs to another resident.');
     const count = village.plots.filter(p => p.ownerId === player.id).length;
@@ -226,10 +230,8 @@ export function ownershipAction(sim, village, player, action) {
     const fromStock = recipe.stockable && Number.isSafeInteger(plot.storage[recipe.item]) && plot.storage[recipe.item] >= recipe.amount;
     const cost = craftingCost(recipe, owner);
     if (!fromStock) for (const [id, quantity] of Object.entries(cost)) if ((plot.storage[id] ?? 0) < quantity) throw new Error(`The shop needs more ${id} to craft this item.`);
-    const addedWeight = recipe.tool ? (player.durability[recipe.tool] > 0 ? 0 : TOOL_WEIGHTS[recipe.tool]) : resourceWeight(player, recipe.item) * recipe.amount;
-    if (inventoryWeight(player) + addedWeight > carryCapacity(player) + 1e-6) throw new Error('Your pack is full.');
     if (recipe.tool && player.durability[recipe.tool] > 0 && action.confirm !== true) throw new Error('Confirm replacing your current tool or weapon; its remaining durability will be lost.');
-    if (recipe.item && !Number.isSafeInteger((player.inventory[recipe.item] ?? 0) + recipe.amount)) throw new Error('Your pack cannot hold more of that item.');
+    if (recipe.item) checkIntake(player, recipe.item, recipe.amount);
     const taxRate = Math.max(0, Math.min(100, village.policies?.tradeTax ?? 5));
     const tax = Math.floor(price * taxRate / 100);
     const ownerAccount = owner.id !== player.id && typeof sim.awardIncome === 'function' ? sim.store.account(owner.id) : null;
@@ -267,7 +269,7 @@ export function ownershipAction(sim, village, player, action) {
       if (action.max === true && (player.inventory.cart ?? 0) > 1) action = { ...action, max: false, amount: 1 };
     }
     const amount = moveResource({ source: withdrawing ? plot.storage : player, destination: withdrawing ? player : plot.storage, resource: id, action,
-      capacity: withdrawing ? carryCapacity(player) : plotStorageCapacity(plot), fullMessage: withdrawing ? 'Your pack is full. Store or sell some items first.' : 'This plot storage is full.' });
+      capacity: withdrawing ? PLAYER_CARRY_LIMIT : plotStorageCapacity(plot), fullMessage: withdrawing ? 'Your pack cannot hold more of that item.' : 'This plot storage is full.' });
     return `${withdrawing ? 'Withdrew' : 'Stored'} ${amount} ${id}.`;
   }
   checkOwner(plot, player);
@@ -338,6 +340,7 @@ export function ownershipAction(sim, village, player, action) {
 
 export function ownershipTick(sim, village, dt) {
   ensureOwnership(village);
+  smeltingTick(village, dt);
   for (const node of village.plotResources) if (!node.available && village.clock >= node.regrowAt) {
     const plot = village.plots.find(plot => plot.id === node.plotId);
     node.available = true; node.remaining = productionNodeCapacity(node.type, plot); node.regrowAt = 0;

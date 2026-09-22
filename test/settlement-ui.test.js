@@ -19,7 +19,7 @@ function fixture(t, options = {}) {
   const dialog = { open: true, scrollTop: 0, classList: { add() {} } };
   globalThis.document = { activeElement: null, getElementById: id => id === 'panel-content' ? content : id === 'panel-dialog' ? dialog : fields.get(id) || null };
   t.after(() => { globalThis.document = prior; });
-  const ui = createSettlementUI({ schedule: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, cancel: id => timers.delete(id), getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, showInvestments: options.showInvestments, showTavern: options.showTavern, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
+  const ui = createSettlementUI({ schedule: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; }, cancel: id => timers.delete(id), getState: () => state, getMe: () => player, getActivePanel: () => activePanel, showDeliveries: options.showDeliveries, showInvestments: options.showInvestments, showTavern: options.showTavern, showPets: options.showPets, getHotbar: () => ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'food', 'bow', 'good_food'], setHotbar() {}, toast() {}, send: value => sent.push(value), openPanel: (next, panel) => {
     html = next; activePanel = panel; openCount++; fields.clear();
     buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].map(match => {
       const button = { dataset: { settlementButton: match[1].match(/data-settlement-button="(\d+)"/)[1] }, textContent: match[1].match(/aria-label="([^"]*)"/)?.[1] || match[2], get text() { return this.textContent; }, disabled: /\sdisabled(?:\s|$)/.test(match[1]), tagName: 'BUTTON' };
@@ -84,7 +84,7 @@ test('bank keeps personal gold separate from the illustrated resource market and
   f.click('Find resource market'); assert.equal(f.ui.getWaypoint().id, 'market');
   f.ui.show('market'); assert.match(f.html, /BUILDING ENTRANCE/); assert.equal(f.fields.has('trade-amount-wheat'), false);
   f.visit('market'); assert.match(f.html, /data-shop-theme="market"/);
-  assert.equal((f.html.match(/class="market-resource-card"/g) || []).length, 6);
+  assert.equal((f.html.match(/class="market-resource-card"/g) || []).length, 8);
   assert.doesNotMatch(f.html, /id="bank-amount"|id="loan-amount"|>Deposit</);
   f.click('Requested deliveries'); assert.deepEqual(delivered, ['bank'], 'saved request destination keys remain compatible');
   f.click('Donate carried resources'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'donate' });
@@ -299,7 +299,7 @@ test('all service and plot panel branches render from a complete expansion snaps
   for (const kind of ['inventory', 'bank', 'market', 'food', 'tools', 'barracks', 'church', 'stable', 'merchant', 'policies', 'roles', 'atlas']) {
     f.visit(kind, kind === 'church' ? 'church' : null); assert.match(f.html, /<h2>/);
   }
-  for (const building of ['tool_shop', 'tinker_shop', 'sword_shop', 'house', 'mine', 'tree_farm', 'wheat_farm', 'barracks', 'church', 'archer_tower', 'cannon']) {
+  for (const building of ['tool_shop', 'tinker_shop', 'sword_shop', 'smelter', 'house', 'mine', 'tree_farm', 'wheat_farm', 'barracks', 'church', 'archer_tower', 'cannon']) {
     f.state.plots = [{ id: PLOTS[0].id, ownerId: 'alice', ownerName: 'Alice', building, hp: 300, maxHp: 500, level: 1, storage: { timber: 100, stone: 100, iron: 100, coal: 100, wheat: 100, arrows: 100 } }];
     f.visit('plot', PLOTS[0].id); assert.match(f.html, /Building storage/); assert.doesNotMatch(f.html, /\[object Object\]/);
   }
@@ -344,13 +344,14 @@ test('Oak & Iron sells an illustrated 250 gold bandage with its healing and carr
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'buyBandage' });
 });
 
-test('bandage purchase requires enough wallet gold and one free carrying weight', t => {
+test('bandage purchase requires wallet gold and allows exceeding the carrying allowance', t => {
   const f = fixture(t); f.player.wallet = 249; f.state.loan.credit = 1000; f.player.bank = 1000; f.visit('tools');
   const buy = () => f.buttons.find(b => b.text === 'Buy bandage · 250g');
   assert.equal(buy().disabled, true); assert.match(f.html, /Not enough wallet gold/);
   f.player.wallet = 250; f.ui.refresh(); assert.equal(buy().disabled, false);
   f.player.inventory = { wheat: 100 }; f.player.durability = {}; f.ui.refresh();
-  assert.equal(buy().disabled, true, 'a full pack cannot buy another bandage');
+  assert.equal(buy().disabled, false, 'a full pack can buy another bandage');
+  f.player.inventory.wheat = 101; f.ui.refresh(); assert.equal(buy().disabled, false); assert.match(f.html, /Encumbered/);
   f.player.inventory.wheat = 99; f.ui.refresh(); assert.equal(buy().disabled, false, 'exactly one free weight is enough');
   f.click('Buy bandage · 250g'); assert.equal(f.sent.at(-1).kind, 'buyBandage');
 });
@@ -381,14 +382,15 @@ test('bandage healing information and availability refresh when maximum health a
   assert.equal(f.buttons.find(b => b.text === 'Use bandage').disabled, false);
 });
 
-test('resource purchase controls allow upgraded backpack capacity and stop at its actual limit', t => {
+test('resource purchase controls allow buying beyond the upgraded backpack allowance', t => {
   const f = fixture(t);
   f.player.inventory = { wheat: 150 }; f.player.durability = {}; f.player.backpackTier = 1;
   const price = taxedPurchaseQuote('wheat', 100, 10, 10).total;
   f.visit('market');
   assert.ok(!f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled);
   f.player.inventory.wheat = 195; f.ui.refresh();
-  assert.ok(f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled);
+  assert.equal(f.buttons.find(b => b.text === `Buy 10 · ${price}g`).disabled, false);
+  f.click(`Buy 10 · ${price}g`); assert.equal(f.sent.at(-1).kind, 'buyResource');
 });
 
 test('barracks preserve recruited slots while showing replacement wheat and countdown', t => {
@@ -414,7 +416,7 @@ test('owned barracks expose ranged recruitment, per-soldier training and ammunit
   f.visit('plot', id);
   assert.match(f.html, /Recruited slots<\/span><strong>1 \/ 6/);
   assert.match(f.html, /Archer · Level 1/); assert.match(f.html, /Out of ammunition · restock this barracks/);
-  assert.match(f.html, /Training: 55 gold · 10 timber · 3 iron → 160 health · 25 damage/);
+  assert.match(f.html, /Training: 55 gold · 10 timber · 3 iron ore → 160 health · 25 damage/);
   f.click('Recruit Musketeer · 70g');
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'recruitGuard', plotId: id, unitType: 'musketeer' });
   f.click('Train Archer · 55g');
@@ -477,7 +479,7 @@ test('market quantity stays focused while live stock changes refresh displayed q
   assert.equal(f.fields.get('trade-amount-wheat').value, '37');
 });
 
-test('market rejects invalid quantities and prevents buying beyond pack, wallet, or stock', t => {
+test('market rejects invalid quantities and insufficient wallet or stock, while allowing encumbrance', t => {
   const f = fixture(t); f.player.inventory = { wheat: 95 }; f.player.durability = {}; f.visit('market');
   const input = f.fields.get('trade-amount-wheat');
   for (const raw of ['', '0', '-1', '1.5', '10001', 'Infinity']) {
@@ -487,8 +489,8 @@ test('market rejects invalid quantities and prevents buying beyond pack, wallet,
   }
   assert.equal(f.sent.length, 0);
   input.value = '6'; input.oninput();
-  assert.match(f.fields.get('trade-buy-quote-wheat').textContent, /room for 5 more wheat/);
-  assert.ok(f.fields.get('trade-buy-wheat').disabled);
+  assert.equal(f.fields.get('trade-buy-wheat').disabled, false);
+  assert.doesNotMatch(f.fields.get('trade-buy-quote-wheat').textContent, /room for/);
   input.value = '5'; f.player.wallet = 0; input.oninput();
   assert.match(f.fields.get('trade-buy-quote-wheat').textContent, /not have enough gold/);
   f.player.wallet = 2000; f.state.stock.wheat = 3; input.oninput();
@@ -716,7 +718,7 @@ test('bank quantities survive snapshots after blur and all buttons ignore unfini
   assert.equal(f.fields.get('bank-withdraw-max').disabled, true);
 });
 
-test('equipped resource packs update market limits and worker collection at exact carrying boundaries', t => {
+test('equipped resource packs update weight without blocking market purchases or worker collection', t => {
   const f = fixture(t);
   f.player.inventory = { wheat: 76 }; f.player.durability = {}; f.player.crateEquipment = { utility: 'mining_pack' };
   f.visit('market');
@@ -725,8 +727,8 @@ test('equipped resource packs update market limits and worker collection at exac
   const input = f.fields.get('trade-amount-stone'); document.activeElement = input;
   f.player.crateEquipment = {}; f.ui.refresh();
   assert.equal(f.fields.get('trade-weight-stone').textContent, '3 weight each');
-  assert.equal(f.fields.get('trade-buy-stone').disabled, true);
-  assert.match(f.fields.get('trade-buy-quote-stone').textContent, /room for 8 more stone/);
+  assert.equal(f.fields.get('trade-buy-stone').disabled, false);
+  assert.doesNotMatch(f.fields.get('trade-buy-quote-stone').textContent, /room for/);
   document.activeElement = null;
   f.player.inventory = { wheat: 97, arrows: 6 }; f.player.crateEquipment.utility = 'mining_pack';
   f.state.workers = [{ id: 'worker-one', ownerId: f.player.id, x: f.player.x, z: f.player.z, cargo: { stone: 1 }, resource: 'stone' }];
@@ -734,7 +736,8 @@ test('equipped resource packs update market limits and worker collection at exac
   f.click('Collect carried supplies');
   assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_collect', workerId: 'worker-one' });
   f.player.crateEquipment = {}; f.ui.refresh();
-  assert.equal(f.buttons.find(button => button.text === 'Collect carried supplies').disabled, true);
+  assert.equal(f.buttons.find(button => button.text === 'Collect carried supplies').disabled, false);
+  f.click('Collect carried supplies'); assert.equal(f.sent.at(-1).kind, 'worker_collect');
 });
 
 test('bound starter food shows its transferable remainder and storage max cannot include it', t => {
@@ -980,4 +983,133 @@ test('keyboard focus stays on a resource action when other inventory rows appear
   f.fields.get('storage-cart-store-max').focus();
   f.player.inventory.arrows = 20; f.ui.refresh();
   assert.equal(document.activeElement, f.fields.get('storage-cart-store-max'));
+});
+
+function visitSmelter(f, overrides = {}) {
+  const plot = { id: PLOTS[0].id, ownerId: f.player.id, ownerName: 'Alice', building: 'smelter', hp: 550, maxHp: 550, storage: { iron: 20, timber: 10, coal: 5 }, ...overrides };
+  f.state.plots = [plot]; f.visit('plot', plot.id); return plot;
+}
+
+test('smelter offers illustrated ore-to-ingot batches with exact stored input costs and start actions', t => {
+  const f = fixture(t), plot = visitSmelter(f);
+  assert.match(f.html, /data-building-art="smelter"/); assert.match(f.html, /data-item="iron_ingot"/); assert.match(f.html, /data-item="steel_ingot"/);
+  assert.match(f.html, /10s per ingot/); assert.match(f.html, /15s per ingot/);
+  assert.equal(f.fields.get('smelt-cost-iron_ingot').textContent, '2 iron ore · 1 timber → 1 iron ingot');
+  f.fields.get('smelt-start-iron_ingot').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'smelt_start', plotId: plot.id, recipe: 'iron_ingot', batches: 1 });
+  const quantity = f.fields.get('smelt-batches-steel_ingot'); quantity.value = '3'; quantity.oninput();
+  assert.equal(f.fields.get('smelt-cost-steel_ingot').textContent, '6 iron ore · 3 timber · 3 coal → 3 steel ingots');
+  assert.match(f.fields.get('smelt-status-steel_ingot').textContent, /45 active village seconds/);
+  f.fields.get('smelt-start-steel_ingot').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'smelt_start', plotId: plot.id, recipe: 'steel_ingot', batches: 3 });
+  plot.storage.coal = 2; f.ui.refresh();
+  assert.equal(f.fields.get('smelt-start-steel_ingot').disabled, true); assert.match(f.fields.get('smelt-status-steel_ingot').textContent, /Store the required inputs/);
+});
+
+test('smelter validates batch bounds and preserves drafts while stock or input focus changes', t => {
+  const f = fixture(t), plot = visitSmelter(f), input = f.fields.get('smelt-batches-iron_ingot');
+  for (const raw of ['', '0', '-1', '1.5', '101', 'Infinity']) {
+    input.value = raw; input.oninput(); assert.equal(f.fields.get('smelt-start-iron_ingot').disabled, true);
+    f.fields.get('smelt-start-iron_ingot').onclick();
+  }
+  assert.equal(f.sent.length, 0);
+  input.value = '10'; input.oninput(); document.activeElement = input;
+  f.ui.refresh(); const renders = f.openCount; plot.storage.iron = 19; f.ui.refresh();
+  assert.equal(f.openCount, renders); assert.equal(input.value, '10'); assert.equal(f.fields.get('smelt-start-iron_ingot').disabled, true);
+  document.activeElement = null; plot.storage.iron = 20; f.ui.refresh();
+  assert.equal(f.fields.get('smelt-batches-iron_ingot').value, '10'); assert.equal(f.fields.get('smelt-start-iron_ingot').disabled, false);
+  f.fields.get('smelt-start-iron_ingot').onclick(); assert.equal(f.sent.at(-1).batches, 10);
+});
+
+test('smelter stale controls reject changed ownership, queued work and leaving the entrance', t => {
+  const f = fixture(t), plot = visitSmelter(f), start = f.fields.get('smelt-start-iron_ingot');
+  plot.smelting = { recipe: 'iron_ingot', batches: 1, remaining: 1, progress: 0, ready: 0, ownerId: f.player.id };
+  start.onclick(); assert.equal(f.sent.length, 0);
+  delete plot.smelting; plot.ownerId = 'bob'; start.onclick(); assert.equal(f.sent.length, 0); f.ui.refresh();
+  assert.equal(f.fields.has('smelt-start-iron_ingot'), false); assert.match(f.html, /owner starts smelting batches/);
+  assert.equal(f.fields.has('storage-iron-take-1'), false);
+  plot.ownerId = f.player.id; f.visit('plot', plot.id); const freshStart = f.fields.get('smelt-start-iron_ingot');
+  f.player.x += 30; freshStart.onclick(); assert.equal(f.sent.length, 0); assert.match(f.html, /BUILDING ENTRANCE/);
+});
+
+test('smelter progress and cancellation retain output and respect hard building capacity', t => {
+  const f = fixture(t), plot = visitSmelter(f, { storage: {}, smelting: { recipe: 'steel_ingot', batches: 5, remaining: 3, progress: 6, ready: 1, ownerId: f.player.id } });
+  const cancel = () => f.buttons.find(button => button.text.startsWith('Cancel batch'));
+  assert.match(f.html, /2 \/ 5 finished · 1 waiting for storage space/); assert.match(f.html, /9s to the next ingot · 3 left/);
+  assert.match(f.html, /Current ingot progress/); assert.match(f.html, /Progress on the current ingot is lost/);
+  assert.equal(cancel().disabled, false); cancel().onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'smelt_cancel', plotId: plot.id });
+  plot.storage = { wheat: 1500 }; f.ui.refresh(); assert.equal(cancel().disabled, true); assert.match(f.html, /Take goods from storage to make room/);
+  plot.storage = {}; plot.hp = 0; plot.ruined = true; f.visit('plot', plot.id);
+  assert.match(f.html, /Paused until this smelter is rebuilt/); assert.equal(cancel().disabled, false);
+  cancel().onclick(); assert.equal(f.sent.at(-1).kind, 'smelt_cancel');
+  plot.smelting = { ...plot.smelting, remaining: 0, progress: 0, ready: 5 }; plot.hp = 550; plot.ruined = false; f.visit('plot', plot.id);
+  assert.match(f.html, /5 \/ 5 finished · 5 waiting for storage space/); assert.match(f.html, /make room for the finished ingots/);
+});
+
+test('smelter timer snapshots preserve controls between whole seconds and throughout a pressed cancel', t => {
+  const f = fixture(t), plot = visitSmelter(f, { smelting: { recipe: 'iron_ingot', batches: 5, remaining: 5, progress: 0, ready: 0, ownerId: f.player.id } });
+  f.ui.refresh(); const renders = f.openCount;
+  for (const progress of [.1, .2, .4, .8]) { plot.smelting.progress = progress; f.ui.refresh(); }
+  assert.equal(f.openCount, renders, 'fractional progress does not rebuild the entire storage panel');
+  plot.smelting.progress = 1; f.ui.refresh(); assert.equal(f.openCount, renders + 1);
+  const cancel = f.buttons.find(button => button.text.startsWith('Cancel batch'));
+  cancel.onpointerdown({ button: 0 }); plot.smelting.progress = 2; f.ui.refresh();
+  assert.equal(f.openCount, renders + 1); cancel.onpointerup(); plot.smelting.progress = 3; f.ui.refresh();
+  assert.equal(f.openCount, renders + 1); cancel.onclick();
+  assert.deepEqual(f.sent, [{ type: 'action', kind: 'smelt_cancel', plotId: plot.id }]);
+});
+
+test('ruined and malformed smelter jobs cannot silently start or erase paid work', t => {
+  const f = fixture(t), plot = visitSmelter(f, { hp: 0, ruined: true });
+  assert.equal(f.fields.get('smelt-start-iron_ingot').disabled, true);
+  assert.match(f.fields.get('smelt-status-iron_ingot').textContent, /Rebuild this smelter/);
+  plot.hp = 550; plot.ruined = false; plot.smelting = { recipe: 'bad', batches: 5 }; f.visit('plot', plot.id);
+  assert.match(f.html, /materials are retained/); assert.equal(f.fields.has('smelt-start-iron_ingot'), false);
+  assert.equal(f.buttons.some(button => button.text.startsWith('Cancel batch')), false); assert.equal(f.sent.length, 0);
+});
+
+test('full players can take every stored ingot while building and cart deposits keep their limits', t => {
+  const f = fixture(t); f.player.inventory = { wheat: 100 }; f.player.durability = {};
+  const plot = visitSmelter(f, { storage: { steel_ingot: 30 } });
+  assert.equal(f.fields.get('storage-steel_ingot-take-10').disabled, false);
+  f.fields.get('storage-steel_ingot-take-max').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'plot_withdraw', plotId: plot.id, resource: 'steel_ingot', max: true });
+  plot.storage = { steel_ingot: 500 }; f.ui.refresh(); assert.equal(f.fields.get('storage-wheat-store-1').disabled, true);
+  f.state.carts = [{ id: 'full-cart', ownerId: f.player.id, x: f.player.x, z: f.player.z, capacity: 1000, storage: { wheat: 1000 } }];
+  f.ui.show('cart', 'full-cart'); assert.equal(f.fields.get('storage-wheat-store-1').disabled, true);
+  assert.equal(f.fields.get('storage-wheat-take-max').disabled, false); f.fields.get('storage-wheat-take-max').onclick();
+  assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'cartWithdraw', targetId: 'full-cart', resource: 'wheat', max: true });
+});
+
+test('encumbered players can buy meals, starter tools and workshop steel equipment', t => {
+  const f = fixture(t); f.player.inventory = { wheat: 101 }; f.player.durability = {}; f.player.tiers = {};
+  f.visit('food'); const meal = f.buttons.find(button => button.text.startsWith('Buy'));
+  assert.equal(meal.disabled, false); meal.onclick(); assert.equal(f.sent.at(-1).kind, 'buyFood');
+  f.visit('tools'); f.click('Buy · 10g'); assert.equal(f.sent.at(-1).kind, 'buyTool');
+  f.state.plots = [{ id: PLOTS[0].id, ownerId: 'bob', building: 'tool_shop', hp: 350, storage: { steel_ingot: 100, timber: 100 } }];
+  f.visit('plot', PLOTS[0].id);
+  const card = f.html.match(/<article[^>]*data-shop-item="steel_pickaxe"[\s\S]*?<\/article>/)?.[0];
+  assert.match(card, /4 resources \/ swing/); assert.match(card, /250 uses/); assert.match(card, /steel ingot/);
+  const buy = f.buttons.find(button => button.dataset.shopFocus === 'buy-steel_pickaxe-0');
+  assert.equal(buy.disabled, false); buy.onclick(); assert.equal(f.sent.at(-1).recipe, 'steel_pickaxe');
+});
+
+test('ingots appear in stock, surplus policy and sale controls even with no raw materials', t => {
+  const f = fixture(t); f.player.inventory = { iron_ingot: 2, steel_ingot: 1 }; f.player.durability = {};
+  f.state.stock.iron_ingot = 5; f.state.stock.steel_ingot = 7; f.visit('market');
+  assert.equal(f.fields.get('market-donate').disabled, false); f.click('Quick Sell all carried resources'); assert.equal(f.sent.at(-1).kind, 'sell_all');
+  f.click('Donate carried resources'); assert.equal(f.sent.at(-1).kind, 'donate');
+  f.visit('policies'); assert.match(f.html, /iron ingots and steel ingots/);
+  f.visit('merchant'); assert.match(f.html, /iron ore, iron ingots and steel ingots/);
+  f.ui.show('inventory'); assert.match(f.html, /data-supply="iron_ingot"/); assert.match(f.html, /data-supply="steel_ingot"/);
+});
+
+test('merchant pet entry opens the supplied collection without inventing an egg purchase', t => {
+  let opened = 0; const f = fixture(t, { showPets: () => opened++ });
+  for (const present of [true, false]) {
+    f.state.merchant.present = present; f.visit('merchant'); assert.match(f.html, /data-item="pet_egg"/);
+    f.click('Pets &amp; eggs'); assert.equal(f.sent.length, 0);
+  }
+  assert.equal(opened, 2);
 });

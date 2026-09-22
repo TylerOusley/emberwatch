@@ -82,7 +82,16 @@ test('Tinker recipes discount the owner’s workshops for offline visitor purcha
   assert.equal(player.inventory.gunpowder, 5); assert.equal(player.wallet, 9963); assert.equal(owner.wallet, 1036);
   assert.deepEqual(craftingCost(RECIPES.gunpowder, owner), { sulfur: 2, coal: 1 });
   owner.skills.tinker_efficiency = 2;
-  assert.deepEqual(craftingCost(RECIPES.musket, owner), { iron: 12, timber: 13 });
+  assert.deepEqual(craftingCost(RECIPES.musket, owner), { iron_ingot: 12, timber: 13 });
+  plot.shopPrices.musket = 225; plot.storage = { iron: 12, timber: 13 };
+  const before = structuredClone({ storage: plot.storage, wallet: player.wallet, ownerWallet: owner.wallet });
+  assert.throws(() => ownershipAction(sim, village, player, { kind: 'craft_buy', plotId: plot.id, recipe: 'musket', price: 225 }), /iron_ingot/);
+  assert.deepEqual({ storage: plot.storage, wallet: player.wallet, ownerWallet: owner.wallet }, before, 'raw ore cannot replace the discounted ingot ingredients');
+  plot.storage.iron_ingot = 12;
+  ownershipAction(sim, village, player, { kind: 'craft_buy', plotId: plot.id, recipe: 'musket', price: 225 });
+  assert.equal(player.durability.musket, 100); assert.equal(player.wallet, 9738);
+  assert.equal(owner.wallet, 1250, 'the offline owner receives their chosen price minus treasury tax');
+  assert.deepEqual(plot.storage, { iron: 12, timber: 0, iron_ingot: 0 });
   assert.deepEqual(craftingCost(RECIPES.gunpowder, owner, 10), { sulfur: 16, coal: 8 });
   assert.equal(roleCanBuild('tinker', BUILDING_TYPES.sword_shop), true);
   assert.equal(roleCanBuild('villager', BUILDING_TYPES.sword_shop), false);

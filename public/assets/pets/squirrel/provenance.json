@@ -1,0 +1,113 @@
+{
+  "assetId": "squirrel",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "title": "Squirrel",
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "authors": [
+    "CDmir",
+    "TinyWorlds"
+  ],
+  "sourceUrls": [
+    "https://opengameart.org/content/undead-squirrel-animated",
+    "https://opengameart.org/sites/default/files/undeadsquirrell.zip"
+  ],
+  "sourceFiles": [
+    {
+      "name": "undeadsquirrell.zip",
+      "sha256": "96e4c1c4581cbc2b2b65ef6cc24be09cc0059cafd5673b380d3b26fd2f6511cf",
+      "bytes": 3530676
+    }
+  ],
+  "blendSha256": "150016dac5a6a700f5726c84e18bb66f7d03b23c35f2b7d636a41f413980927f",
+  "modelSha256": "f10f93c44163dd5a99ee28f99fe315a165b58d2ab5790d8a8e2b5349cd23ed9e",
+  "modelBytes": 2988604,
+  "clips": [
+    {
+      "name": "idle",
+      "sourceAction": "Idle.003",
+      "sourceFrames": [
+        0,
+        77
+      ],
+      "duration": 3.4583333333333335,
+      "loopClosureFrames": 6,
+      "notes": "Baked creator-authored skeletal motion."
+    },
+    {
+      "name": "walk",
+      "sourceAction": "Run",
+      "sourceFrames": [
+        0,
+        9
+      ],
+      "duration": 0.4583333333333333,
+      "loopClosureFrames": 2,
+      "notes": "Baked creator-authored skeletal motion."
+    },
+    {
+      "name": "attack",
+      "sourceAction": "Attack.000",
+      "sourceFrames": [
+        0,
+        22
+      ],
+      "duration": 0.9166666666666666,
+      "loopClosureFrames": 0,
+      "notes": "Baked creator-authored skeletal motion."
+    }
+  ],
+  "textures": [
+    {
+      "name": "Body",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "name": "Head",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "name": "squirrel-body-norm.png",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "name": "squirrel-head-norm.png",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "sourceHeading": "-Y",
+    "headingFlipped": false,
+    "originalBoundsZUp": {
+      "min": [
+        -0.7606943845748901,
+        -1.848426342010498,
+        -0.0005730390548706055
+      ],
+      "max": [
+        0.7606946229934692,
+        1.8494300842285156,
+        3.1606507301330566
+      ]
+    }
+  },
+  "meshCount": 5,
+  "skinCount": 1,
+  "modifications": [
+    "Preserved source mesh, skin weights, UVs and supplied diffuse/normal texture pixels.",
+    "Applied author non-armature modifiers and rebuilt legacy Blender materials as Principled PBR.",
+    "Baked original IK constraints into separate named skeletal clips; no mixed full timeline.",
+    "Eased non-looping source idle/walk endpoints back to their initial pose; recorded added frames per clip.",
+    "Centered and normalized the idle pose to height 1 meter with feet at Y=0 and forward +Z.",
+    "Rendered the actual converted model to a transparent 512px thumbnail."
+  ]
+}

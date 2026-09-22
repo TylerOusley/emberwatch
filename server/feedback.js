@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-export const FEEDBACK_BUILD = 31;
+export const FEEDBACK_BUILD = 32;
 export const FEEDBACK_REVIEW_THRESHOLD = 10;
 export const FEEDBACK_STATUSES = ['new', 'needs_info', 'confirmed', 'planned', 'resolved', 'not_reproduced', 'duplicate'];
 const OPEN_STATUSES = ['new', 'needs_info', 'confirmed', 'planned'];

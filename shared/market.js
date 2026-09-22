@@ -5,7 +5,9 @@ export const RESOURCE_MARKET = Object.freeze({
   wheat: Object.freeze({ label: 'Wheat' }),
   timber: Object.freeze({ label: 'Timber' }),
   stone: Object.freeze({ label: 'Stone' }),
-  iron: Object.freeze({ label: 'Iron' }),
+  iron: Object.freeze({ label: 'Iron ore' }),
+  iron_ingot: Object.freeze({ label: 'Iron ingot' }),
+  steel_ingot: Object.freeze({ label: 'Steel ingot' }),
   coal: Object.freeze({ label: 'Coal' }),
   sulfur: Object.freeze({ label: 'Sulfur' })
 });
@@ -14,15 +16,15 @@ export const RESOURCE_MARKET = Object.freeze({
 export const TREASURY_RESERVE = 500;
 export const MAX_TRADE_AMOUNT = 10000;
 const PRICE_BANDS = [
-  { below: 25, wheat: 4, timber: 5, stone: 5, iron: 7, coal: 5, sulfur: 6 },
-  { below: 100, wheat: 3, timber: 4, stone: 4, iron: 6, coal: 4, sulfur: 5 },
-  { below: 300, wheat: 2, timber: 3, stone: 3, iron: 5, coal: 3, sulfur: 4 },
-  { below: 1000, wheat: 1, timber: 2, stone: 2, iron: 4, coal: 2, sulfur: 3 },
-  { below: Infinity, wheat: 1, timber: 1, stone: 1, iron: 3, coal: 2, sulfur: 2 }
+  { below: 25, wheat: 4, timber: 5, stone: 5, iron: 7, iron_ingot: 10, steel_ingot: 16, coal: 5, sulfur: 6 },
+  { below: 100, wheat: 3, timber: 4, stone: 4, iron: 6, iron_ingot: 9, steel_ingot: 14, coal: 4, sulfur: 5 },
+  { below: 300, wheat: 2, timber: 3, stone: 3, iron: 5, iron_ingot: 8, steel_ingot: 12, coal: 3, sulfur: 4 },
+  { below: 1000, wheat: 1, timber: 2, stone: 2, iron: 4, iron_ingot: 7, steel_ingot: 11, coal: 2, sulfur: 3 },
+  { below: Infinity, wheat: 1, timber: 1, stone: 1, iron: 3, iron_ingot: 6, steel_ingot: 10, coal: 2, sulfur: 2 }
 ];
 
 function validateStock(resource, stock) {
-  if (typeof resource !== 'string' || !Object.hasOwn(RESOURCE_MARKET, resource)) throw new Error('Choose wheat, timber, stone, iron, coal or sulfur to trade.');
+  if (typeof resource !== 'string' || !Object.hasOwn(RESOURCE_MARKET, resource)) throw new Error('Choose wheat, timber, stone, iron ore, iron ingots, steel ingots, coal or sulfur to trade.');
   if (!Number.isSafeInteger(stock) || stock < 0) throw new Error('Village stock is unavailable.');
 }
 

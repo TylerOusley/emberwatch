@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ROAD, PLOTS, canStand, plotSolids, plotSolid } from '../shared/world.js';
-import { ENEMY_TYPES, ENEMY_LIMITS, enemyKind, enemyStats, enemyForWave } from '../shared/enemies.js';
+import { ENEMY_TYPES, ENEMY_LIMITS, enemyKind, enemyStats, enemyForWave, enemySpawnInterval } from '../shared/enemies.js';
 
 export function ensureEnemies(village) {
   village.zombies ??= [];
@@ -43,8 +43,7 @@ export function spawnWaveEnemy(village) {
   const index = village.spawned, kind = enemyForWave(village.day, index);
   village.zombies.push(createEnemy(village, kind, { x: ROAD[0].x + (index % 3 - 1) * 1.3, z: ROAD[0].z + (index % 2) * 1.5 }));
   village.spawned++;
-  const band = Math.floor((village.day - 1) / 5);
-  village.nextSpawn = village.clock + Math.max(1.5, 6 - band * .4);
+  village.nextSpawn = village.clock + enemySpawnInterval(village.day);
   return true;
 }
 

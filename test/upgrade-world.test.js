@@ -118,3 +118,30 @@ test('veteran troop armor follows bones, shares bounded resources and restores o
  world.removePlayer('b');assert.equal(world.stats.troops,0);rigs[1].dispose();assert.equal(disposed,0,'actor disposal cannot dispose armor still used by other troops');
  world.clear();assert.equal(disposed,0);world.dispose();world.dispose();assert.equal(disposed,resources.size);rigs[0].dispose();
 });
+
+test('smelter has a bounded textured furnace, real collision and a reusable job-driven glow',()=>canvasDocument(()=>{
+ const scene=new THREE.Scene(),world=createPlotsWorld(scene),site=PLOTS[0],plot={id:site.id,ownerId:'owner',building:'smelter',level:1,hp:500};
+ const state={id:'forge-test',clock:0,plots:[plot]};world.update(state,0);scene.updateMatrixWorld(true);
+ const model=scene.getObjectByName(`plot-${site.id}`),glow=model.getObjectByName('smelter-furnace-glow'),stats=meshStats(model);
+ assert.ok(glow);assert.equal(glow.visible,false);assert.ok(plotSolid(site,'smelter'));
+ assert.equal(model.getObjectByName('plot-box-stone').material.userData.surface.kind,'masonry');
+ assert.ok(stats.meshes<=20,JSON.stringify(stats));assert.ok(stats.triangles<13000,JSON.stringify(stats));
+ const local=model.clone();local.position.set(0,0,0);local.rotation.set(0,0,0);const bounds=new THREE.Box3().setFromObject(local),quarter=Math.abs(Math.sin(site.yaw??0))>.5;
+ assert.ok(bounds.min.x>=-(quarter?site.d:site.w)/2-.15&&bounds.max.x<=(quarter?site.d:site.w)/2+.15);
+ assert.ok(bounds.min.z>=-(quarter?site.w:site.d)/2-.15&&bounds.max.z<=(quarter?site.w:site.d)/2+.15);
+ const origin=model.localToWorld(new THREE.Vector3(0,1.3,6.1)),direction=new THREE.Vector3(0,0,-1).transformDirection(model.matrixWorld);
+ assert.equal(new THREE.Raycaster(origin,direction,0,1.5).intersectObject(model,true).length,0,'front delivery lane stays open');
+ plot.smelting={recipe:'steel_ingot',remaining:3,ownerId:'owner',progress:2};world.update(state,1);
+ assert.equal(scene.getObjectByName(`plot-${site.id}`),model);assert.equal(glow.visible,true);
+ plot.smelting.remaining=0;plot.smelting.ready=3;world.update(state,2);assert.equal(glow.visible,false,'finished output does not keep a furnace running');
+ plot.smelting.remaining=2;plot.smelting.ownerId='previous';world.update(state,3);assert.equal(glow.visible,false,'ownership-mismatched jobs are paused');
+ plot.hp=0;world.update(state,4);assert.equal(scene.getObjectByName(`plot-${site.id}`).getObjectByName('smelter-furnace-glow'),undefined);
+ world.dispose();world.dispose();assert.equal(scene.children.length,0);
+}));
+
+test('steel equipment has a distinct forged material without adding model geometry',()=>{
+ const dwarf=createCharacter('villager',17);
+ const palette=tier=>{dwarf.setTool({id:'pickaxe',tier});const result=[];dwarf.group.traverse(m=>{if(m.isMesh)result.push([m.material.color?.getHex(),m.material.metalness,m.material.roughness]);});return result;};
+ const iron=palette(3),steel=palette(4);assert.equal(iron.length,steel.length);assert.notDeepEqual(iron,steel);
+ dwarf.dispose();
+});

@@ -1,5 +1,6 @@
 import { TRADE_ITEMS, TRADE_RULES, emptyTradeOffer, normalizeTradeOffer, canTrade, withinTradeRange } from '../../shared/trading.js';
-import { carryCapacity, inventoryWeight, transferableCount, boundInventoryCount } from '../../shared/content.js';
+import { transferableCount, boundInventoryCount } from '../../shared/content.js';
+import { carryStatus } from '../../shared/encumbrance.js';
 import { itemArt } from './shop-display.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -91,8 +92,8 @@ export function createTradingUI({ getState, getMe, getActivePanel, openPanel, se
         html += `<p><strong>Offer revision ${version}</strong> · Any change clears both confirmations. Stay beside each other while trading.</p><div class="trade-parties"><article class="trade-party-card" data-party="you"><header><div><small>YOUR SIDE</small><h4>You give</h4></div><span class="command-badge ${trade.confirmations[me.id] ? 'ready' : ''}">${trade.confirmations[me.id] ? 'Confirmed' : 'Reviewing'}</span></header>${summary(own)}</article><article class="trade-party-card" data-party="partner"><header><div><small>PARTNER’S SIDE</small><h4>You receive from ${esc(partnerName)}</h4></div><span class="command-badge ${trade.confirmations[partner.id] ? 'ready' : ''}">${trade.confirmations[partner.id] ? 'Confirmed' : 'Reviewing'}</span></header>${summary(other)}</article></div>`;
         const nextInventory = { ...me.inventory };
         for (const id of Object.keys(TRADE_ITEMS)) nextInventory[id] = count(nextInventory[id]) - own.resources[id] + other.resources[id];
-        const nextWeight = inventoryWeight({ ...me, inventory: nextInventory });
-        html += `<p class="trade-pack-preview ${nextWeight > carryCapacity(me) ? 'overweight' : ''}">Your pack after this trade: <strong>${nextWeight} / ${carryCapacity(me)}</strong> weight${nextWeight > carryCapacity(me) ? ' — make room before confirming.' : '.'}</p><p class="trade-confirm-status" aria-live="polite">You: <strong>${trade.confirmations[me.id] ? 'Confirmed' : 'Reviewing'}</strong> · ${esc(partnerName)}: <strong>${trade.confirmations[partner.id] ? 'Confirmed' : 'Reviewing'}</strong></p>`;
+        const nextCarry = carryStatus({ ...me, inventory: nextInventory });
+        html += `<p class="trade-pack-preview ${nextCarry.encumbered ? 'overweight' : ''}">Your pack after this trade: <strong>${nextCarry.carryWeight} / ${nextCarry.carryCapacity}</strong> weight${nextCarry.encumbered ? ' — you will be encumbered: 45% movement speed, no sprint.' : '.'}</p><p class="trade-confirm-status" aria-live="polite">You: <strong>${trade.confirmations[me.id] ? 'Confirmed' : 'Reviewing'}</strong> · ${esc(partnerName)}: <strong>${trade.confirmations[partner.id] ? 'Confirmed' : 'Reviewing'}</strong></p>`;
         html += '<div class="panel-actions">' + button(trade.confirmations[me.id] ? 'Waiting for partner' : 'Confirm this exchange', () => {
           if (tradeNow()?.version !== version) { toast('The offer changed. Review the latest terms first.'); render(); return; }
           if (!draftValid()) { toast('Your transferable supplies changed. Update your offer before confirming.'); render(); return; }

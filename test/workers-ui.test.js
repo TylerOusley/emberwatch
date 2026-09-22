@@ -204,7 +204,7 @@ test('missing or incompatible buildings retain the selected order and require an
   assert.equal(f.sent.length, 0);
 });
 
-test('worker controls enforce wallet hiring, crew limits, proximity, partial collection and reviewed dismissal', t => {
+test('worker controls enforce hiring and proximity while allowing full-cargo collection into an encumbered pack', t => {
   const f = fixture(t); f.ui.show('workers');
   f.player.wallet = WORKER_RULES.hireCost - 1; f.ui.refresh(); assert.equal(f.button(`Hire a worker · ${WORKER_RULES.hireCost}g`).disabled, true);
   f.player.wallet = 200; for (let i = 1; i < WORKER_RULES.maxPerPlayer; i++) f.state.workers.push({ ...f.worker, id: `worker-${i}` }); f.ui.refresh(); assert.equal(f.button('Worker limit reached').disabled, true);
@@ -214,7 +214,8 @@ test('worker controls enforce wallet hiring, crew limits, proximity, partial col
   Object.assign(f.player, treasuryEntrance); f.worker.paused = false; f.worker.cargo = { stone: 10 }; f.player.inventory = { wheat: 97 }; f.ui.refresh();
   f.click('Collect carried supplies'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_collect', workerId: f.worker.id });
   assert.equal(f.button('Dismiss worker').disabled, true);
-  f.player.inventory.wheat = 100; f.ui.refresh(); assert.equal(f.button('Collect carried supplies').disabled, true);
+  f.player.inventory.wheat = 100; f.ui.refresh(); assert.equal(f.button('Collect carried supplies').disabled, false);
+  f.click('Collect carried supplies'); assert.equal(f.sent.at(-1).kind, 'worker_collect');
   f.worker.cargo = {}; f.worker.x = 20; f.ui.refresh(); assert.equal(f.button('Dismiss worker').disabled, true);
   f.click('Pause &amp; return to treasury'); assert.deepEqual(f.sent.at(-1), { type: 'action', kind: 'worker_pause', workerId: f.worker.id, paused: true });
   f.worker.x = -10; f.worker.paused = true; f.ui.refresh(); f.click('Dismiss worker');

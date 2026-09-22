@@ -9,6 +9,8 @@ import { VillageChat } from './chat.js';
 import { randomUUID } from 'node:crypto';
 import { accountCrateSnapshot, crateAccountAction } from './crates.js';
 import { listFeedback, submitFeedback, reviewFeedback, feedbackMarkdown } from './feedback.js';
+import { accountPetSnapshot, petAccountAction, petPurchaseReceipt, petVillageSnapshot } from './pets.js';
+import { syncPetCompanions } from './pet-companions.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf':'font/ttf', '.glb': 'model/gltf-binary', '.mp3': 'audio/mpeg' };
@@ -73,6 +75,38 @@ export function createApp(options = {}) {
           return json(res, status, { error: status === 500 ? 'Feedback could not be saved or loaded. Please retry.' : error.message });
         }
       }
+      if (url.pathname === '/api/pets' || url.pathname === '/api/pets/action') {
+        const account = store.accountFromToken(req.headers.authorization?.replace(/^Bearer /, ''));
+        if (!account) return json(res, 401, { error: 'Sign in to manage your pets.' });
+        try {
+          if (req.method === 'GET' && url.pathname === '/api/pets') return json(res, 200, { pets: accountPetSnapshot(store, account.id, simulation.petOptions) });
+          if (req.method === 'POST' && url.pathname === '/api/pets/action') {
+            const action = await readJson(req);
+            if (action.kind === 'pet_buy_egg') {
+              // Read a committed account receipt first, even if the player has
+              // since disconnected, moved away, fallen or changed villages.
+              let result = petPurchaseReceipt(store, account.id, action);
+              const village = simulation.villages.get(action.villageId);
+              if (!result) {
+                if (!village?.players[account.id]?.online) return json(res, 400, { error: 'Join this village and visit its traveling merchant to buy an egg.' });
+                simulation.action(village.id, account.id, action);
+                result = petPurchaseReceipt(store, account.id, action);
+                if (!result) throw new Error('The egg purchase was not saved.');
+              }
+              const pets = village?.players[account.id] ? petVillageSnapshot(store, village, account.id, simulation.petOptions) : accountPetSnapshot(store, account.id, simulation.petOptions);
+              return json(res, 200, { pets, message: result.message, requestId: result.requestId, result });
+            }
+            const result = petAccountAction(store, account.id, action, simulation.petOptions);
+            for (const village of simulation.villages.values()) if (village.status === 'active' && village.players[account.id]) syncPetCompanions(simulation, village);
+            return json(res, 200, result);
+          }
+          return json(res, 405, { error: 'Method not allowed.' });
+        } catch (error) {
+          const bodyError = ['Request too large.', 'Send a valid JSON object.'].includes(error.message);
+          const status = error.statusCode ?? (bodyError ? 400 : 500);
+          return json(res, status, { error: status === 500 ? 'Your pet collection could not be saved or loaded. Please retry.' : error.message });
+        }
+      }
       if (url.pathname === '/api/crates' || url.pathname === '/api/crates/action') {
         const account = store.accountFromToken(req.headers.authorization?.replace(/^Bearer /, ''));
         if (!account) return json(res, 401, { error: 'Sign in to manage your crates and loadout.' });
@@ -101,6 +135,8 @@ export function createApp(options = {}) {
       let base, relative;
       if (url.pathname === '/vendor/three.module.js' || url.pathname === '/vendor/three.core.js') {
         base = resolve(ROOT, 'node_modules/three/build'); relative = url.pathname.split('/').pop();
+      } else if (url.pathname.startsWith('/vendor/three-addons/')) {
+        base = resolve(ROOT, 'node_modules/three/examples/jsm'); relative = decodeURIComponent(url.pathname.slice('/vendor/three-addons/'.length));
       } else if (url.pathname.startsWith('/shared/')) {
         base = resolve(ROOT, 'shared'); relative = decodeURIComponent(url.pathname.slice('/shared/'.length));
       } else { base = resolve(ROOT, 'public'); relative = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1)); }

@@ -1,0 +1,116 @@
+{
+  "license": "CC-BY-3.0 (bird component); CC0-1.0 (quadruped component)",
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+  "downloadedAt": "2026-09-21",
+  "title": "Golden Griffin",
+  "authors": [
+    "Quaternius (quadruped mesh and gait)",
+    "Panther-One (bird mesh, texture and wing animation)",
+    "Emberwatch (griffin adaptation)"
+  ],
+  "sourceUrls": [
+    "https://opengameart.org/content/bird-animated",
+    "https://opengameart.org/sites/default/files/Bird.blend",
+    "https://opengameart.org/sites/default/files/Bird_0.png",
+    "https://quaternius.com/packs/ultimateanimatedanimals.html",
+    "https://drive.google.com/uc?export=download&id=1lFQoQ9ln2Z2wGuFFWObj9i5jHqUl_ftG",
+    "https://creativecommons.org/licenses/by/3.0/",
+    "https://creativecommons.org/publicdomain/zero/1.0/"
+  ],
+  "sourceFiles": [
+    {
+      "name": "Bird.blend",
+      "sha256": "d60aae323997138fb273605063c363d5a78899a583e5d679e32b026024c2d3c9",
+      "kind": "original creator file"
+    },
+    {
+      "name": "Bird_0.png",
+      "sha256": "31b51d38e61668adf826a7e77a07a096ff24d3cb4f0c76596a737a6c82476d4d",
+      "kind": "original creator file"
+    },
+    {
+      "name": "wolf.gltf",
+      "sha256": "cc02e9d128b5715f352ee8bea086f97a35f1d875d240de99b0f9f2775c37d415",
+      "kind": "original creator file"
+    },
+    {
+      "name": "griffin-export.glb",
+      "sha256": "25825e426861c9a4c6dbb78a090442141da71a2b9e8523585de029ad821a6b2a",
+      "kind": "conversion input"
+    }
+  ],
+  "animationSource": "Adapted composite: Quaternius quadruped action plus Panther-One wing/head action, synchronized on shoulder-mounted rigs; attack feather cycle accelerated.",
+  "sourceSubstitution": "The selected VitSh Griffin requires an authenticated Sketchfab download (HTTP401). An alternative BlendSwap griffin also requires sign-in. Neither access control was bypassed. This is a different original adaptation from the credited component meshes.",
+  "surfaceNotes": "Original 1024\u00d71024 golden feather diffuse pixels preserved. Quadruped uses modified warm lion-color materials.",
+  "modifications": [
+    "Bird - Animated by Panther-One, https://opengameart.org/content/bird-animated, used under CC BY 3.0. Credit and license retained for this modified mesh/animation.",
+    "Quaternius Ultimate Animated Animal Pack wolf body and gait, used under CC0 1.0.",
+    "Removed canine head/upper neck and bird tail at original skin groups; combined the remaining authored meshes into a griffin.",
+    "Broadened lion torso, enlarged the existing bird skull, sculpted a downward hooked beak and swept brow/crest from original head vertices; retained UVs and skin weights.",
+    "Attached feather rig to the moving quadruped shoulder; synchronized separate rigs into canonical idle/walk/attack/death clips. Original wing texture was not repainted.",
+    "Selected canonical idle, walk, attack and death clips with the source/adaptation stated per clip.",
+    "Added scene parent to normalize idle height to 1, center X/Z and place feet at Y=0."
+  ],
+  "assetId": "griffin",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "modelSha256": "bb5d13dce876b96d69506b084ac0df513ae96cb61c20286ea76f1c2e7645c34c",
+  "modelBytes": 1162028,
+  "sourceAnimations": [
+    "idle",
+    "walk",
+    "attack",
+    "death"
+  ],
+  "triangles": 1698,
+  "skinCount": 2,
+  "drawCalls": 3,
+  "clips": [
+    {
+      "name": "idle",
+      "duration": 3.3333332538604736,
+      "source": "Adapted composite: Quaternius quadruped action plus Panther-One wing/head action, synchronized on shoulder-mounted rigs; attack feather cycle accelerated."
+    },
+    {
+      "name": "walk",
+      "duration": 1.0416666269302368,
+      "source": "Adapted composite: Quaternius quadruped action plus Panther-One wing/head action, synchronized on shoulder-mounted rigs; attack feather cycle accelerated."
+    },
+    {
+      "name": "attack",
+      "duration": 1.3333333730697632,
+      "source": "Adapted composite: Quaternius quadruped action plus Panther-One wing/head action, synchronized on shoulder-mounted rigs; attack feather cycle accelerated."
+    },
+    {
+      "name": "death",
+      "duration": 1.0416666269302368,
+      "source": "Adapted composite: Quaternius quadruped action plus Panther-One wing/head action, synchronized on shoulder-mounted rigs; attack feather cycle accelerated."
+    }
+  ],
+  "textures": [
+    {
+      "width": 1024,
+      "height": 1024,
+      "format": "PNG"
+    }
+  ],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "originalBounds": {
+      "min": [
+        -0.91714169132989,
+        2.5965939846077685e-08,
+        -0.9862554923291679
+      ],
+      "max": [
+        0.912350210554953,
+        1.2988818872625525,
+        0.9099651439529024
+      ]
+    },
+    "headingFlipped": false
+  }
+}

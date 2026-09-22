@@ -43,7 +43,7 @@ test('taxed market transfers real items and money and buying back cannot mint go
   assert.equal(v.treasury + p.wallet, wealth);
 });
 
-test('quotes, stock, carry capacity and whole numbers are validated atomically', () => {
+test('quotes, stock and whole numbers are validated atomically; purchased goods may encumber players', () => {
   const { v, p, sim } = fixture();
   visit(p, 'market'); p.inventory.wheat = 5;
   for (const amount of [0, -1, 1.2, '2', Infinity, MAX_TRADE_AMOUNT + 1]) rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount, minTotal: 1 }), /whole amount/);
@@ -51,7 +51,9 @@ test('quotes, stock, carry capacity and whole numbers are validated atomically',
   rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount: 2, minTotal: 99 }), /price changed/);
   v.treasury = 500;
   rejected(v, () => economyAction(sim, v, p, { kind: 'sell', resource: 'wheat', amount: 1, minTotal: 1 }), /essential expenses/);
-  rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'stone', amount: Math.floor(carryCapacity(p) / 3) + 1, maxTotal: 1000 }), /pack is full/);
+  const heavyAmount = Math.floor(carryCapacity(p) / 3) + 1;
+  economyAction(sim, v, p, { kind: 'buyResource', resource: 'stone', amount: heavyAmount, maxTotal: 1000 });
+  assert.equal(p.inventory.stone, heavyAmount);
   rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'iron', amount: 1, maxTotal: 1000 }), /not have enough/);
   rejected(v, () => economyAction(sim, v, p, { kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 1 }), /price changed/);
 });
@@ -222,8 +224,8 @@ for (const [priority, percent] of Object.entries({ conserve: 25, balanced: 50, t
   });
 }
 
-test('merchant export prices cover exactly the raw-resource market and preserve basic rates', () => {
-  assert.deepEqual(MERCHANT_EXPORT_PRICES, { wheat: 1, timber: 2, stone: 2, iron: 3, coal: 2, sulfur: 2 });
+test('merchant export prices cover the complete resource market including ingots and preserve basic rates', () => {
+  assert.deepEqual(MERCHANT_EXPORT_PRICES, { wheat: 1, timber: 2, stone: 2, iron: 3, iron_ingot: 6, steel_ingot: 10, coal: 2, sulfur: 2 });
   assert.equal(Object.isFrozen(MERCHANT_EXPORT_PRICES), true);
   assert.deepEqual(Object.keys(MERCHANT_EXPORT_PRICES).sort(), Object.keys(RESOURCE_MARKET).sort());
 });
@@ -266,7 +268,7 @@ test('new and saved villages with missing ore stock safely default to zero on a 
     v.stable.stock = 1;
     const treasury = v.treasury;
     v.day = 3; economyDawn(sim, v);
-    assert.deepEqual(v.stock, { wheat: 80, timber: 100, stone: 80, iron: 0, coal: 0, sulfur: 0 });
+    assert.deepEqual(v.stock, { wheat: 80, timber: 100, stone: 80, iron: 0, iron_ingot: 0, steel_ingot: 0, coal: 0, sulfur: 0 });
     assert.equal(v.economy.lastExportGold, 0); assert.equal(v.treasury, treasury);
     assert.match(v.merchant.summary, /No surplus/);
   }
@@ -322,7 +324,7 @@ test('council can increase or decrease every export percentage through a majorit
     if (current === proposed) continue;
     const { v, p, sim } = fixture(['villager', 'wizard', 'guard']);
     v.day = 2; v.stable.stock = 1; v.policies.exportPriority = current;
-    Object.assign(v.stock, { wheat: 1000, timber: 1000, stone: 1000, iron: 1000, coal: 1000, sulfur: 1000 });
+    Object.assign(v.stock, Object.fromEntries(Object.keys(RESOURCE_MARKET).map(resource => [resource, 1000])));
     economyAction(sim, v, p, { kind: 'propose_policy', policy: 'exportPriority', value: proposed });
     const proposal = v.proposals.at(-1);
     assert.equal(proposal.required, 2);

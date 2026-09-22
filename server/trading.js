@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { carryCapacity, inventoryWeight, transferableCount, boundInventoryCount } from '../shared/content.js';
+import { transferableCount, boundInventoryCount } from '../shared/content.js';
 import { TRADE_ITEMS, TRADE_RULES, emptyTradeOffer, normalizeTradeOffer, canTrade, withinTradeRange } from '../shared/trading.js';
 
 export function ensureTrading(village) {
@@ -58,7 +58,6 @@ function exchangeQuote(village, trade) {
     }
     const wallet = walletGold(player) - own.gold + other.gold;
     if (!Number.isSafeInteger(wallet) || wallet < 0) throw new Error('The resulting wallet would exceed its allowed amount.');
-    if (inventoryWeight({ ...player, inventory }) > carryCapacity(player)) throw new Error(`${player.name} needs more room in their pack before this trade can complete.`);
     return { player, inventory, wallet };
   });
 }
@@ -103,7 +102,7 @@ export function tradingAction(simulation, village, player, action) {
   if (!Number.isSafeInteger(action.version) || action.version !== trade.version) throw new Error('The offer changed. Review the latest terms and confirm again.');
   if (!Object.values(trade.offers).some(offer => offer.gold > 0 || Object.values(offer.resources).some(amount => amount > 0))) throw new Error('Add at least one resource or some gold before confirming.');
   // Compute every post-trade balance before moving anything. Confirmations do
-  // not reserve inventory; availability and net carrying capacity are rechecked
+  // not reserve inventory; availability and safe resulting counts are rechecked
   // on both confirmations. Simulation.action persists all changes atomically.
   const exchange = exchangeQuote(village, trade);
   const partnerId = trade.playerIds.find(id => id !== player.id);

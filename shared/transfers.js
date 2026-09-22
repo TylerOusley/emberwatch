@@ -2,13 +2,16 @@ import { RESOURCE_WEIGHTS, inventoryWeight, resourceWeight, transferableCount, b
 
 const stock = value => value?.inventory ?? value ?? {};
 const whole = value => Number.isSafeInteger(value) && value >= 0;
+export const PLAYER_CARRY_LIMIT = Object.freeze({ allowEncumbered: true });
 
 // Both the preview and the server use integer item counts and weight capacity.
 // A max transfer is resolved from current state when the action is received.
 export function transferLimit(source, destination, resource, capacity) {
   if (!Object.hasOwn(RESOURCE_WEIGHTS, resource)) return 0;
   const sourceTotal = stock(source)[resource] ?? 0, available = source?.inventory ? transferableCount(source, resource) : sourceTotal, held = stock(destination)[resource] ?? 0;
-  if (!whole(sourceTotal) || !whole(held) || !Number.isFinite(capacity)) return 0;
+  if (!whole(sourceTotal) || !whole(held)) return 0;
+  if (capacity?.allowEncumbered === true && destination?.inventory) return Math.min(available, Number.MAX_SAFE_INTEGER - held);
+  if (!Number.isFinite(capacity)) return 0;
   const room = Math.max(0, capacity - inventoryWeight(destination));
   return Math.min(available, Number.MAX_SAFE_INTEGER - held, Math.max(0, Math.floor((room + 1e-6) / resourceWeight(destination?.inventory ? destination : null, resource))));
 }

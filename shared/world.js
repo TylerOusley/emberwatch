@@ -43,7 +43,7 @@ export function plotFront(plot,inset=0){
  return {x:plot.x+Math.sin(yaw)*(half-inset),z:plot.z+Math.cos(yaw)*(half-inset)};
 }
 export function plotSolid(plot,building){
- const footprint={house:[7,6],tool_shop:[7,6],tinker_shop:[7,6],sword_shop:[7,6],
+ const footprint={house:[7,6],tool_shop:[7,6],tinker_shop:[7,6],sword_shop:[7,6],smelter:[7,6],
   barracks:[8,6],church:[7,6],archer_tower:[4,4],cannon:[3.8,3.8],arcane_academy:[7,6],wizard_tower:[4,4]}[building];
  if(!footprint)return null;
  const quarter=Math.abs(Math.sin(plot.yaw??0))>.5;

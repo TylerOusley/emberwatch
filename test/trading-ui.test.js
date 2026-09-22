@@ -99,7 +99,9 @@ test('trade carrying preview applies resource discounts and rerenders when deplo
   assert.match(f.html, /99.2 \/ 100/); assert.doesNotMatch(f.html, /make room before confirming/);
   const before = f.renders; f.me.crateEquipment = { utility: 'deep_delvers_belt' }; f.ui.update();
   assert.equal(f.renders, before + 1); assert.match(f.html, /124 \/ 140/);
-  f.me.crateEquipment = {}; f.ui.update(); assert.match(f.html, /124 \/ 100/); assert.match(f.html, /make room before confirming/);
+  f.me.crateEquipment = {}; f.ui.update(); assert.match(f.html, /124 \/ 100/); assert.match(f.html, /45% movement speed, no sprint/);
+  assert.equal(f.buttons.find(button => button.text === 'Confirm this exchange').disabled, false);
+  f.click('Confirm this exchange'); assert.equal(f.sent.at(-1).kind, 'trade_confirm');
 });
 
 test('illustrated two-party previews retain exact offer quantities and independent confirmations', () => {

@@ -8,6 +8,7 @@ import { Store } from '../server/store.js';
 import { Simulation } from '../server/simulation.js';
 import { BUILDINGS, PLOTS, RESOURCES } from '../shared/world.js';
 import { BACKPACKS, BUILDING_TYPES, carryCapacity, inventoryWeight } from '../shared/content.js';
+import { carryStatus } from '../shared/encumbrance.js';
 import { ensureOwnership } from '../server/ownership.js';
 
 async function fixture(t) {
@@ -69,50 +70,43 @@ test('a backpack paid with approved credit persists across SQLite restart withou
   assert.equal(f.store.account(p.id).credit, 10); assert.equal(f.store.account(p.id).bank, 73);
 });
 
-test('upgraded capacity applies consistently to gathering, market, food, shops, plots and carts', async t => {
+test('upgraded capacity is a soft threshold for gathering, purchases, crafting and withdrawals', async t => {
   const f = await fixture(t), { player: p, village: v } = f;
   f.near('tools'); f.act({ kind: 'buyBackpack', tier: 1 });
   p.durability.scythe = 100; p.tiers.scythe = 'wood'; p.tool = 'scythe';
   const wheat = RESOURCES.filter(node => node.type === 'wheat');
   f.fill(249); Object.assign(p, { x: wheat[0].x, z: wheat[0].z });
   f.act({ kind: 'gather', targetId: wheat[0].id }); assert.equal(inventoryWeight(p), 250);
+  assert.equal(carryStatus(p).encumbered, false);
   Object.assign(p, { x: wheat[1].x, z: wheat[1].z });
-  assert.throws(() => f.act({ kind: 'gather', targetId: wheat[1].id }), /pack is full/);
-  assert.equal(p.durability.scythe, 99, 'overweight harvest does not spend tool durability');
-  assert.ok(v.resources.find(node => node.id === wheat[1].id).available);
+  f.act({ kind: 'gather', targetId: wheat[1].id });
+  assert.equal(inventoryWeight(p), 251); assert.equal(p.durability.scythe, 98);
+  assert.equal(carryStatus(p).encumbered, true);
 
-  f.fill(249); f.near('market');
-  f.act({ kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 100 });
-  assert.equal(inventoryWeight(p), 250);
-  const gold = p.wallet, stock = v.stock.wheat;
-  assert.throws(() => f.act({ kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 100 }), /pack is full/);
-  assert.equal(p.wallet, gold); assert.equal(v.stock.wheat, stock);
+  f.near('market'); const stock = v.stock.wheat;
+  f.act({ kind: 'buyResource', resource: 'wheat', amount: 2, maxTotal: 100 });
+  assert.equal(inventoryWeight(p), 253); assert.equal(v.stock.wheat, stock - 2);
+  f.near('food'); f.act({ kind: 'buyFood', tier: 'food' });
+  assert.equal(inventoryWeight(p), 254);
 
-  f.fill(249); f.near('food'); f.act({ kind: 'buyFood', tier: 'food' });
-  assert.equal(inventoryWeight(p), 250);
-  assert.throws(() => f.act({ kind: 'buyFood', tier: 'food' }), /pack is full/);
-
-  const plot = v.plots[0]; Object.assign(plot, { ownerId: p.id, building: 'tool_shop', hp: 350, maxHp: 350, storage: { stone: 20, timber: 10 } });
-  Object.assign(p, plotEntrance(PLOTS[0], plot)); f.fill(248);
+  const plot = v.plots[0]; Object.assign(plot, { ownerId: p.id, building: 'tool_shop', hp: 350, maxHp: 350, storage: { stone: 25, timber: 10 } });
+  Object.assign(p, plotEntrance(PLOTS[0], plot));
   f.act({ kind: 'craft_buy', plotId: plot.id, recipe: 'stone_hammer' });
-  assert.equal(inventoryWeight(p), 250);
-  assert.throws(() => f.act({ kind: 'craft_buy', plotId: plot.id, recipe: 'stone_pickaxe' }), /pack is full/);
-  assert.equal(plot.storage.stone, 10, 'overweight crafting does not consume shop materials');
-  f.fill(247); f.act({ kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', amount: 1 });
-  assert.equal(inventoryWeight(p), 250);
-  assert.throws(() => f.act({ kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', amount: 1 }), /pack is full/);
+  f.act({ kind: 'craft_buy', plotId: plot.id, recipe: 'stone_pickaxe' });
+  assert.equal(inventoryWeight(p), 259); assert.equal(plot.storage.stone, 5);
+  f.act({ kind: 'plot_withdraw', plotId: plot.id, resource: 'stone', max: true });
+  assert.equal(inventoryWeight(p), 274); assert.equal(plot.storage.stone, 0);
 
   const cart = { id: 'test-cart', ownerId: p.id, x: p.x, z: p.z, yaw: 0, storage: { stone: 3 } };
-  v.carts.push(cart); f.fill(247);
-  f.act({ kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 1 });
-  assert.equal(inventoryWeight(p), 250); assert.equal(cart.storage.stone, 2);
-  assert.throws(() => f.act({ kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 1 }), /pack cannot/);
-  assert.equal(cart.storage.stone, 2);
-
-  f.fill(248); f.near('merchant');
+  v.carts.push(cart);
+  f.act({ kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', max: true });
+  assert.equal(inventoryWeight(p), 283); assert.equal(cart.storage.stone, 0);
+  f.near('merchant');
   Object.assign(v.merchant, { present: true, lastVisitDay: v.day, stock: { coal: 5 } });
-  f.act({ kind: 'merchant_buy', resource: 'coal', amount: 1 }); assert.equal(inventoryWeight(p), 250);
-  assert.throws(() => f.act({ kind: 'merchant_buy', resource: 'coal', amount: 1 }), /pack is full/);
+  f.act({ kind: 'merchant_buy', resource: 'coal', amount: 5 });
+  assert.equal(inventoryWeight(p), 293); assert.equal(v.merchant.stock.coal, 0);
+  f.near('tools'); f.act({ kind: 'buyBackpack', tier: 2 });
+  assert.equal(carryStatus(p).encumbered, false, 'a backpack upgrade immediately restores normal movement');
 });
 
 test('legacy saves default to pockets and do not refill a purchased backpack or an existing tower', async t => {
@@ -139,10 +133,10 @@ test('villager carrying bonus stacks with backpacks and switching jobs preserves
   f.act({ kind: 'role_change', role: 'guard' });
   assert.equal(carryCapacity(p), 200); assert.equal(p.backpackTier, 1);
   assert.deepEqual(p.inventory, inventory, 'losing a job bonus never destroys excess cargo');
-  f.near('food'); assert.throws(() => f.act({ kind: 'buyFood', tier: 'food' }), /pack is full/);
+  assert.equal(carryStatus(p).encumbered, true); f.near('food');
   f.act({ kind: 'role_change', role: 'priest' });
   assert.equal(carryCapacity(p), 200); assert.deepEqual(p.inventory, inventory);
   f.act({ kind: 'role_change', role: 'villager' });
-  assert.equal(carryCapacity(p), 250); assert.deepEqual(p.inventory, inventory);
+  assert.equal(carryCapacity(p), 250); assert.deepEqual(p.inventory, inventory); assert.equal(carryStatus(p).encumbered, false);
   f.act({ kind: 'buyFood', tier: 'food' }); assert.equal(inventoryWeight(p), 226);
 });

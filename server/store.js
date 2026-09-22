@@ -9,6 +9,7 @@ import { emptyLoadout } from '../shared/crates.js';
 import { TEST_GOLD, TEST_ADMIN_ACCOUNT_IDS } from './admin.js';
 import { createTavernStats, addTavernStatsRow, tavernStatsSnapshot } from './tavern-stats.js';
 import { installFeedbackSchema } from './feedback.js';
+import { installPetSchema } from './pets.js';
 const scrypt = promisify(scryptCallback);
 const digest = token => createHash('sha256').update(token).digest('hex');
 
@@ -43,6 +44,7 @@ export class Store {
       CREATE INDEX IF NOT EXISTS village_finance_receipts_investment_recent ON village_finance_receipts(village_id,account_id,created DESC) WHERE kind<>'tavern_bet';
       CREATE TABLE IF NOT EXISTS village_finance_dawns(village_id TEXT NOT NULL REFERENCES villages(id),day INTEGER NOT NULL,report TEXT NOT NULL,PRIMARY KEY(village_id,day));`);
     installFeedbackSchema(this.db);
+    installPetSchema(this.db);
     // Account credit is restricted purchasing power, never protected savings or
     // spendable wallet gold. Migrate existing Railway databases without a reset.
     const columns = new Set(this.db.prepare('PRAGMA table_info(accounts)').all().map(column => column.name));

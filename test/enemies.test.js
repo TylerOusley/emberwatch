@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../server/simulation.js';
 import { createEnemy, ensureEnemies, spawnWaveEnemy, splitEnemy } from '../server/enemies.js';
-import { ENEMY_TYPES, ENEMY_LIMITS, ZOMBIE_BOUNTY_GOLD, LARGE_ZOMBIE_BOUNTY_GOLD, enemyBountyGold, enemyForWave, enemyStats, emergenceProgress } from '../shared/enemies.js';
+import { ENEMY_TYPES, ENEMY_LIMITS, ZOMBIE_BOUNTY_GOLD, LARGE_ZOMBIE_BOUNTY_GOLD, enemyBountyGold, enemyForWave, enemySpawnInterval, enemyStats, emergenceProgress } from '../shared/enemies.js';
 import { ROAD, PLOTS, plotSolid, canStand, plotSolids } from '../shared/world.js';
 
 function fixture() {
@@ -24,7 +24,7 @@ test('night mix introduces quick runners, broods and armor, with exactly one fif
   assert.equal(enemyForWave(1, 2), 'runner');
   assert.equal(enemyForWave(2, 4), 'splitter');
   assert.equal(enemyForWave(3, 5), 'armored');
-  for (const day of [1, 4, 5, 6, 10, 15]) {
+  for (const day of [1, 4, 5, 6, 10, 15, 20, 25, 30, 40, 50, 100]) {
     const kinds = Array.from({ length: 80 }, (_, i) => enemyForWave(day, i));
     assert.equal(kinds.filter(k => k === 'siege').length, day % 5 === 0 ? 1 : 0);
     assert.ok(!kinds.includes('splinter'), 'weak offspring can only come from a slain brood');
@@ -36,6 +36,71 @@ test('night mix introduces quick runners, broods and armor, with exactly one fif
   assert.ok(enemyStats('siege', 0, 8).maxHp > enemyStats('siege', 0, 1).maxHp);
   assert.ok(enemyStats('runner', 1).maxHp > enemyStats('runner', 0).maxHp);
   assert.ok(one.village.siegeNight); assert.match(one.sim.notices.at(-1).message, /Gravebreaker/);
+});
+
+test('the first twenty nights retain their existing enemy sequence and spawn intervals exactly', () => {
+  const previousKind = (day, index) => day % 5 === 0 && index === 0 ? 'siege'
+    : day >= 3 && index % 7 === 5 ? 'armored' : day >= 2 && index % 7 === 4 ? 'splitter'
+      : index % 4 === 2 ? 'runner' : 'shambler';
+  for (let day = 1; day <= 20; day++) {
+    for (let index = 0; index < 80; index++) assert.equal(enemyForWave(day, index), previousKind(day, index), `night ${day}, slot ${index}`);
+    assert.equal(enemySpawnInterval(day), Math.max(1.5, 6 - Math.floor((day - 1) / 5) * .4), `night ${day}`);
+  }
+});
+
+test('late waves add runners at night twenty-one and armor at thirty-one while retaining brood and siege slots', () => {
+  const counts = day => Array.from({ length: 28 }, (_, index) => enemyForWave(day, index))
+    .reduce((all, kind) => ({ ...all, [kind]: (all[kind] ?? 0) + 1 }), {});
+  assert.deepEqual(counts(19), { shambler: 15, runner: 5, splitter: 4, armored: 4 });
+  assert.deepEqual(counts(21), { shambler: 12, runner: 8, splitter: 4, armored: 4 });
+  assert.deepEqual(counts(31), { shambler: 9, runner: 7, armored: 8, splitter: 4 });
+  assert.equal(enemyForWave(20, 1), 'shambler'); assert.equal(enemyForWave(21, 1), 'runner');
+  assert.equal(enemyForWave(30, 3), 'shambler'); assert.equal(enemyForWave(31, 3), 'armored');
+  for (const day of [21, 25, 30, 31, 40, 41, 60, 100]) {
+    for (let index = 4; index < 80; index += 7) assert.equal(enemyForWave(day, index), 'splitter');
+    assert.equal(Array.from({ length: 80 }, (_, index) => enemyForWave(day, index)).filter(kind => kind === 'siege').length, day % 5 === 0 ? 1 : 0);
+  }
+});
+
+test('late spawn pressure changes only at its night boundaries and never crosses the population-safe cadence floor', () => {
+  for (const [day, seconds] of [[20, 4.8], [21, 3.96], [30, 3.6], [31, 3.24], [40, 2.88], [41, 2.24], [46, 1.92], [51, 1.6], [56, 1.5], [100, 1.5]]) {
+    assert.ok(Math.abs(enemySpawnInterval(day) - seconds) < 1e-8, `night ${day}`);
+  }
+  for (let day = 1; day <= 1000; day++) {
+    assert.ok(enemySpawnInterval(day) >= 1.5);
+    if (day > 1) assert.ok(enemySpawnInterval(day) <= enemySpawnInterval(day - 1));
+  }
+});
+
+test('real late waves retain population sizing and spawn the new mix with unchanged per-enemy combat stats', () => {
+  for (const day of [20, 21, 30, 31, 40, 41, 100]) {
+    const { sim, village } = fixture(); village.day = day;
+    for (let i = 1; i < 4; i++) village.players[`p${i}`] = { online: true };
+    sim.startNight(village);
+    const band = Math.floor((day - 1) / 5);
+    assert.equal(village.waveCount, Math.min(80, 5 + 4 * 3 + band * 5));
+    while (village.spawned < village.waveCount) {
+      village.clock = village.nextSpawn; const previousClock = village.clock, index = village.spawned;
+      assert.equal(spawnWaveEnemy(village), true);
+      const enemy = village.zombies.at(-1), stats = enemyStats(enemyForWave(day, index), band, 4);
+      assert.equal(enemy.kind, enemyForWave(day, index)); assert.equal(enemy.hp, stats.maxHp);
+      assert.equal(enemy.damage, stats.damage); assert.equal(enemy.structureDamage, stats.structureDamage);
+      assert.equal(enemy.speed, stats.speed); assert.equal(enemy.armor, stats.armor);
+      assert.ok(Math.abs(village.nextSpawn - previousClock - enemySpawnInterval(day)) < 1e-8);
+      assert.ok(village.zombies.length <= ENEMY_LIMITS.active);
+    }
+  }
+});
+
+test('a crowded late battlefield still delays a wave slot and resumes its exact kind once space opens', () => {
+  const { sim, village } = fixture(); village.day = 41; sim.startNight(village); village.spawned = 1;
+  for (let i = 0; i < ENEMY_LIMITS.active - ENEMY_LIMITS.splitCount; i++) ready(village, 'shambler');
+  const due = village.nextSpawn;
+  assert.equal(spawnWaveEnemy(village), false); assert.equal(village.spawned, 1); assert.equal(village.nextSpawn, due);
+  village.zombies[0].hp = 0;
+  assert.equal(spawnWaveEnemy(village), true); assert.equal(village.spawned, 2);
+  assert.equal(village.zombies.at(-1).kind, 'runner');
+  assert.equal(village.zombies.filter(enemy => enemy.hp > 0).length, ENEMY_LIMITS.active - ENEMY_LIMITS.splitCount);
 });
 
 test('graveyard enemies rise for their full authoritative duration without movement or attacks', () => {

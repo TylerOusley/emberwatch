@@ -115,7 +115,7 @@ test('price edits require the owner, working shop, proximity, valid recipe and b
 });
 
 test('changed shop prices reject stale or missing quotes before funds, stock or equipment change', () => {
-  const { village, owner, buyer, plot, act } = fixture(); plot.storage = { iron: 14, timber: 16 };
+  const { village, owner, buyer, plot, act } = fixture(); plot.storage = { iron_ingot: 14, timber: 16 };
   act(owner, { kind: 'shop_price', recipe: 'musket', price: 250 });
   for (const price of [undefined, 180, 1, '250']) {
     const before = JSON.stringify(village);
@@ -137,13 +137,12 @@ test('stock crafting rejects visitors, overdrawn inputs and invalid batches with
   assert.equal(JSON.stringify(village), before);
 });
 
-test('new shop supplies obey pack capacity, trade tax overflow and wallet-only self purchases atomically', () => {
+test('new shop supplies allow encumbrance and obey trade tax overflow and wallet-only self purchases atomically', () => {
   const { village, owner, buyer, plot, act, accounts } = fixture(); plot.storage = { musket_ammo: 8 };
   buyer.inventory.stone = 50;
-  let before = JSON.stringify(village);
-  assert.throws(() => act(buyer, { kind: 'craft_buy', recipe: 'musket_ammo', price: 24 }), /pack is full/);
-  assert.equal(JSON.stringify(village), before);
-  buyer.inventory.stone = 0; village.treasury = Number.MAX_SAFE_INTEGER; before = JSON.stringify(village);
+  act(buyer, { kind: 'craft_buy', recipe: 'musket_ammo', price: 24 });
+  assert.equal(buyer.inventory.musket_ammo, 8); assert.equal(inventoryWeight(buyer), 151.6);
+  plot.storage.musket_ammo = 8; buyer.inventory.stone = 0; village.treasury = Number.MAX_SAFE_INTEGER; const before = JSON.stringify(village);
   assert.throws(() => act(buyer, { kind: 'craft_buy', recipe: 'musket_ammo', price: 24 }), /treasury/);
   assert.equal(JSON.stringify(village), before);
   village.treasury = 2500; owner.wallet = 0; accounts.owner.credit = 100;

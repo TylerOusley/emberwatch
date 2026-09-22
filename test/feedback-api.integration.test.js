@@ -46,7 +46,7 @@ test('feedback attaches trusted build and village context and rejects another vi
   const f = await fixture(t), villageId = f.app.simulation.create('Feedback Watch', f.app.store.account(f.alice.playerId)).id, village = f.app.simulation.villages.get(villageId);
   f.app.simulation.join(village.id, f.app.store.account(f.alice.playerId), 'villager'); village.day = 45; village.phase = 'night';
   const saved = await f.api('/api/feedback', f.alice, payload({ villageId: village.id, context: { build: 1, day: 999 }, day: 1000 }));
-  assert.equal(saved.status, 201); assert.deepEqual(saved.data.report.context, { build: 31, villageId: village.id, villageName: village.name, day: 45, phase: 'night' });
+  assert.equal(saved.status, 201); assert.deepEqual(saved.data.report.context, { build: 32, villageId: village.id, villageName: village.name, day: 45, phase: 'night' });
   assert.equal((await f.api('/api/feedback', f.bob, payload({ villageId: village.id }))).status, 400);
   assert.equal((await f.api('/api/feedback', f.alice, payload({ villageId: randomUUID() }))).status, 400);
 });

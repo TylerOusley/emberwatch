@@ -1,5 +1,49 @@
 # Emberwatch: accepted design and current implementation
 
+## Build 32 — smelting, steel and companions
+
+Tyler approved publication on September 22, 2026, superseding the earlier hold. The rules below define Build 32 and supersede historical entries where noted. New enemy types remain proposals.
+
+### Smelting and steel
+
+A universal smelter processes prepaid ingredients held in its plot. Each job selects iron or steel and 1–100 batches. Iron: 2 raw iron ore + 1 timber → 1 iron ingot / 10 seconds. Steel: 2 raw iron ore + 1 timber + 1 coal → 1 steel ingot / 15 seconds. Smelting uses active village simulation time, continues for an offline owner while another resident is present, and pauses in an empty/fallen village or ruined/ownership-mismatched building. Output that cannot fit stays in the job. Cancel returns unprocessed ingredients and undelivered ingots atomically if storage has room. Demolition/conversion requires finishing or cancelling the job. Paid progress persists across restart and normal ruin repair.
+
+`iron` keeps its original raw-ore save identity. `iron_ingot` and `steel_ingot` are new weighted goods. All shop recipes previously using `iron` now use `iron_ingot`; existing owned gear remains intact. Construction/defense costs are not silently migrated. Steel gear follows the tier pattern: gathering4, durability250, sword damage25. It is available through the tool shop/armory with owner pricing and existing Tinker discounts. Smelters use ordinary plot transport staff and have distinct masonry/furnace artwork and a job-driven emissive glow without additional lights.
+
+Both ingots enter the Resource Exchange's existing stock-band pricing; iron-ingot sale bids are 10/9/8/7/6, steel 16/14/12/11/10, always above corresponding ore bids. Merchant export bids are 6 and 10 respectively. Current surplus percentage/reserves apply with no unit cap. Ingots have no extra public reserve. Personal/private/civic inventory is not exported. Existing source and recipient-ownership delivery rules apply to ingot freight.
+
+### Encumbrance
+
+Player intake is unrestricted by carrying weight, with existing integer/count/ownership validations intact. Above the exact role/gear/backpack allowance plus numerical tolerance, shared server/client movement is multiplied by0.45 and sprint is unavailable. Riding and carrying a dwarf also incur this multiplier. Returning to the allowance restores speed immediately. Plot, cart and worker cargo continue to enforce physical storage capacity. A dedicated `PLAYER_CARRY_LIMIT` transfer option identifies soft player destinations; `Infinity` is not used to bypass the generic finite-storage checks.
+
+### Later enemy waves
+
+Nights1–20 remain identical. More runners begin21, more armored enemies31; spawn intervals multiply by0.9 from21 and0.8 from41 with the existing1.5-second floor. Enemy stats, reward tiers, wave counts, active120 limit and fifth-night boss contract remain unchanged. These are provisional local balance values, not a claim of live playtest balance. See [enemy analysis](ENEMY-NEXT-UPDATE.md). Gravecaller and Plaguebearer are proposals; no new enemy is implemented yet.
+
+### Permanent pet companions
+
+The approved 13-species catalog, merchant eggs, collection menu and companion gameplay are implemented locally. These rules supersede the earlier empty-catalog foundation and disabled-sales plan. **Build 32 remains local only; no push or deployment is authorized yet.** See [pet companions, actual assets and licensing](PET-COMPANIONS.md) for model sources and attribution.
+
+The traveling merchant has a 25% chance per actual visit to offer one shared egg for 5,000 wallet gold. The saved offer cannot reroll when menus reopen, and competing buyers cannot purchase the same stock. There is one egg type with the following fixed rarity distribution:
+
+| Rarity | Egg chance | Companions and abilities |
+| --- | --- | --- |
+| Common | 38% | Rabbit: +20% carry capacity. Marmot: +15% carry capacity. Husky and shiba: 8 melee damage. |
+| Uncommon | 30% | Fox and boar: 12 melee damage. Undead squirrel: +25% carry capacity. |
+| Rare | 20% | Wolf: 20 melee damage. Owl: 20 ranged wind damage. |
+| Epic | 10% | Frost bat: 32 ranged frost damage. Griffin: 32 melee damage. |
+| Legendary | 2% | Dragon: 50 ranged fire damage. Vampire bat: 50 melee damage and 2 HP restored to its owner per successful hit. |
+
+The server rolls rarity first using exactly 100 equally likely buckets, then chooses a species within that rarity. Within the chosen tier, it prefers species absent from both the unlocked collection and pending eggs. Once that tier is complete, duplicates become possible; no roll moves to a higher tier. Egg purchases remain available after the full collection is unlocked. Species and rarity are chosen once at purchase and remain private until hatching.
+
+Incubation lasts 1,800 real seconds using a persisted server deadline, including logout and server downtime. Eggs are account-bound, and hatched companions remain unlocked after death, village loss and joining another village. A duplicate hatch creates a durable 1,000-gold bank refund. Hatch, unlock and refund settlement commit together; each egg can refund only once. If the bank cannot safely accept the full refund, hatching still completes and the unpaid receipt remains visible until bank space is available. Collection history distinguishes new unlocks, paid duplicate refunds and pending refunds.
+
+Only one pet can be equipped. Carry companions multiply the total role, backpack, skill and gear allowance by their listed bonus; bonuses do not stack, and removing the pet never discards carried items. All combat pets have a two-second cooldown shared across equipment switches. Ground melee range is 2.2, flying melee range 2.7, and ranged attacks reach 10. Owl, frost bat, griffin and vampire bat fly; the dragon uses its ground walk and attack rig. Attacks have a visible windup, and ranged attacks also have projectile travel time. Damage uses the existing player contribution and zombie-bounty rules. Vampire healing requires actual damage, stops at maximum HP, and cannot revive a downed owner.
+
+Companions follow their owner and use server navigation and obstruction checks. Before impact the server rechecks ownership/equipment, living owner and target state, range, leash, elevation and wall/gate line of sight. Teleporting, equipment changes and unavailable owners cancel outstanding attacks. Damage, bounty payment, healing and consumed attack intention persist or roll back together. The server derives the equipped companion from account records instead of trusting a saved player field or client request.
+
+Purchase debit, egg and receipt are atomic. Ambiguous retries reuse the same saved request ID and can recover a committed receipt after movement, logout or village loss without charging twice. Collection and egg APIs are account-private. Cached account/equipment reads are bounded, refresh at most once per second or at a hatch deadline, and invalidate immediately after equipment changes; uncommitted writes are never stored in the shared snapshot cache. This section describes implementation and automated validation contracts, not browser playtesting or measured live multiplayer performance.
+
 ## Build 31: village usability, shared deliveries and feedback
 
 Current rules supersede earlier historical build entries where noted.

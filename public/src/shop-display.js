@@ -4,6 +4,7 @@ const TIERS = Object.freeze({
   wood: { face: '#ad7945', light: '#dbb272', edge: '#785034', dark: '#513921' },
   stone: { face: '#819296', light: '#c4cdca', edge: '#56666e', dark: '#35454c' },
   iron: { face: '#b9c6cb', light: '#f0e4bd', edge: '#718b97', dark: '#3b505e' },
+  steel: { face: '#b8d2de', light: '#f3fcff', edge: '#597c97', dark: '#263f56' },
 });
 const THEME_COLORS = Object.freeze({
   tools: ['#403b31','#645744','#ad7745','#80784e'],
@@ -103,7 +104,15 @@ function gold() {
   art+=group('rotate(13 151 83)',ellipse(151,83,25,31,'#95703b')+ellipse(149,82,23,29,'#e4be61')+ellipse(149,82,18,24,'none','stroke="#ae873e" stroke-width="2"')+poly('149,65 159,71 157,85 149,96 141,86 139,71','#b38a3e')+path('M149 70L153 78L147 82L151 88L146 91L143 80Z','#f4d786'));
   return art;
 }
-const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','bandage','horse','wheat','timber','stone','iron','coal','sulfur','gold']);
+function ingot(steel=false) {
+  const t=steel?TIERS.steel:TIERS.iron;
+  const bar=(x,y)=>poly(`${x},${y} ${x+70},${y-24} ${x+109},${y-9} ${x+36},${y+19}`,t.light)+poly(`${x},${y} ${x+36},${y+19} ${x+34},${y+38} ${x-8},${y+14}`,t.face)+poly(`${x+36},${y+19} ${x+109},${y-9} ${x+117},${y+5} ${x+34},${y+38}`,t.edge)+line(x+12,y+1,x+70,y-18,steel?'#d4e9f5':'#fff7e2',2);
+  return bar(51,113)+bar(92,128)+bar(72,78)+(steel?path('M120 72l8 1 5 5-9 3-6-5Z','#527695'):path('M119 72l11 3-9 5-10-4Z','#8c9b9a'));
+}
+function petEgg() {
+  return ellipse(120,151,48,9,'#132c29','opacity=".2"')+path('M120 28C100 28 76 76 76 111C76 163 164 163 164 111C164 76 140 28 120 28Z','#b7ac7b')+path('M118 33C102 42 85 80 84 110C85 131 99 139 113 140C98 121 96 76 118 33Z','#e8dfb8')+path('M154 80C169 123 151 145 124 146C143 121 137 79 127 42C141 48 149 62 154 80Z','#788477')+path('M99 93l21-18 21 18-21 25Z','none','stroke="#719c94" stroke-width="4"')+path('M120 83l10 11-10 14-10-14Z','#d8f0d8')+[[-19,46],[24,66],[-26,104],[23,124],[-6,137]].map(([x,y])=>ellipse(120+x,y,2,3,'#837b5b')).join('');
+}
+const ITEM_NAMES = new Set(['axe','pickaxe','scythe','hammer','sword','bow','arrows','musket','gunpowder','musket_ammo','cart','backpack','food','good_food','best_food','bandage','horse','wheat','timber','stone','iron','iron_ingot','steel_ingot','pet_egg','coal','sulfur','gold']);
 
 /** Decorative catalog illustration. Callers provide accessible item names outside the SVG. */
 export function itemArt(itemId, options = {}) {
@@ -114,7 +123,7 @@ export function itemArt(itemId, options = {}) {
   const tier = own(TIERS,safe.tier) ? safe.tier : 'wood', t=TIERS[tier];
   const rawLevel=typeof safe.level==='number'?safe.level:typeof safe.tier==='number'?safe.tier:0;
   const level=Number.isFinite(rawLevel)?Math.max(0,Math.min(3,Math.floor(rawLevel))):0;
-  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,musket,gunpowder:powder,musket_ammo:musketShots,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),bandage,horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),coal:()=>ore('coal'),sulfur:()=>ore('sulfur'),gold})[id]();
+  const drawing=({axe:()=>axe(t),pickaxe:()=>pickaxe(t),scythe:()=>scythe(t),hammer:()=>hammer(t),sword:()=>sword(t),bow,arrows,musket,gunpowder:powder,musket_ammo:musketShots,cart,backpack:()=>backpack(level),food:bread,good_food:()=>meal(),best_food:()=>meal(true),bandage,horse,wheat,timber,stone:()=>ore('stone'),iron:()=>ore('iron'),iron_ingot:()=>ingot(),steel_ingot:()=>ingot(true),pet_egg:petEgg,coal:()=>ore('coal'),sulfur:()=>ore('sulfur'),gold})[id]();
   return `<svg xmlns="http://www.w3.org/2000/svg" class="shop-item-illustration" viewBox="0 0 240 180" width="240" height="180" aria-hidden="true" focusable="false" data-item="${id}" data-tier="${id==='backpack'?level:tier}">${ellipse(120,157,55,6,'#1a302a','opacity=".10"')}${drawing}</svg>`;
 }
 

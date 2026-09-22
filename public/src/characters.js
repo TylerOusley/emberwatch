@@ -155,7 +155,7 @@ function makeTool(id, tier=1, element='fire') {
   if(id==='musket')return createMusketModel();
   const g = new THREE.Group();
   const wood = material(0x946038), grain=material(0xc69459), grip=material(0x49372c);
-  const head = tier >= 3 ? material(0xadc2c6,.7,.35) : tier === 2 ? material(0x8b9695,.08,.95) : material(0xc99963);
+  const head = tier >= 4 ? material(0xc5e0ee,.85,.22) : tier === 3 ? material(0xadc2c6,.7,.35) : tier === 2 ? material(0x8b9695,.08,.95) : material(0xc99963);
   if (id === 'sword') {
     mesh(g,'cylinder',grip,0,0,0,.029,.22,.029);
     mesh(g,'round',grain,0,-.15,0,.065,.065,.06);

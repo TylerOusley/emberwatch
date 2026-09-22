@@ -67,13 +67,13 @@ test('bandage shopping requires the Oak & Iron front counter and existing living
   f.buy(); assert.equal(f.p.inventory.bandage, 1);
 });
 
-test('bandage capacity is checked before charging and exactly one remaining weight fits', async t => {
+test('bandages can exceed carrying allowance and consumption reduces the same weight', async t => {
   const f = await fixture(t);
   f.p.inventory.wheat = carryCapacity(f.p) - inventoryWeight(f.p) - 1;
   f.buy(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p));
-  rejectsWithoutMutation(f, { kind: 'buyBandage' }, /pack is full/);
-  f.p.hp = 40; f.use(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p) - 1);
-  f.buy(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p));
+  f.buy(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p) + 1);
+  f.p.hp = 40; f.use(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p));
+  f.buy(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p) + 1);
 });
 
 test('insufficient wallet gold cannot be replaced by savings or approved purchase credit', async t => {

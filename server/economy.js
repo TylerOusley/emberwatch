@@ -1,7 +1,7 @@
 import { canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, CONFIG } from '../shared/world.js';
-import { carryCapacity, inventoryWeight, resourceWeight, boundInventoryCount, transferableCount } from '../shared/content.js';
+import { boundInventoryCount, transferableCount } from '../shared/content.js';
 import { RESOURCE_MARKET, TREASURY_RESERVE } from '../shared/market.js';
 import { POLICIES, FOOD, MERCHANT_PRICES, MERCHANT_STOCK, MERCHANT_EXPORT_PRICES, merchantExportPercent, foodQuote, maxSaleQuote, taxedSaleQuote, taxedPurchaseQuote } from '../shared/economy.js';
 
@@ -16,8 +16,9 @@ const addIncome = (sim, v, p, amount) => {
   if (sim.awardIncome) sim.awardIncome(v, p, amount);
   else p.wallet += amount;
 };
-const capacity = (p, id, amount) => {
-  if (inventoryWeight(p) + resourceWeight(p, id) * amount > carryCapacity(p) + .00001) throw new Error('Your pack is full. Buy a larger backpack at Oak & Iron, or store or sell some items first.');
+const intake = (p, id, amount) => {
+  const held = p.inventory[id] ?? 0;
+  if (!whole(held) || !whole(amount) || !whole(held + amount)) throw new Error('Your pack cannot hold more of that item.');
 };
 
 export function ensureEconomy(v) {
@@ -169,7 +170,7 @@ export function economyAction(sim, v, p, action) {
     if (!whole(maxTotal, 1)) throw new Error('Request a current whole-gold purchase quote.');
     if (quote.total > maxTotal) throw new Error('The price changed as village stock fell. Review the new quote and try again.');
     if (p.wallet < quote.total) throw new Error(`You need ${quote.total} gold to buy these resources.`);
-    capacity(p, resource, amount);
+    intake(p, resource, amount);
     if (!whole(p.inventory[resource] + amount) || !whole(v.treasury + quote.total)) throw new Error('Storage or treasury is full.');
     p.wallet -= quote.total; v.treasury += quote.total; v.stock[resource] -= amount; p.inventory[resource] += amount;
     return `Bought ${amount} ${resource} for ${quote.total} gold, including trade tax.`;
@@ -179,7 +180,8 @@ export function economyAction(sim, v, p, action) {
     const tier = action.tier ?? 'food', item = foodQuote(v.stock.wheat, tier);
     if (p.wallet < item.price) throw new Error(`${item.label} costs ${item.price} gold.`);
     if (v.stock.wheat < item.wheat) throw new Error('The village needs wheat to bake more food.');
-    capacity(p, tier, 1);
+    intake(p, tier, 1);
+    if (!whole(v.treasury + item.price)) throw new Error('The treasury cannot accept this purchase.');
     p.wallet -= item.price; v.treasury += item.price; v.stock.wheat -= item.wheat; p.inventory[tier]++;
     return `${item.label} added to your pack. Eat it when you need it.`;
   }
@@ -202,7 +204,7 @@ export function economyAction(sim, v, p, action) {
     if ((v.merchant.stock[resource] ?? 0) < amount) throw new Error('The merchant does not have enough stock.');
     const price = v.merchant.prices[resource] * amount;
     if (p.wallet < price) throw new Error(`You need ${price} gold.`);
-    capacity(p, resource, amount);
+    intake(p, resource, amount);
     p.wallet -= price; p.inventory[resource] += amount; v.merchant.stock[resource] -= amount;
     return `Bought ${amount} ${resource} from the traveling merchant.`;
   }

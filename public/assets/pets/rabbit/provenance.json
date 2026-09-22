@@ -1,0 +1,97 @@
+{
+  "assetId": "rabbit",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "title": "Rabbit",
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "authors": [
+    "CDmir",
+    "TinyWorlds"
+  ],
+  "sourceUrls": [
+    "https://opengameart.org/content/rabbit-0",
+    "https://opengameart.org/sites/default/files/rabbit.blend"
+  ],
+  "sourceFiles": [
+    {
+      "name": "rabbit.blend",
+      "sha256": "bb6deef1ee91b21380355138374cae87946451ce864502b1af68eb60f4750843",
+      "bytes": 5996916
+    }
+  ],
+  "blendSha256": "bb6deef1ee91b21380355138374cae87946451ce864502b1af68eb60f4750843",
+  "modelSha256": "7ad42e49821ff032a2beb3ef2d92abe40b512eb308068e5b9ed910524783ed66",
+  "modelBytes": 4392516,
+  "clips": [
+    {
+      "name": "idle",
+      "sourceAction": "Guarding",
+      "sourceFrames": [
+        0,
+        400
+      ],
+      "duration": 16.666666666666668,
+      "loopClosureFrames": 0,
+      "notes": "Baked creator-authored skeletal motion."
+    },
+    {
+      "name": "walk",
+      "sourceAction": "Running",
+      "sourceFrames": [
+        0,
+        16
+      ],
+      "duration": 0.6666666666666666,
+      "loopClosureFrames": 0,
+      "notes": "Baked creator-authored skeletal motion."
+    }
+  ],
+  "textures": [
+    {
+      "name": "Fur-skin",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "name": "rabbit-NORM",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "name": "rabbot-skinn",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "sourceHeading": "-Y",
+    "headingFlipped": false,
+    "originalBoundsZUp": {
+      "min": [
+        -3.949183464050293,
+        -8.33891487121582,
+        -0.11992767453193665
+      ],
+      "max": [
+        3.9491844177246094,
+        7.778744697570801,
+        15.052705764770508
+      ]
+    }
+  },
+  "meshCount": 2,
+  "skinCount": 1,
+  "modifications": [
+    "Preserved source mesh, skin weights, UVs and supplied diffuse/normal texture pixels.",
+    "Applied author non-armature modifiers and rebuilt legacy Blender materials as Principled PBR.",
+    "Baked original IK constraints into separate named skeletal clips; no mixed full timeline.",
+    "Eased non-looping source idle/walk endpoints back to their initial pose; recorded added frames per clip.",
+    "Centered and normalized the idle pose to height 1 meter with feet at Y=0 and forward +Z.",
+    "Rendered the actual converted model to a transparent 512px thumbnail."
+  ]
+}

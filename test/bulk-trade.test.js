@@ -36,14 +36,14 @@ test('a full expedition backpack trades in one action with finite gold, inventor
   assert.equal(inventoryWeight(player), 550); assert.equal(village.stock.wheat, 10);
   assert.equal(player.wallet, 5000 + sale.total - purchase.total);
   assert.equal(village.treasury, 10000 - sale.total + purchase.total);
+  run({ kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 100 });
+  assert.equal(inventoryWeight(player), 551); assert.equal(village.stock.wheat, 9);
   const before = structuredClone(village);
-  assert.throws(() => run({ kind: 'buyResource', resource: 'wheat', amount: 1, maxTotal: 100 }), /pack is full/);
-  assert.deepEqual(village, before, 'a larger bulk limit never bypasses the actual carry limit');
   assert.throws(() => run({ kind: 'sell', resource: 'wheat', amount: MAX_TRADE_AMOUNT + 1, minTotal: 1 }), /whole amount/);
   assert.deepEqual(village, before);
-  assert.throws(() => run({ kind: 'sell', resource: 'wheat', amount: 551, minTotal: 1 }), /not have enough/);
+  assert.throws(() => run({ kind: 'sell', resource: 'wheat', amount: 552, minTotal: 1 }), /not have enough/);
   assert.deepEqual(village, before);
   village.treasury = 500;
   assert.throws(() => run({ kind: 'sell', resource: 'wheat', amount: 550, minTotal: sale.total }), /essential expenses/);
-  assert.equal(player.inventory.wheat, 550, 'the reserve check applies to the entire bulk sale');
+  assert.equal(player.inventory.wheat, 551, 'the reserve check applies to the entire bulk sale');
 });

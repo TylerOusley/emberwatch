@@ -1,7 +1,7 @@
 import { buildingEntrance, canUseBuilding } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, PLOTS, RESOURCES, SOLIDS, canStand, plotFront, plotSolids, resolveResource } from '../shared/world.js';
-import { BUILDING_TYPES, RESOURCE_WEIGHTS, TOOL_WEIGHTS, TOOL_TIERS, inventoryWeight, carryCapacity, resourceWeight } from '../shared/content.js';
+import { BUILDING_TYPES, RESOURCE_WEIGHTS, TOOL_TIERS, inventoryWeight } from '../shared/content.js';
 import { TREASURY_RESERVE } from '../shared/market.js';
 import { taxedSaleQuote } from '../shared/economy.js';
 import { WORKER_RULES as RULES, WORKER_RESOURCES, WORKER_MINE_RESOURCES, WORKER_ASSIGNMENTS, WORKER_TOOLS, WORKER_EQUIPMENT, WORKER_ATTRIBUTES, WORKER_COLORS, WORKER_MAX_XP, PLOT_STAFF, plotStaffCount, transporterTarget, workerStats, workerEmployment, workerTool } from '../shared/workers.js';
@@ -188,7 +188,6 @@ function equipmentAction(v, w, p, action) {
     if (distance(p, w) > 3.3) throw new Error('Stand next to this worker to recover their supplied tool.');
     p.durability ??= {}; p.maxDurability ??= {}; p.tiers ??= {};
     if (p.durability[tool] > 0) throw new Error('Your tool slot is occupied. Empty the slot before recovering this tool.');
-    if (previous.durability > 0 && inventoryWeight(p) + TOOL_WEIGHTS[tool] > carryCapacity(p) + 1e-6) throw new Error('Your pack is full. Make room before recovering this tool.');
     p.tiers[tool] = previous.tier; p.durability[tool] = previous.durability; p.maxDurability[tool] = previous.maxDurability;
     delete w.equipment[tool];
     if (p.boundKitTools) delete p.boundKitTools[tool];
@@ -292,15 +291,15 @@ export function workersAction(sim, v, p, action) {
   if (action.kind === 'worker_collect') {
     if (distance(p, w) > 3.3) throw new Error('Move closer to your worker to collect their cargo.');
     if (!hasCargo(w)) throw new Error('This worker has no cargo to collect.');
-    let room = Math.max(0, carryCapacity(p) - inventoryWeight(p)), count = 0;
+    let count = 0;
     const transfers = [];
     for (const id of cargoResources) {
-      const amount = Math.min(w.cargo[id], Math.floor((room + 1e-6) / resourceWeight(p, id)));
+      const amount = w.cargo[id];
       if (!amount) continue;
-      if (!whole(p.inventory[id] ?? 0) || !whole((p.inventory[id] ?? 0) + amount)) throw new Error('Your pack cannot accept this cargo.');
-      transfers.push([id, amount]); room -= amount * resourceWeight(p, id); count += amount;
+      if (!whole(amount) || !whole(p.inventory[id] ?? 0) || !whole((p.inventory[id] ?? 0) + amount)) throw new Error('Your pack cannot accept this cargo.');
+      transfers.push([id, amount]); count += amount;
     }
-    if (!count) throw new Error('Your pack is full. Store or sell some goods first.');
+    if (!count) throw new Error('This worker has no cargo to collect.');
     for (const [id, amount] of transfers) { p.inventory[id] = (p.inventory[id] ?? 0) + amount; w.cargo[id] -= amount; }
     if (!hasCargo(w)) w.delivering = false;
     return `Collected ${count} resources from your worker${hasCargo(w) ? '. The remaining cargo stays with them' : ''}.`;

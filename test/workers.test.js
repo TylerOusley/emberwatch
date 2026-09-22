@@ -349,15 +349,16 @@ test('save/reload preserves remaining wages, cargo and elapsed gathering without
   const oldVillage = { players: {} }; ensureWorkers(oldVillage); assert.deepEqual(oldVillage.workers, []);
 });
 
-test('collection is owner-only, nearby and capacity-bounded; dismissal cannot lose cargo', () => {
+test('collection is owner-only and nearby, accepts overweight cargo, and dismissal cannot lose cargo', () => {
   const { owner, visitor, act, hire, assign } = fixture();
   const w = hire(); w.cargo.stone = 4;
   assert.throws(() => act({ kind: 'worker_collect', workerId: w.id }, visitor), /own workers/);
   owner.x = 30; assert.throws(() => act({ kind: 'worker_collect', workerId: w.id }), /closer/);
   Object.assign(owner, { x: w.x, z: w.z }); owner.inventory.wheat = 146;
   act({ kind: 'worker_collect', workerId: w.id });
-  assert.equal(owner.inventory.stone, 1); assert.equal(w.cargo.stone, 3);
-  assert.throws(() => act({ kind: 'worker_collect', workerId: w.id }), /pack is full/);
+  assert.equal(owner.inventory.stone, 4); assert.equal(w.cargo.stone, 0);
+  assert.throws(() => act({ kind: 'worker_collect', workerId: w.id }), /no cargo/);
+  w.cargo.stone = 3;
   Object.assign(owner, home); Object.assign(w, home);
   assert.throws(() => act({ kind: 'worker_dismiss', workerId: w.id }), /cargo/);
   owner.inventory = {}; act({ kind: 'worker_collect', workerId: w.id }); assert.equal(w.cargo.stone, 0);

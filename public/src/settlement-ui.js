@@ -16,7 +16,9 @@ import { NOTICEBOARD_POINT } from './noticeboard.js';
 import { itemArt, shopInterior } from './shop-display.js';
 import { TRANSPORT, cartCapacity } from '../../shared/transport.js';
 import { createBuildCarousel, buildingAvailability, buildingArt } from './build-carousel.js';
-import { transferLimit } from '../../shared/transfers.js';
+import { transferLimit, PLAYER_CARRY_LIMIT } from '../../shared/transfers.js';
+import { carryStatus } from '../../shared/encumbrance.js';
+import { SMELTING_RECIPES, SMELTING_BATCH_LIMIT, smeltingJob, smeltingRecipe } from '../../shared/smelting.js';
 import { ownedCartCount } from '../../shared/cart-ownership.js';
 import { plotStorageCapacity } from '../../shared/production.js';
 import { PRODUCTION_UPGRADES, productionNodeCapacity, productionRegrowSeconds, productionStats, productionUpgrade, productionYield } from '../../shared/production.js';
@@ -26,21 +28,22 @@ import { cartTransportControls } from './transport-ui.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
-const label = id => ({ food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows', musket_ammo: 'Musket shots', cart: 'Cargo cart', mine_all: 'All mine resources' }[id] || String(id).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()));
+const label = id => ({ iron: 'Iron ore', iron_ingot: 'Iron ingot', steel_ingot: 'Steel ingot', food: 'Bread', good_food: 'Hearty meal', best_food: 'Feast', arrows: 'Arrows', musket_ammo: 'Musket shots', cart: 'Cargo cart', mine_all: 'All mine resources' }[id] || String(id).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()));
 const exportPolicyLabel = priority => `${label(priority)} · ${merchantExportPercent(priority)}% of surplus`;
-const costText = cost => Object.entries(cost || {}).map(([id, count]) => `${num(count)} ${id}`).join(' · ');
+const costText = cost => Object.entries(cost || {}).map(([id, count]) => `${num(count)} ${label(id).toLowerCase()}`).join(' · ');
 const resources = ['timber', 'stone', 'wheat', 'iron', 'coal', 'sulfur'];
+const marketResources = Object.keys(RESOURCE_MARKET);
 const equipment = ['sword', 'axe', 'pickaxe', 'scythe', 'hammer', 'bow', 'musket', 'staff'];
 const gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const hasCost = (stock, cost) => Object.entries(cost || {}).every(([id, amount]) => id === 'gold' || (stock?.[id] || 0) >= amount);
 
-export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null, showAcademy = null, showCivic = null, schedule = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
+export function createSettlementUI({ getState, getMe, getActivePanel, openPanel, send, toast, getHotbar, setHotbar, showDeliveries = null, showRequests = null, showInvestments = null, showTavern = null, showPets = null, showAcademy = null, showCivic = null, schedule = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id) }) {
   let current = null, signature = '', handlers = [], waypoint = null, renderedAccess = '';
   let councilPress = null, councilPressTimer = null;
   const tradeAmounts = new Map(), displayedTrades = new Map();
   const transferDrafts = new Map();
   let renderedDraftKey = null, renderedStorageRecipient = null;
-  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount', 'export-priority', ...Object.keys(RECIPES).flatMap(id => [`shop-price-${id}`, `shop-batches-${id}`])];
+  const transferFields = ['storage-resource', 'storage-amount', 'bank-amount', 'loan-amount', 'export-priority', ...Object.keys(SMELTING_RECIPES).map(id => `smelt-batches-${id}`), ...Object.keys(RECIPES).flatMap(id => [`shop-price-${id}`, `shop-batches-${id}`])];
   const draftKey = () => `${current?.kind}:${current?.id || ''}`;
   const transferDraft = () => { const key = draftKey(); if (!transferDrafts.has(key)) transferDrafts.set(key, {}); return transferDrafts.get(key); };
   function captureTransferDrafts() {
@@ -61,6 +64,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   const plots = () => state()?.plots || [];
   const owned = () => plots().filter(p => p.ownerId === me()?.id);
   const carriedText = id => `${num(me()?.inventory?.[id])} carried${boundInventoryCount(me(), id) ? ` · ${num(transferableCount(me(), id))} transferable · ${num(boundInventoryCount(me(), id))} kit-bound (eat only)` : ''}`;
+  function carryNote(player = me()) {
+    const status = carryStatus(player);
+    return `<p class="carry-notice${status.encumbered ? ' is-encumbered' : ''}"${status.encumbered ? ' role="status"' : ''}>${status.encumbered ? '<strong>Encumbered</strong> · Move at 45% speed. Sprinting is unavailable.' : 'You may carry above your allowance; movement drops to 45% speed and sprinting stops.'} Store supplies or upgrade your backpack to travel freely.</p>`;
+  }
   const head = (kicker, title, copy = '') => `<p class="eyebrow">${esc(kicker)}</p><h2>${esc(title)}</h2>${copy ? `<p>${esc(copy)}</p>` : ''}`;
   const row = (name, detail, control = '') => `<div class="settlement-row"><div><strong>${esc(name)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</div>${control}</div>`;
   const stat = (name, value) => `<div><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`;
@@ -77,7 +84,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return `<details class="menu-fold" data-shop-inspect="${esc(key)}" ${inspections.has(key) ? 'open' : ''}><summary data-shop-focus="fold-${esc(key)}"><strong>${esc(title)}</strong>${copy ? `<span>${esc(copy)}</span>` : ''}</summary><div class="menu-fold-body">${body}</div></details>`;
   }
   function costCards(cost, available) {
-    return `<div class="menu-costs" aria-label="Upgrade cost">${Object.entries(cost).map(([id, count]) => `<div class="menu-cost${(available?.[id] || 0) < count ? ' short' : ''}">${itemArt(id)}<span><strong>${num(count)} ${esc(id)}</strong><small>${num(available?.[id])} available</small></span></div>`).join('')}</div>`;
+    return `<div class="menu-costs" aria-label="Upgrade cost">${Object.entries(cost).map(([id, count]) => `<div class="menu-cost${(available?.[id] || 0) < count ? ' short' : ''}">${itemArt(id)}<span><strong>${num(count)} ${esc(label(id).toLowerCase())}</strong><small>${num(available?.[id])} available</small></span></div>`).join('')}</div>`;
   }
   function comparison(rows, next = true) {
     return `<div class="upgrade-comparison"><div class="upgrade-comparison-head"><span>Attribute</span><span>Current</span><span>${next ? 'Next tier' : 'Maximum tier'}</span></div>${rows.map(([name, before, after]) => `<div class="upgrade-comparison-row"><span>${esc(name)}</span><strong>${esc(before)}</strong><strong>${esc(after ?? before)}</strong></div>`).join('')}</div>`;
@@ -99,7 +106,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     return [[id === 'sword' || id === 'bow' ? 'Damage' : id === 'hammer' ? 'Repair' : 'Yield', id === 'sword' ? `${quality.swordDamage} base / hit` : id === 'bow' ? '22 base / arrow' : id === 'hammer' ? `${quality.repair} health / swing` : `${quality.yield} ${quality.yield === 1 ? 'resource' : 'resources'} / swing`], ['Durability', `${acquiredToolDurability(me(), id, tier)} uses`]];
   }
   function materialDisplay(cost, stored) {
-    return '<div class="shop-materials"><strong>Workshop materials</strong><p>' + esc(costText(cost)) + '</p><div>' + Object.entries(cost).map(([id, amount]) => `<span class="shop-material ${(stored?.[id] || 0) < amount ? 'short' : ''}">${itemArt(id)}<span>${num(amount)} ${esc(id)}<small>${num(stored?.[id])} stored</small></span></span>`).join('') + '</div></div>';
+    return '<div class="shop-materials"><strong>Workshop materials</strong><p>' + esc(costText(cost)) + '</p><div>' + Object.entries(cost).map(([id, amount]) => `<span class="shop-material ${(stored?.[id] || 0) < amount ? 'short' : ''}">${itemArt(id)}<span>${num(amount)} ${esc(label(id).toLowerCase())}<small>${num(stored?.[id])} stored</small></span></span>`).join('') + '</div></div>';
   }
   function shopTheme() {
     if (['tools', 'food', 'stable', 'bank', 'market'].includes(current?.kind)) return current.kind;
@@ -177,9 +184,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     buildCarousel.bind(content());
     for (const id of transferFields) {
       const field = document.getElementById(id);
-      if (field) field[field.tagName === 'SELECT' ? 'onchange' : 'oninput'] = () => { transferDraft()[id] = field.value; updateTransfers(); };
+      if (field) field[field.tagName === 'SELECT' ? 'onchange' : 'oninput'] = () => { transferDraft()[id] = field.value; updateTransfers(); updateSmelting(); };
     }
     updateTransfers();
+    updateSmelting();
     for (const resource of Object.keys(RESOURCE_MARKET)) {
       const input = document.getElementById(`trade-amount-${resource}`);
       if (input) input.oninput = () => { tradeAmounts.set(resource, input.value); updateTrade(resource); };
@@ -287,18 +295,22 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     // Network snapshots must not reset a quantity or selection while it is being edited.
     if (content().contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
       updateTransfers();
+      updateSmelting();
       if (current.kind === 'market') { for (const resource of Object.keys(RESOURCE_MARKET)) updateTrade(resource); updateMarketSummary(); }
       return;
     }
     const p = me(), s = state();
     if (!p || !s) return;
-    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus,p.combatRewards, p.inventory, p.boundInventory, p.crateEquipment, p.staffOwned, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, p.maxHp, p.downed, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, current.kind === 'plot' || current.kind === 'church' ? plots().filter(plot => plot.id === current.id) : s.plots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId, c.capacity, c.rescuePlayerIds]), p.skills, s.players?.map(q=>[q.id,q.rescueCartId,q.downed,q.online,q.carriedBy,current.kind==='cart'?gap(p,q)<=3.5:null]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), current.kind === 'workers' ? ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.destinationOwnerId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color, w.staffPlotId, w.staffRole, w.staffRetired, w.targetPercent, w.equipment, w.roleLimitPaused, w.autoReplaceEnabled]) : null, current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
+    // Smelting advances every tick. Only whole seconds affect menu progress;
+    // avoid rebuilding storage controls for fractional timer-only snapshots.
+    const displayPlots = (current.kind === 'plot' || current.kind === 'church' ? plots().filter(plot => plot.id === current.id) : s.plots)?.map(plot => plot.smelting ? { ...plot, smelting: { ...plot.smelting, progress: Math.floor(plot.smelting.progress) } } : plot);
+    const next = JSON.stringify([p.wallet, p.bank, p.role, p.wageAccrued,p.jobBonus,p.repairBonus,p.combatRewards, p.inventory, p.boundInventory, p.crateEquipment, p.staffOwned, p.durability, p.maxDurability, p.tiers, p.backpackTier, p.hp, p.maxHp, p.downed, Math.floor(p.hunger), p.carryingId, p.bedPlotId, p.mountedHorseId, s.stock, s.treasury, displayPlots, s.requests, s.policies, s.proposals, s.merchant, s.stable, s.loan, s.landDebt, s.foodQuotes, s.beds, s.barracks, s.defenseStatus, s.guardReplacements, s.guards.map(g => [g.id, g.hp > 0, g.hungry]), s.carts?.map(c => [c.id, c.storage, c.horseId, c.capacity, c.rescuePlayerIds]), p.skills, s.players?.map(q=>[q.id,q.rescueCartId,q.downed,q.online,q.carriedBy,current.kind==='cart'?gap(p,q)<=3.5:null]), s.horses?.map(h => [h.id, h.riderId, h.cartId]), current.kind === 'workers' ? ownWorkers().map(w => [w.id, w.name, w.resource, w.sourcePlotId, w.mode, w.destinationPlotId, w.destinationOwnerId, w.status, w.paused, w.cargo, w.workXp, w.upgradePoints, w.attributes, w.color, w.staffPlotId, w.staffRole, w.staffRetired, w.targetPercent, w.equipment, w.roleLimitPaused, w.autoReplaceEnabled]) : null, current.kind === 'policies' ? atCouncil() : null, current.kind === 'workers' ? [atTreasury(p), ownWorkers().map(w => [gap(p, w) <= 3.3, workerAtTreasury(w)])] : null]);
     if (next !== signature) { signature = next; render(); }
   }
   function pack() {
     const p = me(), s = state(), backpack = BACKPACKS[p.backpackTier] || BACKPACKS[0];
     let html = menuHero(itemArt('backpack', { tier: backpack.tier }), 'YOUR PACK', 'Your pack', 'Supplies ready to use. Open equipment or earnings when you need them.', tierBadge(backpack.tier, 3));
-    html += stats([['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Carrying gear', backpack.name], ['Wallet', `${num(p.wallet)} gold`], ['Plots', `${owned().length} / ${MAX_PLOTS}`]]) + meter(inventoryWeight(p), carryCapacity(p), 'Carrying capacity used');
+    html += stats([['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Carrying gear', backpack.name], ['Wallet', `${num(p.wallet)} gold`], ['Plots', `${owned().length} / ${MAX_PLOTS}`]]) + meter(inventoryWeight(p), carryCapacity(p), 'Carrying allowance used') + carryNote(p);
     const navigation = '<div class="panel-actions">' + button('Mark the backpack shop', () => markService('tools')) + button('Manage workers', () => show('workers')) + button('Village atlas', () => show('atlas')) + button('Change role', () => show('roles')) + (showAcademy ? button('Role skill trees', () => showAcademy()) : '') + (showCivic ? button('Village projects', () => showCivic()) : '') + '</div><p class="menu-footnote">Buy larger backpacks at Oak &amp; Iron, the village starter tool shop.</p>';
     const bandages = p.inventory?.bandage || 0, maxHp = p.maxHp || 100, bandageUnavailable = bandages < 1 || p.downed || p.hp <= 0 || p.hp >= maxHp || Boolean(p.mountedHorseId) || Boolean(p.bedPlotId);
     html += '<div class="pack-first-aid">' + menuSection('First aid', `One bandage restores ${BANDAGE.healFraction * 100}% of your maximum HP, up to full health. Buy more at Oak & Iron for ${BANDAGE.price} gold each.`, stats([['Bandages carried', num(bandages)], ['Health', `${num(p.hp)} / ${num(maxHp)}`], ['Healing per bandage', `Up to ${num(maxHp * BANDAGE.healFraction)} HP`]]) + command('Use bandage', 'useBandage', {}, bandageUnavailable, p.downed || p.hp <= 0 ? 'Bandages cannot revive a fallen dwarf.' : p.bedPlotId ? 'Leave the bed to use a bandage.' : p.mountedHorseId ? 'Dismount to use a bandage.' : p.hp >= maxHp ? 'Your health is already full.' : bandages < 1 ? 'Buy bandages at Oak & Iron.' : 'Consume one carried bandage.'), itemArt('bandage')) + '</div>';
@@ -321,7 +333,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const options = [...equipment, 'food', 'good_food', 'best_food', ...(p.role === 'priest' ? ['heal'] : [])];
     html += fold('Hotbar setup', menuSection('Your eight hotbar slots', 'Choose which equipment and food each number selects. A tool’s current tier is equipped automatically.', '<div class="hotbar-editor">' + getHotbar().map((selected, index) => `<label>Slot ${index + 1}<select data-hotbar-slot="${index}">${options.map(id => `<option value="${id}" ${id === selected ? 'selected' : ''}>${id === 'heal' ? 'Priest blessing' : label(id)}</option>`).join('')}</select></label>`).join('') + '</div>'), 'pack-hotbar', 'Choose your eight shortcuts');
     const earnings = menuSection('Your zombie bounties', `Every role earns ${num(ZOMBIE_BOUNTIES.small)} gold for small zombies, ${num(ZOMBIE_BOUNTIES.large)} for large zombies and ${num(ZOMBIE_BOUNTIES.boss)} for bosses killed or assisted. Damage from your towers and guards counts for you. Each player earns once per zombie, with no nightly cap. Paid immediately; normal loan repayments apply. Totals below cover this village run.`, stats([['Kills credited', num(p.combatRewards?.kills)], ['Assists credited', num(p.combatRewards?.assists)], ['Bounty gold earned', `${num(p.combatRewards?.gold)} gold before loan repayments`]]), itemArt('gold')) + menuSection('Your dawn earnings', 'Role wages, service bonuses and repair pay arrive at dawn. Zombie bounties are already paid and do not use these limits.', stats([['Accrued role wage', `${num(p.wageAccrued)} gold`], ['Service bonus', `${num(p.jobBonus)} / 25 gold`], ['Pending repair pay', `${num(p.repairBonus)} / 10 gold`]]), itemArt('gold'));
-    html += fold('Earnings & village supplies', earnings + '<h3>The village</h3>' + stats(resources.map(id => [label(id), num(s.stock?.[id])])), 'pack-earnings', 'Bounties, wages and shared stock');
+    html += fold('Earnings & village supplies', earnings + '<h3>The village</h3>' + stats(marketResources.map(id => [label(id), num(s.stock?.[id])])), 'pack-earnings', 'Bounties, wages and shared stock');
     html += fold('Manage & explore', navigation, 'pack-actions', 'Workers, skills, land and backpack upgrades');
     return html;
   }
@@ -344,9 +356,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const p = me(), s = state(), tax = s.policies?.tradeTax || 0;
     let html = head('RESOURCE EXCHANGE', 'Bring your haul to the counter.', 'Trade shared village supplies with the market keeper. Prices follow village stock; every bundle includes its changing unit prices and tax.');
     html += '<div class="settlement-stats market-summary">' + [['Wallet', 'market-wallet', `${num(p.wallet)} gold`], ['Village treasury', 'market-treasury', `${num(s.treasury)} gold`], ['Carried weight', 'market-carry', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['Trading tax', 'market-tax', `${num(tax)}%`]].map(([name, id, text]) => `<div><span>${esc(name)}</span><strong id="${id}">${esc(text)}</strong></div>`).join('') + '</div>';
+    html += carryNote(p);
     html += deliveries('bank');
-    const quickSellReady = resources.some(id => transferableCount(p, id) > 0) && s.treasury > TREASURY_RESERVE;
-    html += `<p>Enter a whole quantity to buy or sell. “Sell max” sells one resource; “Quick Sell all carried resources” sells every eligible raw resource the treasury can afford while preserving its ${TREASURY_RESERVE} gold reserve.</p><div class="panel-actions market-quick-sell">${command('Quick Sell all carried resources', 'sell_all', {}, !quickSellReady)}</div><div class="market-resource-grid">`;
+    const quickSellReady = marketResources.some(id => transferableCount(p, id) > 0) && s.treasury > TREASURY_RESERVE;
+    html += `<p>Enter a whole quantity to buy or sell. “Sell max” sells one resource; “Quick Sell all carried resources” sells every eligible material, including ingots, the treasury can afford while preserving its ${TREASURY_RESERVE} gold reserve.</p><div class="panel-actions market-quick-sell">${command('Quick Sell all carried resources', 'sell_all', {}, !quickSellReady)}</div><div class="market-resource-grid">`;
     for (const [resource, info] of Object.entries(RESOURCE_MARKET)) {
       if (!tradeAmounts.has(resource)) tradeAmounts.set(resource, '10');
       const trade = quoteTrade(resource); displayedTrades.set(resource, trade);
@@ -357,7 +370,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += button(trade.maxButton, () => submitMaxTrade(resource), !trade.maxAllowed, trade.maxReason, 'secondary-button market-sell-max').replace('<button ', `<button id="trade-max-${resource}" data-shop-focus="trade-max-${resource}" `);
       html += `</div><p class="trade-max-quote" id="trade-max-quote-${resource}">${esc(trade.maxText)}</p></div></section>`;
     }
-    html += '</div><section class="market-donation"><h3>Support the village</h3><p>Donate all raw resources in your pack without payment. For a posted reward, use “Requested deliveries” before making a donation.</p>' + command('Donate carried resources', 'donate', {}, !resources.some(id => transferableCount(p, id) > 0)).replace('<button ', '<button id="market-donate" ') + '</section>';
+    html += '</div><section class="market-donation"><h3>Support the village</h3><p>Donate all Resource Exchange materials in your pack, including ingots, without payment. For a posted reward, use “Requested deliveries” before making a donation.</p>' + command('Donate carried resources', 'donate', {}, !marketResources.some(id => transferableCount(p, id) > 0)).replace('<button ', '<button id="market-donate" ') + '</section>';
     return html + '<div class="panel-actions">' + button('Find bank', () => markService('bank')) + '</div>';
   }
   function updateMarketSummary() {
@@ -365,7 +378,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     for (const [id, text] of [['market-wallet', `${num(p.wallet)} gold`], ['market-treasury', `${num(s.treasury)} gold`], ['market-carry', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`], ['market-tax', `${num(s.policies?.tradeTax || 0)}%`]]) {
       const node = document.getElementById(id); if (node) node.textContent = text;
     }
-    const donate = document.getElementById('market-donate'); if (donate) donate.disabled = !resources.some(id => transferableCount(p, id) > 0);
+    const donate = document.getElementById('market-donate'); if (donate) donate.disabled = !marketResources.some(id => transferableCount(p, id) > 0);
   }
   const ownWorkers = () => (state()?.workers || []).filter(worker => worker.ownerId === me()?.id);
   const atTreasury = player => canUseBuilding(player, BUILDINGS.find(b => b.id === 'bank'));
@@ -455,7 +468,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const sourceValid = (!transporter && !gatherer && order.resource !== 'mine_all' && !order.sourcePlotId) || sources.some(plot => plot.id === order.sourcePlotId);
     const destinationValid = (order.mode === 'sell' || destinations.some(plot => plot.id === order.destinationPlotId)) && (!transporter || order.mode === 'store' && order.destinationPlotId !== order.sourcePlotId && Number.isInteger(order.targetPercent) && order.targetPercent >= 1 && order.targetPercent <= 100);
     const weight = inventoryWeight(worker.cargo || {}), nearWorker = gap(p, worker) <= 3.3, ability = workerStats(worker, p);
-    const room = carryCapacity(p) - inventoryWeight(p), canCollect = Object.keys(RESOURCE_WEIGHTS).some(resource => worker.cargo?.[resource] > 0 && resourceWeight(p, resource) <= room + 1e-8);
+    const canCollect = Object.keys(RESOURCE_WEIGHTS).some(resource => transferLimit(worker.cargo || {}, p, resource, PLAYER_CARRY_LIMIT) > 0);
     const cargoText = Object.keys(RESOURCE_WEIGHTS).filter(resource => worker.cargo?.[resource] > 0).map(resource => `${num(worker.cargo[resource])} ${resource}`).join(' · ') || 'Empty';
     const activity = workerActivity(worker);
     let html = `<section class="worker-card" data-worker-card="${esc(worker.id)}"><header class="worker-card-heading"><div class="worker-card-portrait">${workerPortrait(worker.color)}</div><div><span class="worker-status" data-state="${activity.state}">${esc(activity.label)}</span><h3>${esc(workerName(worker, index))}</h3><p>${esc(worker.status || 'Waiting for orders')}</p><small>${esc(workerTypeLabel(worker))} · Level ${worker.level || 1}</small></div><div class="worker-assignment-art">${itemArt(worker.resource === 'mine_all' ? 'pickaxe' : worker.resource || 'timber')}</div></header>`;
@@ -512,7 +525,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += row('Carried supplies', `${cargoText} · ${num(weight)} / ${ability.carryCapacity} weight`) + meter(weight, ability.carryCapacity, 'Worker cargo capacity');
       if (worker.staffPlotId) html += row(worker.staffRetired ? 'Inactive plot staff' : transporter ? 'Plot transporter' : 'Plot gatherer', workerPlotName(worker.staffPlotId));
       html += '<div class="panel-actions">';
-      html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Take as much as your pack can hold. The worker keeps any remainder.');
+      html += command('Collect carried supplies', 'worker_collect', { workerId: worker.id }, !canCollect || !nearWorker, !nearWorker ? 'Stand next to this worker to collect supplies.' : 'Collect the worker’s cargo. Carrying above your allowance slows you to 45% speed and prevents sprinting.');
       if (!worker.staffPlotId || worker.staffRetired) html += button('Dismiss worker', () => confirm('Dismiss this worker?', 'There is no hiring refund. You and the worker must be at the treasury with their cargo collected. Purchased worker tools are discarded without a refund; recover any previously supplied tools first.', 'worker_dismiss', { workerId: worker.id }), !nearBank || !workerAtTreasury(worker) || weight > 0 || Object.values(worker.equipment || {}).some(item => !item.workerOnly), weight > 0 ? 'Collect or deliver the carried supplies first.' : 'You and the worker must be at the treasury. Pause work to call them back.');
       html += '</div>';
     }
@@ -521,10 +534,9 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   function quoteTrade(resource) {
     const p = me(), s = state(), stock = s.stock?.[resource] || 0, carried = transferableCount(p, resource);
     const count = Number(tradeAmounts.get(resource)), valid = Number.isSafeInteger(count) && count >= 1 && count <= MAX_TRADE_AMOUNT;
-    const room = Math.max(0, Math.floor((carryCapacity(p) - inventoryWeight(p) + 1e-8) / resourceWeight(p, resource)));
     let maximum = { amount: 0, quote: { gross: 0, tax: 0, total: 0 } };
     try { maximum = maxSaleQuote({ resource, stock, carried, treasury: s.treasury, percent: s.policies?.tradeTax || 0 }); } catch {}
-    const sellMax = maximum.amount, buyMax = Math.min(stock, room, MAX_TRADE_AMOUNT);
+    const sellMax = maximum.amount, buyMax = Math.min(transferLimit(s.stock, p, resource, PLAYER_CARRY_LIMIT), MAX_TRADE_AMOUNT);
     let sale = null, purchase = null;
     if (valid) {
       try { sale = taxedSaleQuote(resource, stock, count, s.policies?.tradeTax || 0); } catch {}
@@ -532,13 +544,13 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const invalidReason = `Enter a whole quantity from 1 to ${num(MAX_TRADE_AMOUNT)}.`;
     const sellReason = !valid ? invalidReason : count > carried ? `You carry only ${num(carried)} ${resource}.` : !sale ? 'A sale quote is unavailable.' : sale.total > s.treasury - TREASURY_RESERVE ? 'The treasury cannot pay this amount while preserving its reserve.' : '';
-    const buyReason = !valid ? invalidReason : count > stock ? `The village has only ${num(stock)} ${resource}.` : count > room ? `Your pack has room for ${num(room)} more ${resource}.` : !purchase ? 'A purchase quote is unavailable.' : purchase.total > wallet() ? 'You do not have enough gold for this quantity.' : '';
+    const buyReason = !valid ? invalidReason : count > stock ? `The village has only ${num(stock)} ${resource}.` : count > buyMax ? 'This purchase exceeds the item count limit.' : !purchase ? 'A purchase quote is unavailable.' : purchase.total > wallet() ? 'You do not have enough gold for this quantity.' : '';
     const maxReason = carried < 1 ? `You carry no ${resource}.` : !sellMax ? 'The treasury cannot buy any while preserving its reserve.' : '';
     return {
       count, sale, purchase, maxAmount: Math.max(1, sellMax, buyMax), sellAllowed: !sellReason, buyAllowed: !buyReason, sellReason, buyReason,
       maximum, maxAllowed: !maxReason, maxReason, maxButton: sellMax ? `Sell max · ${num(sellMax)} for ${num(maximum.quote.total)}g` : 'Sell max',
       maxText: sellMax ? `Max sale: ${num(sellMax)} ${resource} · ${num(maximum.quote.gross)}g value − ${num(maximum.quote.tax)}g tax = ${num(maximum.quote.total)}g received.${sellMax < carried ? ' Treasury funds or the trade limit leave the rest in your pack.' : ''}` : maxReason,
-      stockText: `${carriedText(resource)} · ${num(stock)} in village`, limitText: `Can sell up to ${num(sellMax)} with treasury funds · Can buy up to ${num(buyMax)} with current stock and pack space.`,
+      stockText: `${carriedText(resource)} · ${num(stock)} in village`, limitText: `Can sell up to ${num(sellMax)} with treasury funds · Can buy up to ${num(buyMax)} from current stock.`,
       sellText: (sale ? `Sell: receive ${num(sale.total)}g (${num(sale.gross)}g value − ${num(sale.tax)}g tax).` : 'Sell: no quote.') + (sellReason ? ' ' + sellReason : ''),
       buyText: (purchase ? `Buy: pay ${num(purchase.total)}g (${num(purchase.subtotal)}g price + ${num(purchase.tax)}g tax).` : 'Buy: no quote.') + (buyReason ? ' ' + buyReason : ''),
       sellButton: sale ? `Sell ${num(count)} · ${num(sale.total)}g` : 'Sell', buyButton: purchase ? `Buy ${num(count)} · ${num(purchase.total)}g` : 'Buy'
@@ -576,17 +588,17 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
   }
   function food() {
     const s = state(), p = me();
-    let html = head('THE BREADBOARD', 'Something warm for the road.', 'Meals go into your pack. Equip one on your hotbar or eat it here whenever you need it.') + stats([['Hunger', `${num(p.hunger)} / 100`], ['Village wheat', num(s.stock?.wheat)]]) + '<div class="shop-item-grid">';
+    let html = head('THE BREADBOARD', 'Something warm for the road.', 'Meals go into your pack. Equip one on your hotbar or eat it here whenever you need it.') + stats([['Hunger', `${num(p.hunger)} / 100`], ['Village wheat', num(s.stock?.wheat)]]) + carryNote(p) + '<div class="shop-item-grid">';
     for (const id of ['food', 'good_food', 'best_food']) {
       const item = s.foodQuotes?.[id] || FOOD[id]; if (!item) continue;
-      const full = inventoryWeight(p) + resourceWeight(p, id) > carryCapacity(p) + 1e-8, stocked = (s.stock?.wheat || 0) >= item.wheat;
-      const canBuy = wallet() >= item.price && stocked && !full;
+      const countLimited = transferLimit({ [id]: 1 }, p, id, PLAYER_CARRY_LIMIT) < 1, stocked = (s.stock?.wheat || 0) >= item.wheat;
+      const canBuy = wallet() >= item.price && stocked && !countLimited;
       let controls = command(`Buy · ${item.price}g`, 'buyFood', { tier: id }, !canBuy);
       if (p.inventory?.[id]) controls += command('Eat ' + label(id).toLowerCase(), 'eat', { tier: id }, p.hunger >= 100);
       html += itemCard({ id, item: id, name: item.label || label(id), tag: id === 'food' ? 'Fresh bread' : id === 'good_food' ? 'Hearty meal' : 'Village feast',
         facts: [['Hunger', `+${item.hunger}`], ['In your pack', num(p.inventory?.[id])], ...(boundInventoryCount(p, id) ? [['Transferable', num(transferableCount(p, id))], ['Kit-bound', `${num(boundInventoryCount(p, id))} · eat only`]] : [])],
         copy: `Restores ${item.hunger} hunger when eaten · uses ${item.wheat} village wheat · ${carriedText(id)}. Each meal weighs ${num(resourceWeight(p, id))}. Buy now and eat later; buying never consumes it automatically.${boundInventoryCount(p, id) ? ' Kit food is eaten first and cannot be stored, sold, donated or traded.' : ''}`,
-        status: !stocked ? 'The village needs more wheat.' : full ? 'Make room in your pack.' : wallet() < item.price ? 'Not enough wallet gold.' : `${item.wheat} wheat from village stores`, controls, available: canBuy });
+        status: !stocked ? 'The village needs more wheat.' : countLimited ? 'Item count limit reached.' : wallet() < item.price ? 'Not enough wallet gold.' : `${item.wheat} wheat from village stores`, controls, available: canBuy });
     }
     return html + '</div>';
   }
@@ -594,14 +606,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const p = me(), backpack = BACKPACKS[p.backpackTier] || BACKPACKS[0];
     let html = head('OAK & IRON', 'Tools for the job. Room for the haul.', 'Start with 10 gold and choose your first wooden tool. An axe gathers timber, a pickaxe mines stone and ore, and a scythe harvests wheat. Hammers repair structures using village supplies.') + stats([['Wallet', `${num(p.wallet)} gold`], ...(state().loan?.credit > 0 ? [['Purchase credit', `${num(state().loan.credit)} gold`]] : []), ['Carried weight', `${num(inventoryWeight(p))} / ${carryCapacity(p)}`]]) + '<h3>Wooden tools · 10 gold each</h3><div class="shop-item-grid">';
     for (const id of ['axe', 'pickaxe', 'scythe', 'hammer']) {
-      const owned = p.durability?.[id] > 0, full = inventoryWeight(p) + TOOL_WEIGHTS[id] > carryCapacity(p), available = money() >= 10 && !owned && !full;
+      const owned = p.durability?.[id] > 0, available = money() >= 10 && !owned;
       const use = { axe: 'Chop trees for timber.', pickaxe: 'Mine stone, iron, coal and sulfur outcrops.', scythe: 'Harvest individual wheat stalks.', hammer: 'Repair damaged structures using timber or stone from village supplies.' }[id];
       html += itemCard({ id: `wood_${id}`, item: id, tier: 'wood', name: 'Wooden ' + id, tag: 'Starter equipment', facts: gearFacts(id),
         copy: `${use} ${TOOL_WEIGHTS[id]} carrying weight. Wooden tools need no workshop materials. All tiers swing at the same speed.`,
-        status: owned ? `${num(p.durability[id])} / ${num(p.maxDurability?.[id] || TOOL_TIERS[p.tiers?.[id] || 'wood'].durability)} uses remain · replace it once broken` : full ? 'Make room in your pack.' : money() < 10 ? 'Not enough gold or purchase credit.' : `${acquiredToolDurability(p, id)} durability · ${id === 'hammer' ? 'repairs damaged structures' : 'one resource per swing'}`,
+        status: owned ? `${num(p.durability[id])} / ${num(p.maxDurability?.[id] || TOOL_TIERS[p.tiers?.[id] || 'wood'].durability)} uses remain · replace it once broken` : money() < 10 ? 'Not enough gold or purchase credit.' : `${acquiredToolDurability(p, id)} durability · ${id === 'hammer' ? 'repairs damaged structures' : 'one resource per swing'}`,
         controls: command('Buy · 10g', 'buyTool', { tool: id }, !available), available });
     }
-    html += '</div><p>Wooden tools need no materials. Stocked player tool shops craft stone and iron tools for higher yields at the same swing speed.</p><h3>Backpacks</h3><p>Equip a larger backpack to carry more tools, food, and resources. Upgrades replace your current bag. Each price is the full purchase price.</p><div class="shop-item-grid">';
+    html += '</div>' + carryNote(p) + '<p>Wooden tools need no materials. Player tool shops craft stone, iron and steel tools for yields of 2, 3 and 4 at the same swing speed. Smelt iron ore into ingots before crafting metal equipment.</p><h3>Backpacks</h3><p>Equip a larger backpack to carry more tools, food, and resources without slowing down. Upgrades replace your current bag. Each price is the full purchase price.</p><div class="shop-item-grid">';
     html += itemCard({ id: 'equipped_pack', item: 'backpack', tier: backpack.tier, name: backpack.name, tag: 'Equipped', facts: [['Carry capacity', `${carryCapacity(p)} total`], ['Upgrade level', `${backpack.tier} / 3`]],
       copy: `${carryCapacity(p)} total carrying capacity. Includes carrying bonuses from your role and deployed crate gear. Backpacks have no durability wear.`, controls: '<span class="status-pill">Equipped</span>' });
     for (const pack of BACKPACKS.filter(pack => pack.tier > backpack.tier)) {
@@ -612,10 +624,10 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     html += '</div>';
     if (backpack.tier === BACKPACKS.at(-1).tier) html += '<p>Your expedition backpack provides the largest carrying capacity.</p>';
-    const bandageFull = inventoryWeight(p) + resourceWeight(p, 'bandage') > carryCapacity(p), bandageAvailable = wallet() >= BANDAGE.price && !bandageFull;
+    const bandageCountLimited = transferLimit({ bandage: 1 }, p, 'bandage', PLAYER_CARRY_LIMIT) < 1, bandageAvailable = wallet() >= BANDAGE.price && !bandageCountLimited;
     html += '<h3>First aid</h3><div class="shop-item-grid">' + itemCard({ id: 'bandage', item: 'bandage', name: 'Bandage', tag: 'Healing supply', facts: [['Healing', `${BANDAGE.healFraction * 100}% maximum HP`], ['Carrying weight', `${RESOURCE_WEIGHTS.bandage} each`], ['Carried', num(p.inventory?.bandage)]],
       copy: 'Use one from your Pack to restore a quarter of your maximum health, capped at full HP. Single use. Bandages cannot revive fallen dwarfs and are not consumed at full health.',
-      status: bandageFull ? 'Make room in your pack.' : wallet() < BANDAGE.price ? 'Not enough wallet gold.' : `${BANDAGE.price} wallet gold each · Use from Pack → First aid.`, controls: command(`Buy bandage · ${BANDAGE.price}g`, 'buyBandage', {}, !bandageAvailable), available: bandageAvailable }) + '</div>';
+      status: bandageCountLimited ? 'Item count limit reached.' : wallet() < BANDAGE.price ? 'Not enough wallet gold.' : `${BANDAGE.price} wallet gold each · Use from Pack → First aid.`, controls: command(`Buy bandage · ${BANDAGE.price}g`, 'buyBandage', {}, !bandageAvailable), available: bandageAvailable }) + '</div>';
     return html + '<div class="panel-actions">' + button('Find a player tool shop', () => show('atlas')) + '</div>';
   }
   function watch() {
@@ -683,19 +695,20 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     let html = head('THE WAYFARER', 'Tavern games & traveling wares.', 'The inn’s gaming table is open day and night, including when the traveling merchant is away.');
     if (showTavern) html += menuSection('Tavern games', 'Play blackjack, three-card poker, Enchanted reels, Wheel of Fate, coin flip and European roulette with wallet gold.', button('Play tavern games', () => showTavern(), false, '', 'primary-button'), itemArt('gold'));
     html += head('TRAVELING MERCHANT', m.present ? 'Fresh wares at the crossroads.' : 'The merchant is on the road.', 'The merchant visits during the day after every second night. Dwarfs gather the village’s basic materials; the steward can export a safe surplus.');
-    html += `<p>The current council policy sells ${merchantExportPercent(state().policies?.exportPriority)}% of surplus wheat, timber, stone, iron, coal and sulfur from the Resource Exchange on each visit, with no unit cap. Food and repair reserves are set aside first; sales round down to whole units. Change the percentage through the Village Council.</p>`;
+    html += `<p>The current council policy sells ${merchantExportPercent(state().policies?.exportPriority)}% of surplus Resource Exchange materials, including iron ore, iron ingots and steel ingots, on each visit, with no unit cap. Food and repair reserves are set aside first; sales round down to whole units. Change the percentage through the Village Council.</p>`;
+    if (showPets) html += menuSection('Travelling companions', 'View your pets and check the merchant’s egg selection.', button('Pets & eggs', () => showPets()), itemArt('pet_egg'));
     if (m.summary) html += `<p>${esc(m.summary)}</p>`;
     if (m.present) {
       html += '<div class="shop-item-grid">';
       for (const [resource, stock] of Object.entries(m.stock || {})) {
-        const weight = resourceWeight(me(), resource), full = inventoryWeight(me()) + weight > carryCapacity(me()) + 1e-8, price = m.prices?.[resource];
-        const available = stock > 0 && Number.isFinite(price) && wallet() >= price && !full;
+        const weight = resourceWeight(me(), resource), countLimited = transferLimit({ [resource]: 1 }, me(), resource, PLAYER_CARRY_LIMIT) < 1, price = m.prices?.[resource];
+        const available = stock > 0 && Number.isFinite(price) && wallet() >= price && !countLimited;
         html += itemCard({ id: `merchant_${resource}`, item: resource, name: label(resource), tag: 'Traveling wares', facts: [['Available', num(stock)], ['Carried', num(me().inventory?.[resource])]],
           copy: `${num(stock)} available · ${carriedText(resource)}. One unit weighs ${num(weight)}. Purchase transfers one item to your inventory for the listed wallet-gold price.`,
-          status: stock < 1 ? 'Sold out for this visit.' : full ? 'Make room in your pack.' : !available ? 'Not enough wallet gold.' : 'Available during this visit.',
+          status: stock < 1 ? 'Sold out for this visit.' : countLimited ? 'Item count limit reached.' : !available ? 'Not enough wallet gold.' : 'Available during this visit.',
           controls: command(`Buy one · ${num(price)}g`, 'merchant_buy', { resource, amount: 1 }, !available), available });
       }
-      html += '</div>';
+      html += '</div>' + carryNote();
     }
     html += '<h3>The steward’s last decision</h3><p>' + esc(state().steward?.lastDecision || 'The steward is watching village supplies.') + '</p>';
     return html;
@@ -705,7 +718,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     const s = state(), canPropose = atCouncil();
     let html = head('VILLAGE COUNCIL', 'A voice for every dwarf.', 'A majority vote goes to the steward for an affordability and fairness review. Approved policies take effect at the next dawn.') + stats([['Guard wage', `${num(s.policies?.guardWage)}g`], ['Priest wage', `${num(s.policies?.priestWage)}g`], ['Trade tax', `${num(s.policies?.tradeTax)}%`], ['Base land tax', `${num(s.policies?.landTax)}g`], ['Merchant exports', `${merchantExportPercent(s.policies?.exportPriority)}% of surplus`]]);
     html += '<p>Wages are paid at dawn and depend on participation. Performance pay is additional. Full-cycle land tax is the base tax multiplied by the square of your plot count, prorated by your time online.</p><h3>Propose a change</h3><div class="policy-form"><label>Policy' + choices('policy-name', [['guardWage', 'Guard daily wage'], ['priestWage', 'Priest daily wage'], ['tradeTax', 'Trade tax %'], ['landTax', 'Land tax base']]) + '</label><label>New value' + quantity('policy-value', 60, 25).replace('min="1"', 'min="10" step="5"') + '</label>' + button('Submit proposal', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: value('policy-name'), value: amount('policy-value') }); }, !canPropose) + '</div>';
-    html += '<p>Merchant exports cover every Resource Exchange material: wheat, timber, stone, iron, coal and sulfur. The selected percentage applies after food and repair reserves, rounded down to whole units, with no unit cap. Conserve also keeps twice the usual reserves.</p><div class="transfer-form"><label>Merchant export percentage' + choices('export-priority', POLICIES.exportPriority.choices.map(priority => [priority, exportPolicyLabel(priority)]), s.policies?.exportPriority) + '</label>' + button('Propose resource priority', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: value('export-priority') }); }, !canPropose) + '</div><h3>Votes & decisions</h3>';
+    html += '<p>Merchant exports cover every Resource Exchange material: wheat, timber, stone, iron ore, coal, sulfur, iron ingots and steel ingots. The selected percentage applies after food and repair reserves, rounded down to whole units, with no unit cap. Conserve also keeps twice the usual reserves.</p><div class="transfer-form"><label>Merchant export percentage' + choices('export-priority', POLICIES.exportPriority.choices.map(priority => [priority, exportPolicyLabel(priority)]), s.policies?.exportPriority) + '</label>' + button('Propose resource priority', () => { if (!atCouncil()) { render(); return; } send({ type: 'action', kind: 'propose_policy', policy: 'exportPriority', value: value('export-priority') }); }, !canPropose) + '</div><h3>Votes & decisions</h3>';
     if (!canPropose) html += '<p>Visit the Treasury or Hearthkeep entrance to submit a proposal. You can read the council and vote from anywhere.</p>' + button('Mark the treasury', () => markService('bank'));
     const proposals = s.proposals || [];
     if (!proposals.length) html += '<p>No proposals yet. All residents have a voice.</p>';
@@ -739,7 +752,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     renderedStorageRecipient = { id, ownerId: container?.ownerId };
     const capacity = isCart ? cartCapacity(container) : plotStorageCapacity(container), used = inventoryWeight(stored);
     const ownerName = container?.ownerName || state().players?.find(player => player.id === container?.ownerId)?.name || 'this resident';
-    let html = '<section class="storage-counter direct-storage"><header><h4>Supply shelves</h4><p>' + (owner ? 'Move supplies with one click. Max moves everything that fits.' : `Donations to ${esc(ownerName)}. Stored goods belong to the owner; you cannot take them back.`) + '</p>' + stats([['Storage space', `${num(used)} / ${num(capacity)} weight`], ['Your pack', `${num(inventoryWeight(me()))} / ${num(carryCapacity(me()))} weight`]]) + meter(used, capacity, 'Storage capacity used') + '</header><div class="storage-resource-list">';
+    let html = '<section class="storage-counter direct-storage"><header><h4>Supply shelves</h4><p>' + (owner ? 'Store max fills available storage. Take max collects every available item, even above your carrying allowance.' : `Donations to ${esc(ownerName)}. Stored goods belong to the owner; you cannot take them back.`) + '</p>' + stats([['Storage space', `${num(used)} / ${num(capacity)} weight`], ['Your pack', `${num(inventoryWeight(me()))} / ${num(carryCapacity(me()))} weight`]]) + meter(used, capacity, 'Storage capacity used') + carryNote() + '</header><div class="storage-resource-list">';
     for (const resource of transferable.filter(r => stored[r] > 0 || me().inventory?.[r] > 0 || resources.includes(r))) {
       html += `<article class="storage-resource-row" data-storage-resource="${resource}"><div class="storage-resource-identity">${itemArt(resource)}<div><h5>${esc(label(resource))}</h5><p><strong id="storage-stored-${resource}">${num(stored[resource])}</strong> stored · <strong id="storage-carried-${resource}">${num(me().inventory?.[resource])}</strong> carried</p>${boundInventoryCount(me(), resource) ? `<small>${esc(carriedText(resource))}</small>` : ''}</div></div><div class="storage-resource-actions">`;
       for (const withdrawing of owner ? [false, true] : [false]) {
@@ -777,7 +790,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const recipient = state().players?.find(player => player.id === container.ownerId);
       if (recipient) storeMax = Math.min(storeMax, Math.max(0, TRANSPORT.maxCarts - ownedCartCount(state(), recipient)));
     }
-    const takeMax = container.ownerId === me().id ? transferLimit(stored, me(), resource, carryCapacity(me())) : 0;
+    const takeMax = container.ownerId === me().id ? transferLimit(stored, me(), resource, PLAYER_CARRY_LIMIT) : 0;
     const valid = Number.isSafeInteger(count) && count > 0 && count <= 1000000;
     return { resource, container, stored, isCart, count, storeMax, takeMax, store: valid && count <= storeMax, take: valid && count <= takeMax };
   }
@@ -809,8 +822,54 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       const limits = storageLimits(); if (!limits) return;
       for (const [id, allowed] of [['storage-store', limits.store], ['storage-take', limits.take], ['storage-store-max', limits.storeMax], ['storage-take-max', limits.takeMax]]) enable(id, allowed);
       const status = document.getElementById('storage-transfer-status');
-      if (status) status.textContent = `${label(limits.resource)}: ${carriedText(limits.resource)} · ${num(limits.stored[limits.resource])} stored. Store up to ${num(limits.storeMax)}${limits.container.ownerId === me().id ? ` · take up to ${num(limits.takeMax)}` : ''}. Max uses the space available when the transfer completes. Stored items use their full weight.`;
+      if (status) status.textContent = `${label(limits.resource)}: ${carriedText(limits.resource)} · ${num(limits.stored[limits.resource])} stored. Store up to ${num(limits.storeMax)}${limits.container.ownerId === me().id ? ` · take up to ${num(limits.takeMax)}` : ''}. Storage stays limited by weight; taking above your allowance slows movement. Stored items use their full weight.`;
     }
+  }
+  function smeltingQuote(recipeId) {
+    const plot = current?.kind === 'plot' && plots().find(site => site.id === current.id), recipe = smeltingRecipe(recipeId);
+    if (!plot || plot.building !== 'smelter' || !recipe) return null;
+    const batches = amount(`smelt-batches-${recipeId}`), valid = Number.isSafeInteger(batches) && batches >= 1 && batches <= SMELTING_BATCH_LIMIT;
+    const cost = valid ? Object.fromEntries(Object.entries(recipe.cost).map(([resource, count]) => [resource, count * batches])) : {};
+    const reason = plot.ownerId !== me().id ? 'Only the owner can start a batch.' : plot.hp <= 0 || plot.ruined || plot.rebuilding ? 'Rebuild this smelter before starting.' : plot.smelting ? 'Finish or cancel the current batch first.' : !valid ? `Choose 1–${SMELTING_BATCH_LIMIT} ingots.` : !hasCost(plot.storage, cost) ? 'Store the required inputs in this building.' : '';
+    return { plot, recipe, batches, valid, cost, reason };
+  }
+  function sendSmelting(recipeId) {
+    const quote = smeltingQuote(recipeId);
+    if (!quote || quote.reason || panelAccess()?.allowed === false) { updateSmelting(); return; }
+    send({ type: 'action', kind: 'smelt_start', plotId: quote.plot.id, recipe: recipeId, batches: quote.batches });
+  }
+  function updateSmelting() {
+    for (const id of Object.keys(SMELTING_RECIPES)) {
+      const start = document.getElementById(`smelt-start-${id}`); if (!start) continue;
+      const quote = smeltingQuote(id); if (!quote) continue;
+      start.disabled = Boolean(quote.reason);
+      const cost = document.getElementById(`smelt-cost-${id}`), status = document.getElementById(`smelt-status-${id}`);
+      if (cost) cost.textContent = quote.valid ? `${costText(quote.cost)} → ${num(quote.batches * quote.recipe.amount)} ${quote.recipe.name.toLowerCase()}${quote.batches > 1 ? 's' : ''}` : `Choose 1–${SMELTING_BATCH_LIMIT} ingots.`;
+      if (status) status.textContent = quote.reason || `${num(quote.batches * quote.recipe.seconds)} active village seconds. Inputs come from this building’s storage.`;
+    }
+  }
+  function smelter(plot, owner) {
+    const job = smeltingJob(plot), operational = plot.hp > 0 && !plot.ruined && !plot.rebuilding;
+    let html = '<section class="smelter-counter"><header><span>' + buildingArt('smelter') + '</span><div><h3>Smelting furnace</h3><p>Refine iron ore with timber. Add coal to make steel for stronger tools.</p></div></header>';
+    if (job) {
+      const recipe = smeltingRecipe(job.recipe), completed = job.batches - job.remaining;
+      const refund = Object.fromEntries(Object.entries(recipe.cost).map(([resource, count]) => [resource, count * job.remaining]));
+      refund[job.recipe] = (refund[job.recipe] || 0) + job.ready * recipe.amount;
+      const returned = { ...plot.storage }; let canReturn = true;
+      for (const [resource, count] of Object.entries(refund)) { returned[resource] = (returned[resource] || 0) + count; if (!Number.isSafeInteger(returned[resource])) canReturn = false; }
+      canReturn = canReturn && inventoryWeight(returned) <= plotStorageCapacity(plot) + 1e-6;
+      html += `<div class="smelter-active"><span class="smelter-output-art">${itemArt(job.recipe)}</span><div><h4>${esc(recipe.name)} batch</h4><p>${num(completed)} / ${num(job.batches)} finished · ${num(job.ready)} waiting for storage space</p>${meter(job.remaining ? job.progress : recipe.seconds, recipe.seconds, 'Current ingot progress')}<p class="smelter-progress">${!operational ? 'Paused until this smelter is rebuilt.' : job.remaining ? `${num(Math.max(0, recipe.seconds - job.progress))}s to the next ingot · ${num(job.remaining)} left` : 'Take supplies below to make room for the finished ingots.'}</p></div></div>`;
+      if (owner && job.ownerId === me().id) html += '<p class="menu-footnote">Cancel returns unprocessed inputs and waiting ingots to this storage. Progress on the current ingot is lost.</p>' + button('Cancel batch & return inputs', () => {
+        const live = plots().find(site => site.id === plot.id), active = smeltingJob(live);
+        if (live?.building === 'smelter' && live.ownerId === me().id && active?.ownerId === me().id && panelAccess()?.allowed !== false) send({ type: 'action', kind: 'smelt_cancel', plotId: plot.id });
+      }, !canReturn, canReturn ? costText(refund) : 'Take goods from storage before returning these inputs.') + (!canReturn ? '<p class="settlement-warning">Take goods from storage to make room for the returned inputs and waiting ingots.</p>' : '');
+    } else if (plot.smelting) html += '<p class="settlement-warning">This saved batch needs administrator review. Its materials are retained.</p>';
+    else if (owner) {
+      html += '<div class="smelting-recipes">';
+      for (const [id, recipe] of Object.entries(SMELTING_RECIPES)) html += `<article class="smelting-recipe"><header><span>${itemArt(id)}</span><div><h4>${esc(recipe.name)}</h4><p>${recipe.seconds}s per ingot</p></div></header><p>${esc(costText(recipe.cost))} per ingot</p><label for="smelt-batches-${id}">Ingots to make ${quantity(`smelt-batches-${id}`, SMELTING_BATCH_LIMIT)}</label><p id="smelt-cost-${id}" class="smelting-cost"></p>` + transferButton(`smelt-start-${id}`, `Smelt ${recipe.name.toLowerCase()}s`, () => sendSmelting(id)) + `<p id="smelt-status-${id}" class="smelting-status" aria-live="polite"></p></article>`;
+      html += '</div>';
+    } else html += '<p>The owner starts smelting batches. You can donate ore, timber and coal to the storage below.</p>';
+    return html + '<p class="menu-footnote">Smelting runs while players are active in this village. Finished ingots enter building storage; full shelves hold the output safely until space is available.</p></section>';
   }
   function buildOptions(id) {
     const site = PLOTS.find(p => p.id === id), plot = plots().find(p => p.id === id);
@@ -855,6 +914,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
       html += '<p>Reclaim your unbreakable staff here. Your mana, cooldown and learned skills stay the same.</p>';
     }
     if (p.hp <= 0 && p.building) html += '<p>Any dwarf can rebuild this ruin with a working hammer. Each swing uses one timber and one stone from their pack or village stock. It reopens at 35% structural health, keeping its owner, goods and upgrades.</p>';
+    if (p.building === 'smelter') html += smelter(p, mine);
     if (['mine', 'wheat_farm', 'tree_farm'].includes(p.building)) html += '<p>' + (mine ? 'Your harvest is yours. When visitors harvest, their output is split 80% to them and 20% into your storage over time.' : p.allowVisitors ? 'Visitors may gather here. Your share is 80%; the owner receives the remaining 20% over time.' : 'This owner has closed harvesting to visitors.') + '</p>' + (mine ? command(p.allowVisitors ? 'Close visitor harvesting' : 'Allow visitor harvesting', 'plot_access', { plotId: id, allowVisitors: !p.allowVisitors }) : '');
     if (mine || p.building) {
       const shelves = storage(p.storage || {}, id, false, mine);
@@ -862,14 +922,14 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
     }
     const recipes = Object.entries(RECIPES).filter(([, r]) => r.shop === p.building);
     if (recipes.length) {
-      html += '<h3>Workshop counter</h3><p>The owner sets each item’s price. Purchases use ready stock or craft from stored materials. Payment goes to the owner after village trade tax. Equipment replaces your current item of that type.</p>' + (mine ? '<p>Set a whole-gold price for each item or bundle below. You can also craft gunpowder and musket shots into storage for customers, transporters or your own use.</p>' : '') + '<div class="shop-item-grid">';
+      html += '<h3>Workshop counter</h3><p>The owner sets each item’s price. Purchases use ready stock or craft from stored materials. Payment goes to the owner after village trade tax. Equipment replaces your current item of that type.</p>' + carryNote() + (mine ? '<p>Set a whole-gold price for each item or bundle below. You can also craft gunpowder and musket shots into storage for customers, transporters or your own use.</p>' : '') + '<div class="shop-item-grid">';
       for (const [recipe, r] of recipes) {
         const effectiveCost = p.shopCosts?.[recipe] ?? r.cost;
         const price = shopPrice(p, recipe), readyStock = r.stockable && (p.storage?.[r.item] || 0) >= r.amount;
         const stocked = readyStock || hasCost(p.storage, effectiveCost), owned = r.tool === 'staff' ? ownsStaff(me()) : r.tool && me().durability?.[r.tool] > 0;
-        const addedWeight = r.tool ? owned ? 0 : TOOL_WEIGHTS[r.tool] : resourceWeight(me(), r.item) * r.amount;
         const cartOwned = r.item === 'cart' && ownedCartCount(state(), me()) >= TRANSPORT.maxCarts;
-        const full = inventoryWeight(me()) + addedWeight > carryCapacity(me()), available = stocked && (mine ? wallet() : money()) >= price && p.hp > 0 && !full && !cartOwned && !(r.tool === 'staff' && (owned || me().role !== 'wizard'));
+        const countLimited = !r.tool && transferLimit({ [r.item]: r.amount }, me(), r.item, PLAYER_CARRY_LIMIT) < r.amount;
+        const available = stocked && (mine ? wallet() : money()) >= price && p.hp > 0 && !countLimited && !cartOwned && !(r.tool === 'staff' && (owned || me().role !== 'wizard'));
         const facts = r.tool ? gearFacts(r.tool, r.tier) : r.item === 'arrows' ? [['Bundle', `${r.amount} arrows`], ['Use', 'One per bow shot']] : r.item === 'gunpowder' ? [['Bundle', `${r.amount} gunpowder`], ['Use', 'Craft musket ammunition']] : r.item === 'musket_ammo' ? [['Bundle', `${r.amount} musket shots`], ['Use', 'One per musket shot']] : [['Storage', `${TRANSPORT.cartCapacity} weight`], ['Ownership', 'One cart per dwarf']];
         const copy = r.tool ? r.tool === 'staff' ? 'An unbreakable, mana-powered weapon for wizards. Each spell spends mana and has its own cooldown. Wizards can also reclaim a missing staff for free at any working Arcane Academy.' : r.tool === 'sword' ? 'A forward sweep can hit several enemies. Guards deal 20% extra damage. Each swing uses one durability. Replacing a sword discards the equipped weapon.' : r.tool === 'bow' ? 'A ranged shot consumes one carried arrow and one durability. Guards deal 20% extra damage. Aim toward your enemy.' : r.tool === 'musket' ? 'A powerful ranged shot with a slower reload. Each shot uses one carried musket shot and one durability. Guards deal 20% extra damage.' : r.tool === 'hammer' ? 'Restores damaged structures using the village’s repair materials. Each repair uses one durability.' : 'Every tool tier can gather every matching resource. Higher tiers give more resources at the same swing speed. Each harvest uses one durability.' : r.item === 'arrows' ? 'A bundle for your bow. These go into your inventory and weigh 0.1 each. Archer towers do not need arrows.' : r.item === 'gunpowder' ? 'Combine mined sulfur and coal at a tinker shop. Store this crafted supply to make ammunition, or sell it at your own price.' : r.item === 'musket_ammo' ? 'Combine stone and gunpowder into ready musket shots. Carry them to fire your musket or supply your barracks musketeers.' : 'Place this cart, then attach it to your horse to move stored supplies. Cart storage is separate from your pack.';
         let controls = button(`Buy · ${price}g`, () => { if (r.tool && r.tool !== 'staff' && me().durability?.[r.tool] > 0) confirm('Replace your equipped item?', `${r.name} costs ${price} gold and uses ${costText(effectiveCost)} from this shop. Your existing ${r.tool} and its remaining durability will be lost.`, 'craft_buy', { plotId: id, recipe, price, confirm: true }); else send({ type: 'action', kind: 'craft_buy', plotId: id, recipe, price }); }, !available, !stocked ? 'The shop needs more materials.' : readyStock ? 'Buys the prepared stock.' : 'Crafts from shop storage.');
@@ -880,7 +940,7 @@ export function createSettlementUI({ getState, getMe, getActivePanel, openPanel,
         }
         html += itemCard({ id: recipe, item: r.tool || r.item, tier: r.tier, name: r.name, tag: r.tool === 'staff' ? 'Unbreakable wizard staff' : r.tool === 'musket' ? 'Heavy ranged weapon' : r.tier ? TOOL_TIERS[r.tier].name + ' quality' : 'Workshop supply', facts, copy,
           extra: materialDisplay(effectiveCost, p.storage), controls, available,
-          status: p.hp <= 0 ? 'Workshop needs rebuilding.' : r.tool === 'staff' && me().role !== 'wizard' ? 'Only wizards can use or purchase a staff.' : r.tool === 'staff' && owned ? 'You already own an unbreakable staff.' : cartOwned ? 'You already own a cargo cart, packed, stored or deployed.' : !stocked ? 'The shop needs more materials.' : full ? 'Make room in your pack.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : readyStock ? `${num(p.storage[r.item])} ready in stock` : 'Materials ready · crafted when purchased' });
+          status: p.hp <= 0 ? 'Workshop needs rebuilding.' : r.tool === 'staff' && me().role !== 'wizard' ? 'Only wizards can use or purchase a staff.' : r.tool === 'staff' && owned ? 'You already own an unbreakable staff.' : cartOwned ? 'You already own a cargo cart, packed, stored or deployed.' : !stocked ? 'The shop needs more materials.' : countLimited ? 'Item count limit reached.' : !available ? 'Not enough purchase funds.' : owned ? `Replaces your current ${r.tool} · ${num(me().durability[r.tool])} durability left` : readyStock ? `${num(p.storage[r.item])} ready in stock` : 'Materials ready · crafted when purchased' });
       }
       html += '</div>';
     }

@@ -78,7 +78,7 @@ test('legacy supplied tools preserve actual durability and can still be recovere
   assert.deepEqual(w.equipment.pickaxe, { tier: 'stone', durability: 71, maxDurability: 150, workerOnly: false });
   f.owner.durability.pickaxe = 10;
   assert.throws(() => f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' }), /slot is occupied/);
-  f.owner.durability.pickaxe = 0;
+  f.owner.durability.pickaxe = 0; f.owner.inventory.stone = 1000;
   f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' });
   assert.equal(f.owner.durability.pickaxe, 71); assert.equal(f.owner.tiers.pickaxe, 'stone'); assert.equal(w.equipment.pickaxe, undefined);
   assert.throws(() => f.act({ kind: 'worker_unequip', workerId: w.id, tool: 'pickaxe' }), /standard wooden/);

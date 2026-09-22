@@ -83,20 +83,20 @@ test('trade offers reject unsafe numeric values, unowned gold, equipment and inh
   unchanged(f.v, () => f.confirm(f.a), /Add at least/);
 });
 
-test('final confirmation rechecks spent gold, removed resources and both pack capacities before any mutation', () => {
-  for (const mutate of [f => { f.a.wallet = 0; }, f => { f.a.inventory.timber = 0; }, f => { f.b.inventory.stone = 50; }]) {
+test('final confirmation rechecks spent gold and removed resources before any mutation', () => {
+  for (const mutate of [f => { f.a.wallet = 0; }, f => { f.a.inventory.timber = 0; }]) {
     const f = fixture(); f.start(); f.offer(f.a, { timber: 10 }, 10); f.offer(f.b, {}, 1); f.confirm(f.a);
-    mutate(f); unchanged(f.v, () => f.confirm(f.b), /enough|room/);
+    mutate(f); unchanged(f.v, () => f.confirm(f.b), /enough/);
   }
 });
 
-test('equal weight exchanges can free receiving capacity and include equipped tool weight', () => {
+test('trades preserve all offered items even when the recipient becomes encumbered', () => {
   const f = fixture();
   f.a.inventory = { timber: 75 }; f.b.inventory = { stone: 50 }; f.start();
   f.offer(f.a, { timber: 15 }); f.offer(f.b, { stone: 10 }); f.confirm(f.a); f.confirm(f.b);
   assert.equal(f.a.inventory.stone, 10); assert.equal(f.b.inventory.timber, 15);
   const g = fixture(); g.a.inventory = { timber: 20 }; g.b.inventory = { timber: 74 }; g.b.durability = { axe: 100 }; g.start(); g.offer(g.a, { timber: 1 });
-  unchanged(g.v, () => g.confirm(g.b), /room/);
+  g.confirm(g.b); g.confirm(g.a); assert.equal(g.b.inventory.timber, 75); assert.equal(g.b.durability.axe, 100);
 });
 
 test('standing, online state, village status and distance are checked on every action and in ticks', () => {

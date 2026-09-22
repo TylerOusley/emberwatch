@@ -6,5 +6,6 @@
   "description": "An original cooperative 3D dwarf village survival game.",
   "engines": { "node": ">=24" },
   "scripts": { "start": "node server/index.js", "dev": "node --watch server/index.js", "test": "node --test test/*.test.js" },
-  "dependencies": { "three": "0.180.0", "ws": "8.18.3" }
+  "dependencies": { "three": "0.180.0", "ws": "8.18.3" },
+  "devDependencies": { "jpeg-js": "0.4.4", "pngjs": "7.0.0" }
 }

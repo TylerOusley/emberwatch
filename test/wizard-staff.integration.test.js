@@ -77,7 +77,7 @@ test('recovery is free, immediate, idempotent and survives reload with private o
   assert.equal(restored.durability.staff, undefined); assert.equal(restored.maxDurability.staff, undefined);
 });
 
-test('recovery validates life, active village, Wizard role, nearby working resident academy and pack space without mutation', async t => {
+test('recovery validates life, active village, Wizard role, nearby working resident academy without mutation', async t => {
   const f = await fixture(t); f.approach(); f.p.staffOwned = false; f.p.tool = ''; f.p.mana = 9;
   const reject = (change, restore, pattern) => {
     change(); const before = JSON.stringify(f.p), gold = f.v.treasury;
@@ -97,11 +97,10 @@ test('recovery validates life, active village, Wizard role, nearby working resid
   reject(() => { f.plot.rebuilding = true; }, () => { delete f.plot.rebuilding; }, /working Arcane Academy/);
   reject(() => { f.plot.building = 'tinker_shop'; }, () => { f.plot.building = 'arcane_academy'; }, /working Arcane Academy/);
   reject(() => { f.plot.ownerId = 'missing'; }, () => { f.plot.ownerId = f.p.id; }, /resident owner/);
-  reject(() => { f.p.inventory.wheat = carryCapacity(f.p) - 2; }, () => { f.p.inventory.wheat = 0; }, /Make room/);
   // A resident's academy keeps its services while its owner is offline.
   f.v.players.teacher = { id: 'teacher', role: 'villager', online: false, hp: 100, wallet: 100, inventory: {}, durability: {} };
-  f.plot.ownerId = 'teacher'; f.p.inventory.wheat = carryCapacity(f.p) - 3;
-  f.reclaim(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p)); assert.equal(f.p.staffOwned, true);
+  f.plot.ownerId = 'teacher'; f.p.inventory.wheat = carryCapacity(f.p);
+  f.reclaim(); assert.equal(inventoryWeight(f.p), carryCapacity(f.p) + 3); assert.equal(f.p.staffOwned, true);
 });
 
 test('ordinary respawn loses the staff, role changes cannot regenerate it, and Academy recovery restores it', async t => {
@@ -150,12 +149,12 @@ test('more than the former durability limit of casts never wears out a staff and
     f.p.mana = 100; f.v.clock += 1;
     f.action({ kind: 'attack' }); assert.equal(f.p.staffOwned, true); assert.equal(f.p.durability.staff, undefined);
   }
-  f.plot.building = 'tinker_shop'; f.plot.storage = { timber: 100, iron: 100, sulfur: 100 }; f.approach();
+  f.plot.building = 'tinker_shop'; f.plot.storage = { timber: 100, iron_ingot: 100, sulfur: 100 }; f.approach();
   const buy = () => f.action({ kind: 'craft_buy', plotId: f.plot.id, recipe: 'staff', price: 60, confirm: true });
   f.v.clock += 1; const wallet = f.p.wallet, storage = { ...f.plot.storage };
   assert.throws(buy, /already have a permanent staff/); assert.equal(f.p.wallet, wallet); assert.deepEqual(f.plot.storage, storage);
   f.p.staffOwned = false; f.p.tool = ''; f.p.mana = 7; const ready = f.p.staffReadyAt;
   buy(); assert.equal(f.p.staffOwned, true); assert.equal(canEquip(f.p, 'staff'), true); assert.equal(inventoryWeight(f.p), 3);
   assert.equal(f.p.mana, 7); assert.equal(f.p.staffReadyAt, ready); assert.equal(f.p.durability.staff, undefined);
-  assert.deepEqual(f.plot.storage, { timber: 88, iron: 97, sulfur: 96 });
+  assert.deepEqual(f.plot.storage, { timber: 88, iron_ingot: 97, sulfur: 96 });
 });

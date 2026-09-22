@@ -246,3 +246,36 @@ test('legacy own-storage routes never become donations just because their destin
   assert.equal(restored.cargo.iron, 3); assert.equal(plot.storage.iron ?? 0, 0);
   assert.match(restored.status, /storage building/);
 });
+
+for (const resource of ['iron_ingot', 'steel_ingot']) {
+  test(`transporters restock ${resource} from an owned smelter with real debits, percentage targets and finite shop capacity`, async t => {
+    const f = await fixture(t), smelter = f.build(0, 'smelter'), shop = f.build(1, 'tool_shop');
+    const worker = f.v.workers.find(w => w.staffPlotId === shop.id);
+    assert.equal(worker.staffRole, 'transporter');
+    smelter.storage[resource] = 100; shop.storage[resource] = 2; shop.storage.wheat = 1488;
+    f.act(worker, 'worker_assign', { resource, sourcePlotId: smelter.id, destinationPlotId: shop.id, mode: 'store', targetPercent: 1 });
+    assert.equal(worker.resource, resource); assert.equal(worker.destinationOwnerId, f.ownerId);
+    assert.equal(smelter.storage[resource], 100, 'assigning a route does not remotely collect goods');
+    atPlot(worker, smelter); f.tick();
+    assert.equal(smelter.storage[resource], 98); assert.equal(worker.cargo[resource], 2);
+    assert.equal(shop.storage[resource], 2, 'goods remain in worker cargo until physical delivery');
+    assert.ok(inventoryWeight(worker.cargo) <= workerStats(worker, f.owner).carryCapacity);
+    atPlot(worker, shop); f.tick();
+    assert.equal(shop.storage[resource], 4); assert.equal(worker.cargo[resource], 0);
+    assert.equal(inventoryWeight(shop.storage), plotStorageCapacity(shop));
+    atPlot(worker, smelter); f.tick();
+    assert.equal(smelter.storage[resource], 98, 'a full destination prevents taking more ingots');
+    shop.storage.wheat -= 3; atPlot(worker, smelter); f.tick();
+    assert.equal(smelter.storage[resource], 97); assert.equal(worker.cargo[resource], 1);
+    atPlot(worker, shop); f.tick();
+    assert.equal(shop.storage[resource], 5, 'one percent of 1500 storage weight is five three-weight ingots');
+    assert.equal(worker.cargo[resource], 0); assert.equal(inventoryWeight(shop.storage), plotStorageCapacity(shop));
+    shop.storage.wheat = 0; atPlot(worker, smelter); f.tick(5);
+    assert.equal(smelter.storage[resource], 97, 'opening spare storage does not overfill the chosen percentage target');
+    assert.equal(smelter.storage[resource] + shop.storage[resource] + worker.cargo[resource], 102, 'every transferred ingot is conserved');
+    f.sim.saveAll(); const workerId = worker.id; f.restart();
+    assert.equal(f.v.workers.find(w => w.id === workerId).resource, resource);
+    assert.equal(f.v.plots.find(p => p.id === smelter.id).storage[resource], 97);
+    assert.equal(f.v.plots.find(p => p.id === shop.id).storage[resource], 5);
+  });
+}

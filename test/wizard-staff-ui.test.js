@@ -33,7 +33,7 @@ function panelHarness() {
   return { deps, doc, sent, button: text => buttons.find(button => button.text === text), get html() { return html; }, get renders() { return renders; } };
 }
 
-test('Academy staff reclaim requires an active, accessible Academy and enough carrying room', () => {
+test('Academy staff reclaim requires an active, accessible Academy and allows encumbered players', () => {
   const { state, player, plot } = fixture(), model = () => academyModel(state, player, plot.id);
   assert.equal(model().canReclaimStaff, true, 'an offline owner still supports the Academy');
   for (const property of ['carriedBy', 'bedPlotId', 'mountedHorseId', 'downed']) {
@@ -51,8 +51,9 @@ test('Academy staff reclaim requires an active, accessible Academy and enough ca
   player.role = 'villager'; assert.equal(model().canReclaimStaff, false); player.role = 'wizard';
   player.inventory.wheat = carryCapacity(player) - TOOL_WEIGHTS.staff;
   assert.equal(model().canReclaimStaff, true, 'exact capacity accepts the staff');
-  player.inventory.wheat++; assert.equal(model().canReclaimStaff, false);
-  assert.match(model().reclaimReason, /Make room/);
+  player.inventory.wheat = carryCapacity(player) + 1;
+  assert.equal(model().canReclaimStaff, true);
+  assert.equal(model().encumbered, true); assert.equal(model().reclaimReason, '');
   player.inventory = {}; player.staffOwned = true;
   assert.equal(model().canReclaimStaff, false);
 });

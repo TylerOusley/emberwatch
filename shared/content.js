@@ -3,6 +3,7 @@ import { ownsStaff } from './equipment.js';
 import { ROLE_STATS } from './roles.js';
 import { equippedItem, GATHERING_TOOLS } from './crates.js';
 import { roleSkills } from './skills.js';
+import { PET_CATALOG } from './pets.js';
 export const MAX_PLOTS = 8;
 export const PLOT_PRICES = Object.freeze([100, 200, 350, 550, 800, 1100, 1450, 1850]);
 export const CARRY_CAPACITY = 100;
@@ -16,18 +17,22 @@ export const BACKPACKS = Object.freeze([
 // Equipped capacity comes from the saved tier, never a capacity sent by a client.
 export function carryCapacity(player = {}) {
   const equipmentCapacity = (Number.isInteger(player.backpackTier) ? BACKPACKS[player.backpackTier] : null)?.capacity ?? CARRY_CAPACITY;
-  return equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0) + roleSkills(player).extraCapacity + (equippedItem(player, 'utility')?.capacity ?? 0);
+  const base = equipmentCapacity + (ROLE_STATS[player.role]?.extraCapacity ?? 0) + roleSkills(player).extraCapacity + (equippedItem(player, 'utility')?.capacity ?? 0);
+  const pet = Object.hasOwn(PET_CATALOG, player.petSpeciesId ?? '') ? PET_CATALOG[player.petSpeciesId] : null;
+  return Math.round(base * (1 + (pet?.carryBonus ?? 0)) * 100) / 100;
 }
 export const STORAGE_CAPACITY = 1500;
 export const TOOL_TIERS = Object.freeze({
   wood: { name: 'Wooden', yield: 1, durability: 100, swordDamage: 10, repair: 35 },
   stone: { name: 'Stone', yield: 2, durability: 150, swordDamage: 15, repair: 55 },
-  iron: { name: 'Iron', yield: 3, durability: 200, swordDamage: 20, repair: 80 }
+  iron: { name: 'Iron', yield: 3, durability: 200, swordDamage: 20, repair: 80 },
+  steel: { name: 'Steel', yield: 4, durability: 250, swordDamage: 25, repair: 110 }
 });
 export const BUILDING_TYPES = Object.freeze({
   tool_shop: { name: 'Tool shop', cost: { gold: 40, timber: 20, stone: 10 }, maxHp: 350 },
   tinker_shop: { name: 'Tinker shop', cost: { gold: 60, timber: 25, stone: 15 }, maxHp: 350 },
   mine: { name: 'Mine', cost: { gold: 50, timber: 20, stone: 10 }, maxHp: 450 },
+  smelter: { name: 'Smelter', cost: { gold: 120, timber: 30, stone: 60 }, maxHp: 550 },
   tree_farm: { name: 'Tree farm', cost: { gold: 25, timber: 10 }, maxHp: 250 },
   wheat_farm: { name: 'Wheat farm', cost: { gold: 20, timber: 10 }, maxHp: 250 },
   house: { name: 'House', cost: { gold: 40, timber: 25, stone: 15 }, maxHp: 500 },
@@ -41,29 +46,29 @@ export const BUILDING_TYPES = Object.freeze({
 });
 
 const recipes = {};
-for (const tier of ['stone', 'iron']) {
+for (const tier of ['stone', 'iron', 'steel']) {
   for (const tool of ['axe', 'pickaxe', 'scythe', 'hammer']) {
     recipes[`${tier}_${tool}`] = {
       name: `${TOOL_TIERS[tier].name} ${tool}`, shop: 'tool_shop', tool, tier,
-      cost: tier === 'stone' ? { stone: 10, timber: 5 } : { iron: 8, coal: 3, timber: 5 },
-      price: tier === 'stone' ? 35 : 75
+      cost: tier === 'stone' ? { stone: 10, timber: 5 } : tier === 'iron' ? { iron_ingot: 8, coal: 3, timber: 5 } : { steel_ingot: 8, timber: 5 },
+      price: tier === 'stone' ? 35 : tier === 'iron' ? 75 : 130
     };
   }
 }
-for (const tier of ['wood', 'stone', 'iron']) {
+for (const tier of ['wood', 'stone', 'iron', 'steel']) {
   recipes[`${tier}_sword`] = {
     name: `${TOOL_TIERS[tier].name} sword`, shop: 'sword_shop', tool: 'sword', tier,
-    cost: tier === 'wood' ? { timber: 8 } : tier === 'stone' ? { timber: 4, stone: 10 } : { timber: 4, iron: 10, coal: 3 },
-    price: tier === 'wood' ? 20 : tier === 'stone' ? 40 : 80
+    cost: tier === 'wood' ? { timber: 8 } : tier === 'stone' ? { timber: 4, stone: 10 } : tier === 'iron' ? { timber: 4, iron_ingot: 10, coal: 3 } : { timber: 4, steel_ingot: 10 },
+    price: tier === 'wood' ? 20 : tier === 'stone' ? 40 : tier === 'iron' ? 80 : 140
   };
 }
-recipes.bow = { name: 'Bow', shop: 'tinker_shop', tool: 'bow', tier: 'wood', cost: { timber: 12, iron: 2 }, price: 45 };
+recipes.bow = { name: 'Bow', shop: 'tinker_shop', tool: 'bow', tier: 'wood', cost: { timber: 12, iron_ingot: 2 }, price: 45 };
 recipes.arrows = { name: '12 arrows', shop: 'tinker_shop', item: 'arrows', amount: 12, cost: { timber: 3, stone: 2 }, price: 12 };
 recipes.gunpowder = { name: '5 gunpowder', shop: 'tinker_shop', item: 'gunpowder', amount: 5, cost: { sulfur: 2, coal: 1 }, price: 20, stockable: true };
-recipes.musket = { name: 'Musket', shop: 'tinker_shop', tool: 'musket', tier: 'wood', cost: { iron: 14, timber: 16 }, price: 180 };
+recipes.musket = { name: 'Musket', shop: 'tinker_shop', tool: 'musket', tier: 'wood', cost: { iron_ingot: 14, timber: 16 }, price: 180 };
 recipes.musket_ammo = { name: '8 musket shots', shop: 'tinker_shop', item: 'musket_ammo', amount: 8, cost: { stone: 4, gunpowder: 2 }, price: 24, stockable: true };
-recipes.cart = { name: 'Cargo cart', shop: 'tinker_shop', item: 'cart', amount: 1, cost: { timber: 35, iron: 8 }, price: 100 };
-recipes.staff = { name: 'Fire staff', shop: 'tinker_shop', tool: 'staff', tier: 'wood', cost: { timber: 12, iron: 3, sulfur: 4 }, price: 60 };
+recipes.cart = { name: 'Cargo cart', shop: 'tinker_shop', item: 'cart', amount: 1, cost: { timber: 35, iron_ingot: 8 }, price: 100 };
+recipes.staff = { name: 'Fire staff', shop: 'tinker_shop', tool: 'staff', tier: 'wood', cost: { timber: 12, iron_ingot: 3, sulfur: 4 }, price: 60 };
 export const RECIPES = Object.freeze(recipes);
 export const SHOP_PRICE_LIMIT = 10000;
 export const SHOP_CRAFT_BATCH_LIMIT = 100;
@@ -73,7 +78,7 @@ export function shopPrice(plot, recipeId) {
   const saved = plot.shopPrices?.[recipeId];
   return Number.isSafeInteger(saved) && saved >= 1 && saved <= SHOP_PRICE_LIMIT ? saved : recipe.price;
 }
-export const RESOURCE_WEIGHTS = Object.freeze({ timber: 2, stone: 3, wheat: 1, iron: 3, coal: 2, sulfur: 2, gunpowder: .2, musket_ammo: .2, food: 1, good_food: 1, best_food: 1, bandage: 1, arrows: .1, cart: 12 });
+export const RESOURCE_WEIGHTS = Object.freeze({ timber: 2, stone: 3, wheat: 1, iron: 3, iron_ingot: 3, steel_ingot: 3, coal: 2, sulfur: 2, gunpowder: .2, musket_ammo: .2, food: 1, good_food: 1, best_food: 1, bandage: 1, arrows: .1, cart: 12 });
 export const TOOL_WEIGHTS = Object.freeze({ sword: 2, axe: 3, pickaxe: 3, scythe: 2, hammer: 2, bow: 2, musket: 5, staff: 3 });
 export function resourceWeight(player, id) {
   return (RESOURCE_WEIGHTS[id] ?? 1) * (equippedItem(player, 'utility')?.weights?.[id] ?? 1);

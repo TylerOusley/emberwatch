@@ -11,7 +11,7 @@ function fixture(){
   render();return {carousel,options,buttons,built,render,get html(){return html;},get changes(){return changes;}};
 }
 test('all catalog buildings have distinct self-contained native illustrations and accurate inspectable details',()=>{
-  const kinds=Object.keys(BUILDING_TYPES),art=kinds.map(buildingArt);assert.equal(kinds.length,13);assert.equal(new Set(art).size,kinds.length);
+  const kinds=Object.keys(BUILDING_TYPES),art=kinds.map(buildingArt);assert.equal(kinds.length,14);assert.equal(new Set(art).size,kinds.length);
   for(const kind of kinds){const svg=buildingArt(kind);assert.match(svg,/^<svg /);assert.match(svg,/viewBox="0 0 480 300"/);assert.match(svg,new RegExp(`data-building-art="${kind}"`));assert.doesNotMatch(svg,/<(?:script|image|foreignObject|text)\b|href=|url\(|NaN|undefined/);assert.ok(BUILDING_DETAILS[kind].description.length>35);}
   assert.equal(buildingArt('<script>'),'');assert.equal(buildingArt('constructor'),'');assert.equal(buildingAvailability('constructor').available,false);
   assert.match(BUILDING_DETAILS.archer_tower.benefit,/no ammunition required/);assert.match(BUILDING_DETAILS.cannon.benefit,/1 coal and 1 stone/);

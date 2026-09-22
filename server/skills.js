@@ -2,7 +2,6 @@ import { PLOTS } from '../shared/world.js';
 import { canUsePlot } from '../shared/access.js';
 import { ROLE_SKILLS, SKILLS, ACADEMY_COMMISSION, skillLevel, roleSkills } from '../shared/skills.js';
 import { ownsStaff } from '../shared/equipment.js';
-import { TOOL_WEIGHTS, inventoryWeight, carryCapacity } from '../shared/content.js';
 import { ensureRoleStats } from './roles.js';
 
 export function ensureSkills(player) {
@@ -54,7 +53,6 @@ export function skillsAction(sim, village, player, action) {
     if (village.status !== 'active' || !player.online || player.downed || !(player.hp > 0)) throw new Error('A living wizard in an active village can reclaim a staff.');
     if (player.bedPlotId || player.mountedHorseId || player.carriedBy) throw new Error('Leave your bed, dismount, or have your companion put you down before reclaiming your staff.');
     if (ownsStaff(player)) return 'You already have your permanent staff.';
-    if (inventoryWeight(player) + TOOL_WEIGHTS.staff > carryCapacity(player) + 1e-6) throw new Error('Make room in your pack before reclaiming your staff.');
     player.staffOwned = true; player.tool = 'staff';
     return 'Your permanent staff has been restored for free and equipped.';
   }

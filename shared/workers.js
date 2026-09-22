@@ -32,7 +32,7 @@ export function workerTool(worker, tool = WORKER_TOOLS[worker?.resource]) {
 // destroyed plot has no active staff; staff never create stock by themselves.
 export const PLOT_STAFF = Object.freeze({
   wheat_farm: 'gatherer', tree_farm: 'gatherer', mine: 'gatherer',
-  tool_shop: 'transporter', tinker_shop: 'transporter', sword_shop: 'transporter',
+  tool_shop: 'transporter', tinker_shop: 'transporter', sword_shop: 'transporter', smelter: 'transporter',
   archer_tower: 'transporter', cannon: 'transporter', barracks: 'transporter', church: 'transporter',
   wizard_tower: 'transporter', arcane_academy: 'transporter'
 });

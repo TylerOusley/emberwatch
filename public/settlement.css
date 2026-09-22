@@ -357,3 +357,22 @@
 .settlement-panel .direct-storage>header>p{max-width:none}
 .settlement-panel .menu-hero-art>svg[data-building-art]{height:100%}
 .settlement-panel .menu-hero-copy{padding-top:16px;padding-bottom:16px}
+.settlement-panel .carry-notice{font-size:12px;line-height:1.5;color:#b8c6b8;margin:10px 0 16px}
+.settlement-panel .carry-notice.is-encumbered{padding:10px 12px;border:1px solid #917746;border-radius:8px;background:#6e532622;color:#f0d5a2}
+.settlement-panel .smelter-counter{padding:18px;margin:18px 0;border:1px solid #577061;border-radius:14px;background:#10271f}
+.settlement-panel .smelter-counter>header,.settlement-panel .smelting-recipe>header,.settlement-panel .smelter-active{display:flex;align-items:center;gap:14px}
+.settlement-panel .smelter-counter>header>span{width:86px;flex:0 0 86px}
+.settlement-panel .smelter-counter svg{width:100%;height:auto;display:block}
+.settlement-panel .smelter-counter h3,.settlement-panel .smelter-counter h4{margin:0 0 5px}
+.settlement-panel .smelter-counter p{line-height:1.5;margin:5px 0 12px}
+.settlement-panel .smelting-recipes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.settlement-panel .smelting-recipe{padding:14px;background:#1b362a;border:1px solid #3c5846;border-radius:10px;min-width:0}
+.settlement-panel .smelting-recipe>header>span,.settlement-panel .smelter-output-art{display:block;width:60px;flex:0 0 60px}
+.settlement-panel .smelting-recipe label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px}
+.settlement-panel .smelting-recipe input{width:74px;min-width:0;min-height:42px}
+.settlement-panel .smelting-recipe button{width:100%;min-height:44px}
+.settlement-panel .smelting-cost{font-size:12px;min-height:36px;padding-top:8px;color:#e3d6af}
+.settlement-panel .smelting-status,.settlement-panel .smelter-progress{font-size:12px;color:#bccdbc}
+.settlement-panel .smelter-active{padding:16px 0}
+.settlement-panel .smelter-active>div{flex:1;min-width:0}
+@media(max-width:600px){.settlement-panel .smelting-recipes{grid-template-columns:1fr}.settlement-panel .smelter-counter{padding:12px}.settlement-panel .smelter-counter>header>span{width:64px;flex-basis:64px}}

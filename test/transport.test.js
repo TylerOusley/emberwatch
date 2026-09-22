@@ -109,14 +109,13 @@ test('cart inventory transfers conserve cargo, respect weight and keep storage p
   act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'stone', amount: 333 });
   assert.equal(cart.storage.stone, 333); assert.equal(p.inventory.stone, 1);
   assert.throws(() => act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'stone', amount: 1 }), /cart cannot/);
-  assert.throws(() => act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 33 }), /pack cannot/);
-  act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 32 });
-  assert.equal(cart.storage.stone, 301); assert.equal(p.inventory.stone, 33);
+  act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 100 });
+  assert.equal(cart.storage.stone, 233); assert.equal(p.inventory.stone, 101);
   other.x = cart.x; other.z = cart.z;
   assert.throws(() => act(other, { kind: 'cartWithdraw', targetId: cart.id, resource: 'stone', amount: 1 }), /another dwarf/);
   assert.equal(transportSnapshot(village, other.id, sim.store).carts[0].storage, undefined);
-  assert.deepEqual(transportSnapshot(village, p.id, sim.store).carts[0].storage, { stone: 301 });
-  assert.equal(transportSnapshot(village, other.id, sim.store).carts[0].weight, 903);
+  assert.deepEqual(transportSnapshot(village, p.id, sim.store).carts[0].storage, { stone: 233 });
+  assert.equal(transportSnapshot(village, other.id, sim.store).carts[0].weight, 699);
 });
 
 test('riding is blocked while carrying or occupying a church bed', async t => {
@@ -157,7 +156,7 @@ test('cart maximum transfers stop at capacity and apply current source counts wi
   assert.equal(p.inventory.arrows, 100); assert.equal(cart.storage.arrows, 10000);
   assert.throws(() => act(p, { kind: 'cartDeposit', targetId: cart.id, resource: 'arrows', max: true }), /cart cannot/);
   act(p, { kind: 'cartWithdraw', targetId: cart.id, resource: 'arrows', max: true });
-  assert.equal(p.inventory.arrows, 1000); assert.equal(cart.storage.arrows, 9100);
+  assert.equal(p.inventory.arrows, 10100); assert.equal(cart.storage.arrows, 0);
   assert.equal(p.inventory.arrows + cart.storage.arrows, 10100);
 });
 

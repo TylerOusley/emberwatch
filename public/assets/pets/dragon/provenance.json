@@ -1,0 +1,106 @@
+{
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "downloadedAt": "2026-09-21",
+  "title": "Dragon",
+  "authors": [
+    "Drummyfish",
+    "Cethiel"
+  ],
+  "sourceUrls": [
+    "https://opengameart.org/content/cethiels-dragon-3d",
+    "https://opengameart.org/sites/default/files/dragon_oga.zip"
+  ],
+  "sourceFiles": [
+    {
+      "name": "dragon_oga.zip",
+      "sha256": "f6a8c25dd3b2abdb1e7830b0b88f9083052c0750e710e6439eceb320783a57c1",
+      "kind": "original creator file"
+    },
+    {
+      "name": "dragon/dragon-2_80.blend",
+      "sha256": "f761e0f81543872b1fb491f18031d182334518b9f51cd0f781aa10f03745aef7",
+      "kind": "original creator file"
+    },
+    {
+      "name": "dragon/dragon.png",
+      "sha256": "f0489ade499eff7bf08c02b919ec45e28960a045a79d386d4aa1b28a2d802b13",
+      "kind": "original creator file"
+    },
+    {
+      "name": "dragon-export.glb",
+      "sha256": "cdcb2e8775985b3888aa8bcd5acdc77e98edf8420a2a5438054c8e47d46b1e9d",
+      "kind": "conversion input"
+    }
+  ],
+  "surfaceNotes": "Original 472\u00d7420 hand-painted dragon texture. Grounded pet; no flight fabricated.",
+  "modifications": [
+    "Removed creator preview planes/lights and converted original Blender mesh, skin and four actions to GLB.",
+    "Explicitly bound Blender 4.5 legacy action slots; verified actual skinned-vertex movement in idle, walk and attack.",
+    "Preserved creator texture pixels and the original rig animation.",
+    "Selected canonical idle, walk, attack and death clips with the source/adaptation stated per clip.",
+    "Added scene parent to normalize idle height to 1, center X/Z and place feet at Y=0."
+  ],
+  "assetId": "dragon",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "modelSha256": "af1dda4607f7511df9de11e4be73bed0ba14136f24e73784cfcb9eaa411c0022",
+  "modelBytes": 558444,
+  "sourceAnimations": [
+    "attack",
+    "death",
+    "idle",
+    "walk"
+  ],
+  "triangles": 1262,
+  "skinCount": 1,
+  "drawCalls": 1,
+  "clips": [
+    {
+      "name": "attack",
+      "duration": 1.3333333730697632,
+      "source": "creator animation"
+    },
+    {
+      "name": "death",
+      "duration": 1.9666666984558105,
+      "source": "creator animation"
+    },
+    {
+      "name": "idle",
+      "duration": 3.366666555404663,
+      "source": "creator animation"
+    },
+    {
+      "name": "walk",
+      "duration": 1.3333333730697632,
+      "source": "creator animation"
+    }
+  ],
+  "textures": [
+    {
+      "width": 472,
+      "height": 420,
+      "format": "PNG"
+    }
+  ],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "originalBounds": {
+      "min": [
+        -0.22081247637168455,
+        -0.30656468510262214,
+        -0.6902364388616172
+      ],
+      "max": [
+        0.20287745424495196,
+        0.4302356546807059,
+        0.4305852450065075
+      ]
+    },
+    "headingFlipped": false
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "downloadedAt": "2026-09-21",
+  "title": "Marmot",
+  "authors": [
+    "Gobkit / Alsomind Tech Co., Ltd."
+  ],
+  "sourceUrls": [
+    "https://gobkit.itch.io/gobkit-free-animal-pack-vol-2",
+    "https://gobkit.com/api/free",
+    "https://gobkit.com/freebies/animalB/Marmot.glb"
+  ],
+  "surfaceNotes": "Embedded creator color atlas preserved. Actual downloaded file has four separately named clips; no timeline slicing needed.",
+  "assetId": "marmot",
+  "model": "model.glb",
+  "thumbnail": "thumbnail.png",
+  "modelSha256": "876fb6738d33168aaa0992395a50e168ae58fc2c0f3bb44093fac421da546f15",
+  "modelBytes": 165320,
+  "sourceFiles": [
+    {
+      "name": "Marmot.glb",
+      "sha256": "0dfe1f8d955c1f017fd2ec7b1e12eeec652d8b77100d81d638935c4e0d9a3b2e",
+      "kind": "conversion input"
+    }
+  ],
+  "sourceAnimations": [
+    "idle",
+    "attack",
+    "dead",
+    "walk"
+  ],
+  "triangles": 370,
+  "skinCount": 1,
+  "drawCalls": 1,
+  "clips": [
+    {
+      "name": "idle",
+      "duration": 1.2083333730697632,
+      "source": "creator animation"
+    },
+    {
+      "name": "attack",
+      "duration": 1.2083332538604736,
+      "source": "creator animation"
+    },
+    {
+      "name": "death",
+      "duration": 1.2083332538604736,
+      "source": "creator animation"
+    },
+    {
+      "name": "walk",
+      "duration": 1.2083334922790527,
+      "source": "creator animation"
+    }
+  ],
+  "textures": [
+    {
+      "width": 512,
+      "height": 512,
+      "format": "PNG"
+    }
+  ],
+  "normalization": {
+    "up": "+Y",
+    "forward": "+Z",
+    "idleFeetY": 0,
+    "idleHeight": 1,
+    "originalBounds": {
+      "min": [
+        -1.7466845454696158,
+        -0.04751872304072706,
+        -2.366769421649267
+      ],
+      "max": [
+        1.7466845570084115,
+        3.456277132034694,
+        2.0913591440437065
+      ]
+    },
+    "headingFlipped": false
+  },
+  "modifications": [
+    "Preserved creator mesh, skin weights, materials and source texture pixels.",
+    "Selected canonical idle, walk, attack and death clips with the source/adaptation stated per clip.",
+    "Added scene parent to normalize idle height to 1, center X/Z and place feet at Y=0."
+  ]
+}

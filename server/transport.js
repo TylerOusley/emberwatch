@@ -1,9 +1,9 @@
 import { canUseBuilding, canUsePlot, canUseChurchBed } from '../shared/access.js';
 import { randomUUID } from 'node:crypto';
 import { BUILDINGS, canStand, moveWithCollision, plotSolids, plotBedPoint, groundHeight } from '../shared/world.js';
-import { carryCapacity, RESOURCE_WEIGHTS, inventoryWeight, transferableCount } from '../shared/content.js';
+import { RESOURCE_WEIGHTS, inventoryWeight, transferableCount } from '../shared/content.js';
 import { TRANSPORT, LOANS, cartCapacity, cartPassengerPoint, transportPlotSite, mountedTravelSpeed } from '../shared/transport.js';
-import { moveResource } from '../shared/transfers.js';
+import { moveResource, PLAYER_CARRY_LIMIT } from '../shared/transfers.js';
 import { plotStorageCapacity } from '../shared/production.js';
 import { CHURCH, bedCapacity } from '../shared/defense.js';
 import { requireCartAllowance } from '../shared/cart-ownership.js';
@@ -257,7 +257,7 @@ export function transportAction(sim, village, player, action) {
   if (!Object.hasOwn(RESOURCE_WEIGHTS, resource)) throw new Error('Choose a stackable resource or food item.');
   const depositing = action.kind === 'cartDeposit';
   const amount = moveResource({ source: depositing ? player : cart.storage, destination: depositing ? cart.storage : player, resource, action,
-    capacity: depositing ? cartCapacity(cart) : carryCapacity(player), fullMessage: depositing ? 'The cart cannot carry that much cargo.' : 'Your pack cannot carry that much cargo.' });
+    capacity: depositing ? cartCapacity(cart) : PLAYER_CARRY_LIMIT, fullMessage: depositing ? 'The cart cannot carry that much cargo.' : 'Your pack cannot accept that item count.' });
   return `${amount} ${resource} ${depositing ? 'loaded into' : 'taken from'} your cart.`;
 }
 

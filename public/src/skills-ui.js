@@ -1,7 +1,7 @@
 import { ROLE_SKILLS, SKILLS, ACADEMY_COMMISSION, skillLevel } from '../../shared/skills.js';
 import { PLOTS } from '../../shared/world.js';
 import { canUsePlot, plotEntrance } from '../../shared/access.js';
-import { carryCapacity, inventoryWeight, TOOL_WEIGHTS } from '../../shared/content.js';
+import { carryStatus } from '../../shared/encumbrance.js';
 import { ownsStaff } from '../../shared/equipment.js';
 import { MAGIC } from '../../shared/magic.js';
 import { icon } from './icons.js';
@@ -16,11 +16,11 @@ export function academyModel(state, player, plotId, previewRole = player?.role) 
   const operational = plot?.building === 'arcane_academy' && plot.hp > 0 && !plot.ruined && !plot.rebuilding && residents.some(resident => resident.id === plot.ownerId);
   const nearby = operational && canUsePlot(player, site, plot);
   const standing = player?.online !== false && !player?.downed && !player?.carriedBy && !player?.bedPlotId && !player?.mountedHorseId && player?.hp > 0;
-  const staffOwned = ownsStaff(player), staffRoom = inventoryWeight(player) + (staffOwned ? 0 : TOOL_WEIGHTS.staff) <= carryCapacity(player) + 1e-6;
+  const staffOwned = ownsStaff(player);
   const element = academy.staffElement ?? player?.staffElement ?? 'fire', spell = MAGIC[element] ?? MAGIC.fire;
-  const reclaimReason = player?.role !== 'wizard' ? 'Only wizards can reclaim a staff.' : staffOwned ? 'Your staff is already in your pack.' : state?.status !== 'active' ? 'Reclaim your staff in an active village.' : !operational ? 'A working Arcane Academy is needed.' : !nearby ? 'Visit the academy entrance to reclaim your staff.' : !standing ? 'Stand at the academy entrance while alive, unmounted and free to act.' : !staffRoom ? `Make room for ${TOOL_WEIGHTS.staff} weight in your pack.` : '';
+  const reclaimReason = player?.role !== 'wizard' ? 'Only wizards can reclaim a staff.' : staffOwned ? 'Your staff is already in your pack.' : state?.status !== 'active' ? 'Reclaim your staff in an active village.' : !operational ? 'A working Arcane Academy is needed.' : !nearby ? 'Visit the academy entrance to reclaim your staff.' : !standing ? 'Stand at the academy entrance while alive, unmounted and free to act.' : '';
   return { plot, nearby, operational, role: previewRole, mana: Math.floor(academy.mana ?? player?.mana ?? 0), manaMax: academy.manaMax ?? player?.manaMax ?? 100, element, elements: academy.stats?.staffElements ?? [],
-    staffOwned, staffRoom, canReclaimStaff: !reclaimReason, reclaimReason, spellMana: spell.mana, spellCooldown: spell.cooldown,
+    staffOwned, encumbered: carryStatus(player).encumbered, canReclaimStaff: !reclaimReason, reclaimReason, spellMana: spell.mana, spellCooldown: spell.cooldown,
     skills: (ROLE_SKILLS[previewRole] ?? []).map(skill => {
       const rank = skillLevel(learner, skill.id), price = rank < skill.maxRank ? skill.prices[rank] + ACADEMY_COMMISSION : null;
       const prerequisite = skill.requires && !skillLevel(learner, skill.requires) ? SKILLS[skill.requires].name : null;

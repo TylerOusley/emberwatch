@@ -18,7 +18,7 @@ export const FOOD = Object.freeze({
 export const MERCHANT_PRICES = Object.freeze({ iron: 9, coal: 7, arrows: 3 });
 export const MERCHANT_STOCK = Object.freeze({ iron: 30, coal: 30, arrows: 60 });
 // Treasury export bids are separate from the specialist wares sold to players.
-export const MERCHANT_EXPORT_PRICES = Object.freeze({ wheat: 1, timber: 2, stone: 2, iron: 3, coal: 2, sulfur: 2 });
+export const MERCHANT_EXPORT_PRICES = Object.freeze({ wheat: 1, timber: 2, stone: 2, iron: 3, iron_ingot: 6, steel_ingot: 10, coal: 2, sulfur: 2 });
 export const MERCHANT_EXPORT_PERCENTAGES = Object.freeze({ conserve: 25, balanced: 50, trade: 100 });
 
 export function merchantExportPercent(priority) {

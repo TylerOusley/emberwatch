@@ -1,0 +1,9 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {PET_CATALOG} from '../shared/pets.js';
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cards=[];
+for(const[id,pet]of Object.entries(PET_CATALOG)){
+ const info=JSON.parse(await readFile(new URL(`../public/assets/pets/${id}/provenance.json`,import.meta.url),'utf8'));
+ cards.push(`<article><img src="${id}/thumbnail.png" alt="${esc(pet.name)} model render" width="160" height="160"><div><h2>${esc(pet.name)}</h2><p>${esc(info.title)} by ${esc(info.authors.join(', '))}.</p><p>License: <a href="${esc(info.licenseUrl)}">${esc(info.license)}</a>.</p><ul>${info.sourceUrls.map(url=>`<li><a href="${esc(url)}">${esc(new URL(url).hostname + new URL(url).pathname)}</a></li>`).join('')}</ul><p>Changes: ${esc((info.modifications??[]).join(' '))}</p><a href="${id}/provenance.json">Source, animation and file details</a></div></article>`);
+}
+await writeFile(new URL('../public/assets/pets/CREDITS.html',import.meta.url),`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Emberwatch — Pet art credits</title><style>body{max-width:960px;margin:40px auto;padding:0 20px;background:#171e21;color:#eee8d7;font:16px/1.6 system-ui}a{color:#ead292;overflow-wrap:anywhere}h1,h2{line-height:1.2}article{display:flex;gap:24px;padding:24px 0;border-top:1px solid #50594e}img{object-fit:contain;flex:0 0 160px}li{overflow-wrap:anywhere}@media(max-width:600px){article{display:block}img{display:block;margin:auto}}</style><h1>Pet art credits</h1><p>Emberwatch's companions use free creator assets and adapted animation rigs. These portraits are renders of the actual imported models. Source licenses and modifications are listed below; creator credit does not imply endorsement of Emberwatch.</p>${cards.join('\n')}<p><a href="/">Return to Emberwatch</a></p></html>\n`);

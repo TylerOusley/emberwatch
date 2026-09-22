@@ -56,7 +56,7 @@ test('a two-second healing channel cannot become a fast revival when its target 
   assert.equal(target.downed, false); assert.equal(target.hp, 45); assert.equal(player.jobBonus, 5);
 });
 
-test('a full pack rejects a replacement wooden tool without charging or changing saved state', async t => {
+test('a full pack accepts a replacement wooden tool and persists its purchase', async t => {
   const { app, sim, village, player } = await fixture(t);
   const shop = BUILDINGS.find(b => b.id === 'tools');
   Object.assign(player, buildingEntrance(shop));
@@ -64,12 +64,12 @@ test('a full pack rejects a replacement wooden tool without charging or changing
   player.inventory.wheat = carryCapacity(player) - inventoryWeight(player);
   assert.equal(inventoryWeight(player), carryCapacity(player));
   app.store.saveVillage(village);
-  const before = structuredClone(village), persisted = app.store.loadVillages(), account = app.store.account(player.id);
-  assert.throws(() => sim.action(village.id, player.id, { kind: 'buyTool', tool: 'pickaxe' }), /room in your pack/);
-  assert.deepEqual(village, before);
-  assert.deepEqual(app.store.loadVillages(), persisted);
-  assert.deepEqual(app.store.account(player.id), account);
-  assert.equal(player.durability.pickaxe, 0);
+  const wallet = player.wallet, treasury = village.treasury;
+  sim.action(village.id, player.id, { kind: 'buyTool', tool: 'pickaxe' });
+  assert.equal(player.durability.pickaxe, 100);
+  assert.equal(inventoryWeight(player), carryCapacity(player) + 3);
+  assert.equal(player.wallet, wallet - 10); assert.equal(village.treasury, treasury + 10);
+  assert.equal(app.store.loadVillages()[0].players[player.id].durability.pickaxe, 100);
 });
 
 test('constructing a plot building relocates a zombie out of the new collision footprint', async t => {

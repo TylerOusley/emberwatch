@@ -30,6 +30,7 @@ export function drawMapSymbol(c,kind,x,y,size=22,color=null) {
   if(kind==='tree'){c.fillStyle='#9b7951';box(-1,2,2,8);c.fillStyle='#478664';path([[-9,4],[-5,-3],[-7,-3],[0,-12],[7,-3],[5,-3],[9,4]]);}
   else if(kind==='wheat'){c.strokeStyle='#efd680';for(const side of [-1,1]){path([[side*2,9],[side*5,-9]],false);for(let j=0;j<3;j++)path([[side*(4-j),3-j*4],[side*(9-j),-j*4]],false);}}
   else if(kind==='cave'){path([[-11,9],[-10,-2],[-5,-10],[5,-10],[10,-3],[11,9]]);c.fillStyle='#263d3d';path([[-6,9],[-5,-2],[0,-6],[5,-2],[6,9]]);c.strokeStyle='#d3bc87';path([[-8,9],[-8,-5],[8,-5],[8,9]],false);}
+  else if(kind==='smelter'){box(4,-12,5,12);box(-9,-5,18,16);c.fillStyle='#263d3d';path([[-5,10],[-5,2],[0,-2],[5,2],[5,10]]);c.fillStyle='#edac58';path([[-3,9],[-2,4],[0,6],[2,2],[3,9]]);}
   else if(kind==='food'){c.beginPath();c.ellipse(0,1,11,7,-.2,0,Math.PI*2);c.fill();c.stroke();c.strokeStyle='#947040';for(const i of [-1,0,1])path([[i*5-1,-4],[i*5+2,1]],false);}
   else if(kind==='stable'){c.lineWidth=5;c.beginPath();c.arc(0,-1,8,-.25,Math.PI+.25);c.strokeStyle='#263a35';c.stroke();c.lineWidth=3;c.strokeStyle=color||MAP_COLORS.stable;c.stroke();path([[-8,-3],[-8,-9]],false);path([[8,-3],[8,-9]],false);}
   else if(kind==='bank'){box(-9,-8,18,18);c.fillStyle='#617b73';circle(0,1,6);c.strokeStyle='#f4d899';path([[-4,1],[4,1]],false);path([[0,-3],[0,5]],false);circle(0,1,1);}
